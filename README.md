@@ -27,6 +27,8 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
    | `DB_USERNAME` | (empty) |
    | `DB_PASSWORD` | (empty) |
    | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
+   | `JWT_SECRET` | **required**, at least 32 bytes (HS256 signing key; the app refuses to start without it) |
+   | `JWT_EXPIRES_IN` | `PT2H` (ISO-8601 duration) |
 
 4. Run: `mvn spring-boot:run` (profile `dev` by default).
 5. Check: `GET http://localhost:8080/api/health` → `{"success":true,"data":{"status":"UP"}}`.
@@ -40,6 +42,10 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 - `database/schema.sql` is a byte-identical copy of the canonical `project-docs/database/schema.sql`
   (checksum in `database/schema.sql.sha256`). **Never edit it**; Hibernate runs with `ddl-auto=validate`.
 - API contracts live in `docs/api/` (CORE-003 … CORE-006).
+- Security (CORE-007): stateless JWT bearer auth. Public routes are only `POST /api/auth/login|register|forgot-password|reset-password`,
+  `GET /api/health` and, in the dev profile, Swagger. Protect endpoints with `@PreAuthorize("hasRole('CLUB_MANAGER')")`
+  (the 7 `RoleCode` values) and read the caller with `@AuthenticationPrincipal AuthenticatedUser`.
+  Write audit rows with `AuditService.record(...)` — never put passwords, hashes or tokens in a summary.
 
 ## Tests
 

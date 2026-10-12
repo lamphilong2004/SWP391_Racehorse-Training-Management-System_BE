@@ -17,6 +17,9 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        type:
+          # schema.sql stores UTC instants in DATETIME2(3); map java.time.Instant to it (not DATETIMEOFFSET).
+          preferred_instant_jdbc_type: TIMESTAMP
   jackson:
     time-zone: UTC
 
@@ -28,6 +31,18 @@ server:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  jwt:
+    # HS256 signing key: at least 32 bytes, from the environment only. No default — startup fails if missing.
+    secret: ${JWT_SECRET:}
+    expires-in: ${JWT_EXPIRES_IN:PT2H}
+    issuer: racehorse-backend
+  security:
+    # Swagger UI / OpenAPI JSON are public only in the dev profile (DEC-008 §6 R10); see application-dev.yml.
+    public-api-docs: false
+    login-rate-limit:
+      # DEC-008 §6 R8: 10 failed attempts per 15 minutes per client IP + email (in memory, per instance).
+      max-failures: 10
+      window: PT15M
 
 springdoc:
   api-docs:
