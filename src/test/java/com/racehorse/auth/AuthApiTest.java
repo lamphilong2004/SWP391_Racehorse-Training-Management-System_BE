@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,6 +55,7 @@ class AuthApiTest {
         static final String PENDING_EMAIL = "pending.applicant@club.test";
 
         @Bean
+        @Primary // takes precedence over the real CORE-047 implementation in this auth-only test
         RegistrationLoginCheck registrationLoginCheck() {
             return (email, password) -> !PENDING_EMAIL.equals(email) ? RegistrationLoginCheck.Outcome.NO_PENDING_REQUEST
                     : AuthTestSupport.PASSWORD.equals(password) ? RegistrationLoginCheck.Outcome.PENDING_PASSWORD_MATCHES

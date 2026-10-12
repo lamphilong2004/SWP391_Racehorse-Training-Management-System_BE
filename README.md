@@ -19,6 +19,8 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
    ```
 
    or with a SQL login: set `DB_USERNAME` / `DB_PASSWORD` first and omit `-UseWindowsAuth`.
+   Then apply the technical tables (outside the 51 business entities, never added to `schema.sql`):
+   `sqlcmd -S localhost -d racehorse_dev -E -C -b -i database/technical/registration_request.sql` (DEC-008, CORE-047).
 3. Set the connection environment variables (never commit them):
 
    | Variable | Default |
