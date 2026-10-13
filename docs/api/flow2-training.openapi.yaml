@@ -26,7 +26,9 @@ info:
     - Recommendations return labels + reasons only, **no numeric scores** (BR-D28, BR-D29, BR-D22).
     - Stop requires a reason; an INTERRUPTED session never becomes COMPLETED (BR-D23).
     - The Groom pre-session check is the start gate (DEC-007 §3.1, BR-21…23): no ALL_NORMAL check → cannot start;
-      ABNORMAL → an incident is created and its id returned.
+      ABNORMAL leaves the session SCHEDULED and blocked. It never creates an incident. Incident reporting belongs to CORE-046
+      and may reference the returned pre-session-check `id` as `preSessionCheckId` via the separate CORE-046
+      IncidentReportModal → POST /api/incidents flow.
     - No race field is exposed: `horse_training_program.target_race_id` stays NULL and hidden (DEC-007 §3.3).
     - BR-26 (Head Trainer evaluation completes the session) is superseded by the approved detailed flow (DEC-004): the Work
       Rider finishes the session (M10) and the Trainer records the evaluation (M11).
@@ -54,14 +56,16 @@ info:
     | AF-5 | suitability-check returns category A per exercise; PUT …/exercises to remove or replace |
     | EF-1 | 409 BUSINESS_RULE_VIOLATION on POST /api/training-programs and POST /api/training-sessions |
     | EF-2 | `blocked` + `blockedReasons` on session reads; 409 on start; notification SESSION_BLOCKED |
-    | EF-3 | POST /api/monitoring-alerts/{id}/acknowledge (ACKNOWLEDGE / REDUCE_INTENSITY / PAUSE / STOP); escalation to Vet |
+    | EF-3 | POST /api/monitoring-alerts/{id}/acknowledge (ACKNOWLEDGE / REDUCE_INTENSITY / PAUSE / STOP); proposed POST /api/training-sessions/{id}/reduce-intensity (signature needs confirmation); escalation to Vet |
     | EF-4 | recommendation lists with warnings; `riderWarningAcknowledged` on session create |
     | EF-5 | replaced by the Groom pre-session check gate (DEC-007): POST /api/training-sessions/{id}/pre-session-check |
     | EF-6 | POST /api/training-sessions/{id}/report-issue, POST …/stop; rider feedback and evaluation still allowed |
 
-    Open questions encoded as ASSUMPTIONS (to confirm): Q-32 resume = Trainer; Q-33 Work Rider has no direct Stop (Report
-    Issue interrupts per EF-6); Q-34 early start not allowed; Q-35 Trainer calendar = own sessions, `trainerId` filter for
-    Head Trainer. NEEDS CLARIFICATION: intensity / surface / evaluation-label value lists (physical-schema §11 #3).
+    Approved decisions: Q-32 Resume is Trainer-only; Q-33 Work Riders use Report Issue/Incident instead of Trainer
+    Pause/Resume/Stop controls; Q-34 early start is not allowed and the Trainer must reschedule; Q-35 Trainers see sessions
+    for assigned programs, with `trainerId` filtering available to the Head Trainer.
+    Surface vocabulary, metric units/distance semantics, `currentExerciseOrder` derivation, alert escalation timing and the
+    reduction operation's method/path/request body/session-state signature remain OPEN where not specified below.
 servers:
   - url: http://localhost:8080
     description: Local development
@@ -774,8 +778,9 @@ paths:
       operationId: listTrainingSessions
       summary: Session calendar / list (SCR-TRAIN-004, 019)
       description: |
-        Scope: Trainer = sessions of assigned programs (Q-35 ASSUMPTION: own only); Work Rider = own sessions; Groom = use
-        /api/groom/sessions; Head Trainer, Club Manager, Veterinarian = all (read). `trainerId` filter for the Head Trainer.
+        Scope: Trainer = sessions of assigned programs (Q-35 approved); Work Rider = own sessions; Groom = assigned/notified
+        sessions through /api/groom/sessions; Head Trainer, Club Manager, Veterinarian = all (read). `trainerId` filter is
+        available to the Head Trainer.
       x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, CLUB_MANAGER, VETERINARIAN]
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
@@ -839,6 +844,7 @@ paths:
       tags: [Sessions]
       operationId: getTrainingSession
       summary: Session detail (SCR-TRAIN-008 / 020 / 021)
+      description: GROOM access is limited to the assigned/notified Groom for pre-session work; the assignment persistence mapping is a model gap and must not be widened.
       x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, GROOM, CLUB_MANAGER, VETERINARIAN]
       responses:
         '200':
@@ -1005,7 +1011,7 @@ paths:
       description: |
         SCHEDULED → IN_PROGRESS, sets `actual_start`. Gate (409 BUSINESS_RULE_VIOLATION with `blockedReasons` in details):
         pre-session check missing or ABNORMAL (BR-21/22); Availability LOCKED (EF-2, Vet reason); an exercise now category A;
-        program not ACTIVE; before `scheduledStart` (Q-34 ASSUMPTION: no early start). Publishes STOMP state.
+        program not ACTIVE; before `scheduledStart` (Q-34 approved: no early start; the Trainer must reschedule). Publishes STOMP state.
       x-roles: [WORK_RIDER, TRAINER]
       responses:
         '200': { $ref: '#/components/responses/SessionOk' }
@@ -1030,13 +1036,40 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/BusinessRule' }
 
+  /api/training-sessions/{id}/reduce-intensity:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: reduceSessionIntensity
+      summary: "PROPOSED — NEEDS CONFIRMATION: reduce session intensity"
+      description: |
+        PROPOSED — NEEDS CONFIRMATION. This candidate uses POST, this path, an `intensity` request body, and applies only
+        to IN_PROGRESS or PAUSED sessions. The proposed value must be lower than the current session intensity according
+        to LOW < MEDIUM < MEDIUM_HIGH < HIGH. The approved requirement is that a Trainer has an operation to reduce
+        intensity; the method, path, request body and applicable session states have not been found in an approved source.
+        This candidate is the REST operation for the REDUCE_INTENSITY response suggested by a monitoring alert.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReduceIntensityRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
   /api/training-sessions/{id}/resume:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Sessions]
       operationId: resumeSession
-      summary: Resume a paused session (Q-32 ASSUMPTION — Trainer only)
+      summary: Resume a paused session (Q-32 approved — Trainer only)
       description: PAUSED → IN_PROGRESS. Re-checks LOCKED (409).
       x-roles: [TRAINER]
       responses:
@@ -1056,7 +1089,7 @@ paths:
       description: |
         IN_PROGRESS or PAUSED → INTERRUPTED with `interruption_reason`, `actual_end`. If `medicallyRelevant`, an incident
         (REPORTED, linked to the session) is created for Veterinarian review — the Trainer never opens a medical case directly.
-        Q-33 ASSUMPTION: Trainer only.
+        Trainer only (Q-33 approved). Work Riders report issues through `/report-issue`.
       x-roles: [TRAINER]
       requestBody:
         required: true
@@ -1133,8 +1166,9 @@ paths:
       operationId: listGroomSessions
       summary: Sessions needing a pre-session check (SCR-DASH-004 Groom Today)
       description: |
-        SCHEDULED sessions on the date with their pre-check state. ASSUMPTION: any GROOM may perform the check — DB-01 has no
-        column assigning a Groom to a session, so no per-Groom assignment is invented.
+        SCHEDULED sessions on the date assigned/notified to the signed-in Groom, with their pre-check state. Only the
+        assigned/notified Groom may view or check a session. The current contract branch has no approved persistence
+        mapping for Groom assignment; this is a model gap and must not be relaxed to club-wide access.
       x-roles: [GROOM]
       parameters:
         - { name: date, in: query, required: true, schema: { type: string, format: date } }
@@ -1162,9 +1196,12 @@ paths:
       operationId: submitPreSessionCheck
       summary: Pre-session check (SCR-TRAIN-007; BR-21…23)
       description: |
-        SCHEDULED sessions only; one check per session (409 if it exists). The structured answers are composed into
-        `pre_session_check.observations`. ABNORMAL: an incident is created (`pre_session_check_id` set, REPORTED), the
-        Veterinarian and the Trainer are notified, and the session is blocked from starting.
+        SCHEDULED sessions only; one check per session (409 if it exists). Only the assigned/notified Groom may submit it;
+        the assignment persistence mapping is a model gap and must not be widened to all Grooms. The backend computes
+        `overallResult` from the five checklist results; clients do not send it. ABNORMAL leaves the session SCHEDULED and
+        blocks start. This operation never creates an Incident. Incident reporting is separate under CORE-046 and may reference the returned
+        pre-session-check `id` as `preSessionCheckId` through the separate CORE-046 IncidentReportModal → POST /api/incidents
+        flow.
       x-roles: [GROOM]
       requestBody:
         required: true
@@ -1279,9 +1316,13 @@ paths:
       operationId: submitMetricSample
       summary: Submit a manual metric sample (M8; system of record, DEC-002 D-03)
       description: |
-        IN_PROGRESS only. At least one value. Source MANUAL. The backend evaluates heart rate against the effective threshold
-        (per-horse override, else global default — BR-D11), publishes the sample on STOMP and, on CRITICAL, stores a
-        `monitoring_alert` and notifies the Trainer and the Veterinarian. WARNING is published but not stored (schema stores CRITICAL only).
+        IN_PROGRESS or PAUSED. At least one value. Source MANUAL. The backend evaluates heart rate against the effective
+        global medical threshold configuration combined with any applicable horse override. The exact merge semantics
+        are not defined here. No universal threshold is hard-coded and the warning threshold is not derived from the
+        critical threshold. Each transition from below to at/above the effective
+        critical threshold creates one CRITICAL alert. Further samples above threshold do not create repeated alerts;
+        another alert is eligible only after a sample falls below the threshold and crosses it again. WARNING is transient
+        and is not stored (the schema stores CRITICAL only).
       x-roles: [WORK_RIDER]
       requestBody:
         required: true
@@ -1310,8 +1351,8 @@ paths:
     post:
       tags: [Realtime]
       operationId: startSimulator
-      summary: Start the demo simulator for an IN_PROGRESS session
-      description: Demo only (DEC-002 D-03). Feeds the same pipeline with source SIMULATOR; resulting notifications have `isSimulated = true`. Disabled outside the dev/demo profile (404).
+      summary: Start the demo simulator for an IN_PROGRESS or PAUSED session
+      description: Demo only (DEC-002 D-03). Feeds the same pipeline with source SIMULATOR for IN_PROGRESS or PAUSED sessions; resulting notifications have `isSimulated = true`. Disabled outside the dev/demo profile (404).
       x-roles: [TRAINER]
       responses:
         '204': { description: Simulator running. }
@@ -1343,7 +1384,9 @@ paths:
       summary: Acknowledge a CRITICAL alert and choose the response (EF-3, SCR-TRAIN-012)
       description: |
         Sets `acknowledged_at/by` and `action_taken`. PAUSE also pauses the session; STOP requires `stopReason` and interrupts
-        it (same rules as POST …/stop). A Veterinarian may only ACKNOWLEDGE. Already acknowledged → 409.
+        it (same rules as POST …/stop). REDUCE_INTENSITY records the alert response; the Trainer may use the proposed
+        intensity-reduction operation (PROPOSED — NEEDS CONFIRMATION; see that operation). A Veterinarian may only
+        ACKNOWLEDGE. Already acknowledged → 409.
         Unacknowledged alerts are escalated to the Veterinarian after a configured time (`escalated_to_vet_at`).
       x-roles: [TRAINER, VETERINARIAN]
       requestBody:
@@ -1617,11 +1660,8 @@ components:
     ObservedSeverity: { type: string, enum: [LOW, MEDIUM, HIGH] }
     Intensity:
       type: string
-      maxLength: 30
-      description: |
-        NEEDS CLARIFICATION (physical-schema §11 #3): the intensity value list is not decided. The range check
-        (phase intensityMin ≤ value ≤ intensityMax, BR-D30) runs on the agreed ordered list once it is fixed
-        (DEC-005 example: Medium → High).
+      description: Ordered values used for phase range checks and session intensity reduction.
+      enum: [LOW, MEDIUM, MEDIUM_HIGH, HIGH]
 
     # ---------- Templates ----------
     TemplatePhaseInput:
@@ -1858,7 +1898,7 @@ components:
               scheduled: { type: integer, minimum: 0 }
               completed: { type: integer, minimum: 0 }
               interrupted: { type: integer, minimum: 0 }
-              totalDistanceM: { type: [number, 'null'] }
+              totalDistanceM: { type: [number, 'null'], description: Field name denotes metres; aggregation semantics remain OPEN pending approval. }
               lastEvaluationLabel: { type: [string, 'null'] }
     ProgramHistoryEntry:
       type: object
@@ -1901,6 +1941,7 @@ components:
     # ---------- Exercises ----------
     ExerciseInput:
       type: object
+      description: No default intensity is stored on an exercise definition.
       required: [name]
       properties:
         name: { type: string, minLength: 1, maxLength: 150 }
@@ -1922,7 +1963,7 @@ components:
       properties:
         exerciseDefinitionId: { type: integer, format: int64 }
         exerciseOrder: { type: integer, minimum: 1 }
-        distanceM: { type: [number, 'null'], minimum: 0, description: ASSUMPTION unit metres. }
+        distanceM: { type: [number, 'null'], minimum: 0, description: Field name denotes metres; exact business meaning remains OPEN pending approval. }
         durationMin: { type: [number, 'null'], minimum: 0, description: ASSUMPTION unit minutes. }
         repetitions: { type: [integer, 'null'], minimum: 0 }
         restIntervalMin: { type: [number, 'null'], minimum: 0, description: ASSUMPTION unit minutes. }
@@ -2012,7 +2053,7 @@ components:
             horseProgramPhaseId: { type: integer, format: int64 }
             surface: { type: [string, 'null'] }
             focus: { type: [string, 'null'] }
-            intensity: { type: [string, 'null'] }
+            intensity: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
             actualStart: { type: [string, 'null'], format: date-time }
             actualEnd: { type: [string, 'null'], format: date-time }
             interruptionReason: { type: [string, 'null'] }
@@ -2080,34 +2121,44 @@ components:
     # ---------- Groom pre-session check ----------
     PreSessionCheckRequest:
       type: object
-      required: [overallResult, conditionNormal, legsHoovesNormal]
+      additionalProperties: false
+      required: [checks]
       properties:
-        overallResult: { type: string, enum: [ALL_NORMAL, ABNORMAL] }
-        conditionNormal: { type: boolean }
-        legsHoovesNormal: { type: boolean }
-        temperatureC: { type: [number, 'null'], minimum: 30, maximum: 45, description: Only when needed (BR-21). }
-        notes: { type: [string, 'null'], maxLength: 3000 }
-        incident:
-          description: Required when overallResult = ABNORMAL (BR-23).
-          oneOf:
-            - type: object
-              required: [incidentType, observedSeverity]
-              properties:
-                incidentType: { $ref: '#/components/schemas/IncidentType' }
-                observedSeverity: { $ref: '#/components/schemas/ObservedSeverity' }
-                description: { type: [string, 'null'], maxLength: 2000 }
-            - type: 'null'
+        checks:
+          $ref: '#/components/schemas/PreSessionCheckChecklist'
+    PreSessionCheckChecklist:
+      type: object
+      description: Exactly one item for each key; overallResult is computed by the backend.
+      additionalProperties: false
+      required: [GENERAL_CONDITION, APPETITE_BEHAVIOUR, LEGS_HOOVES, MOVEMENT, TEMPERATURE]
+      properties:
+        GENERAL_CONDITION: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        APPETITE_BEHAVIOUR: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        LEGS_HOOVES: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        MOVEMENT: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        TEMPERATURE: { $ref: '#/components/schemas/PreSessionCheckItem' }
+    PreSessionCheckItem:
+      type: object
+      required: [result]
+      additionalProperties: false
+      properties:
+        result: { type: string, enum: [NORMAL, ABNORMAL] }
+        observation: { type: string, maxLength: 1000 }
     PreSessionCheck:
       type: object
-      required: [id, sessionId, overallResult, performedBy, performedAt]
+      required: [id, sessionId, checks, overallResult, performedBy, performedAt]
       properties:
         id: { type: integer, format: int64 }
         sessionId: { type: integer, format: int64 }
+        checks: { $ref: '#/components/schemas/PreSessionCheckChecklist' }
         overallResult: { type: string, enum: [ALL_NORMAL, ABNORMAL] }
-        observations: { type: [string, 'null'] }
         performedBy: { $ref: '#/components/schemas/UserRef' }
         performedAt: { type: string, format: date-time }
-        incidentId: { type: [integer, 'null'], format: int64, description: Set when ABNORMAL. }
+    ReduceIntensityRequest:
+      type: object
+      required: [intensity]
+      properties:
+        intensity: { $ref: '#/components/schemas/Intensity' }
 
     # ---------- Work Rider feedback ----------
     RiderFeedbackRequest:
@@ -2139,13 +2190,13 @@ components:
     # ---------- Realtime ----------
     MetricSampleInput:
       type: object
-      description: At least one of heartRate, speed, distance (ck_training_metric_sample__has_value).
+      description: At least one of heartRate, speed, distance (ck_training_metric_sample__has_value). Accepted while IN_PROGRESS or PAUSED.
       required: [recordedAt]
       properties:
         recordedAt: { type: string, format: date-time }
         heartRate: { type: [integer, 'null'], minimum: 0, description: Beats per minute. }
-        speedKmh: { type: [number, 'null'], minimum: 0, description: ASSUMPTION unit km/h. }
-        distanceM: { type: [number, 'null'], minimum: 0, description: Cumulative metres (ASSUMPTION). }
+        speedKmh: { type: [number, 'null'], minimum: 0, description: Field name denotes km/h. }
+        distanceM: { type: [number, 'null'], minimum: 0, description: Field name denotes metres; distance semantics remain OPEN pending approval. }
     MetricSampleResult:
       type: object
       required: [sampleId, realtimeState]
@@ -2179,9 +2230,10 @@ components:
     # ---------- Evaluation ----------
     EvaluationRequest:
       type: object
+      required: [result]
       properties:
+        result: { type: string, enum: [MET, PARTIALLY_MET, NOT_MET] }
         evaluatedSummary: { type: [string, 'null'], maxLength: 2000 }
-        evaluationLabel: { type: [string, 'null'], maxLength: 50, description: "Value list NEEDS CLARIFICATION (physical-schema §11 #3)." }
         evaluationNotes: { type: [string, 'null'], maxLength: 2000 }
         recommendation: { type: [string, 'null'], maxLength: 2000, description: Forward recommendation (M11). }
     SessionResult:
@@ -2203,11 +2255,11 @@ components:
           type: object
           properties:
             durationMin: { type: [number, 'null'] }
-            totalDistanceM: { type: [number, 'null'] }
+            totalDistanceM: { type: [number, 'null'], description: Field name denotes metres; aggregation semantics remain OPEN pending approval. }
             maxHeartRate: { type: [integer, 'null'] }
             avgHeartRate: { type: [number, 'null'] }
-            maxSpeedKmh: { type: [number, 'null'] }
-            avgSpeedKmh: { type: [number, 'null'] }
+            maxSpeedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+            avgSpeedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
             sampleCount: { type: integer, minimum: 0 }
             simulated: { type: boolean, description: True when any sample came from the simulator. }
         samples:
@@ -2219,8 +2271,8 @@ components:
             properties:
               recordedAt: { type: string, format: date-time }
               heartRate: { type: [integer, 'null'] }
-              speedKmh: { type: [number, 'null'] }
-              distanceM: { type: [number, 'null'] }
+              speedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+              distanceM: { type: [number, 'null'], description: Field name denotes metres; distance semantics remain OPEN pending approval. }
               source: { type: string, enum: [MANUAL, SIMULATOR] }
         alerts:
           type: array
@@ -2235,8 +2287,13 @@ components:
         sessionCode: { type: string }
         date: { type: string, format: date }
         status: { $ref: '#/components/schemas/SessionStatus' }
-        totalDistanceM: { type: [number, 'null'] }
+        totalDistanceM: { type: [number, 'null'], description: Field name denotes metres; aggregation semantics remain OPEN pending approval. }
         durationMin: { type: [number, 'null'] }
         maxHeartRate: { type: [integer, 'null'] }
-        avgSpeedKmh: { type: [number, 'null'] }
-        evaluationLabel: { type: [string, 'null'] }
+        avgSpeedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+        result:
+          description: Null when no Trainer evaluation has been recorded; when present, this is the required evaluation result.
+          oneOf:
+            - type: string
+              enum: [MET, PARTIALLY_MET, NOT_MET]
+            - type: 'null'
