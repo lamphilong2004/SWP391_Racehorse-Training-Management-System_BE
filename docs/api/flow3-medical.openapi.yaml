@@ -1,0 +1,2662 @@
+openapi: 3.1.0
+info:
+  title: Racehorse Training & Management System — Flow 3 Medical API (DRAFT)
+  version: 0.0.0-draft
+  description: 'CORE-006 contract DESIGN DRAFT (not approved; must NOT be implemented or treated as PASS).
+    Proposed operations are derived from the received Core Flow Execution, approved 48H execution guide, Figma
+    Flow 3, ERD Overview and the merged CORE-003 permission matrix. Missing sources: Task Playbook/DoD; canonical
+    schema.sql and domain ERD-D01..D10; current decisions and approved path/DTO naming. Every path, ID type,
+    request field and response field must be reconciled with those sources and approved by the team before
+    integration.'
+  contact:
+    name: SWP391 Racehorse team
+servers:
+- url: http://localhost:8080
+  description: Development only
+tags:
+- name: Baseline
+  description: Flow 1 veterinarian initial health examination (CORE-014 implementation)
+- name: Incidents
+  description: Incident reporting and veterinarian handling (CORE-026 and CORE-035)
+- name: Medical Cases
+  description: Medical cases, exams, injury records and recovery (CORE-035)
+- name: Treatments
+  description: Treatment plans and approved Groom treatment acknowledgements (CORE-035)
+- name: Restrictions
+  description: Derived training availability and veterinarian medical restrictions (CORE-019 implementation
+    owned by Long)
+- name: Herd Health
+  description: Veterinarian health overview (CORE-035)
+- name: Thresholds
+  description: Global and per-horse monitoring thresholds (implementation ownership to confirm)
+security:
+- bearerAuth: []
+x-contract-status: DRAFT — NOT APPROVED
+x-owner-task: CORE-006
+x-authoritative-mapping:
+  roles: docs/api/permission-matrix.md in BE origin/dev (merged CORE-003)
+  shared-conventions: docs/api/shared.openapi.yaml in BE origin/dev (merged CORE-003)
+  persistence: UNVERIFIED — canonical schema.sql not provided
+  scope: CORE-006 contract only — no CORE-014/019/026/035 application code
+paths:
+  /api/horses/{horseId}/baseline-examinations:
+    post:
+      operationId: recordBaselineExamination
+      tags:
+      - Baseline
+      summary: Record initial veterinarian baseline
+      description: 'HealthStatus FIT/MONITORING/INJURED/QUARANTINED. Cross-flow activation validation belongs
+        to CORE-016.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/BaselineExamination'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BaselineExaminationRequest'
+  /api/horses/{horseId}/weights:
+    get:
+      operationId: listHorseWeightRecords
+      tags:
+      - Baseline
+      summary: Read horse weight history
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - VETERINARIAN
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/WeightRecordsPage'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/size'
+      x-data-scope: Trainer assigned horses only
+    post:
+      operationId: recordHorseWeight
+      tags:
+      - Baseline
+      summary: Record horse weight
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/WeightRecord'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightRecordRequest'
+  /api/incidents:
+    post:
+      operationId: reportIncident
+      tags:
+      - Incidents
+      summary: Report observed incident
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - HEAD_TRAINER
+      - TRAINER
+      - WORK_RIDER
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Incident'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentCreateRequest'
+      x-data-scope: Trainer/Work Rider own authorized session; Groom assigned work list
+    get:
+      operationId: listIncidents
+      tags:
+      - Incidents
+      summary: List incidents
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - WORK_RIDER
+      - VETERINARIAN
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/IncidentsPage'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/size'
+      x-data-scope: Trainer and Work Rider only own reports; Groom only own reports; client-side filtering
+        prohibited
+  /api/incidents/{incidentId}:
+    get:
+      operationId: getIncident
+      tags:
+      - Incidents
+      summary: Read incident
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - WORK_RIDER
+      - VETERINARIAN
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Incident'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/incidentId'
+      x-data-scope: Trainer/Work Rider/Groom own reports
+  /api/incidents/{incidentId}/review:
+    post:
+      operationId: reviewIncident
+      tags:
+      - Incidents
+      summary: 'Vet reviews incident: open case, link case or resolve'
+      description: 'OPEN_CASE / LINK_CASE / RESOLVE are review action names in the merged permission matrix;
+        exact transition rules require review.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Incident'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/incidentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentReviewRequest'
+  /api/medical/cases:
+    post:
+      operationId: createMedicalCase
+      tags:
+      - Medical Cases
+      summary: Open medical case
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/MedicalCase'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicalCaseCreateRequest'
+    get:
+      operationId: listMedicalCases
+      tags:
+      - Medical Cases
+      summary: List medical cases
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/MedicalCasesPage'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/size'
+      x-data-scope: Club Manager, Head Trainer and assigned Trainer receive summary-only projection; VET full
+        access
+  /api/medical/cases/{caseId}:
+    get:
+      operationId: getMedicalCase
+      tags:
+      - Medical Cases
+      summary: Read medical case
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/MedicalCase'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+      x-data-scope: Non-veterinarian roles receive limited summary-only projection; exact projection schema
+        must be approved
+  /api/medical/cases/{caseId}/examinations:
+    post:
+      operationId: createMedicalExamination
+      tags:
+      - Medical Cases
+      summary: Record examination and diagnosis
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Examination'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExaminationRequest'
+  /api/medical/cases/{caseId}/injuries:
+    post:
+      operationId: createInjury
+      tags:
+      - Medical Cases
+      summary: Record injury, body region and optional 3D marker
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Injury'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InjuryRequest'
+  /api/medical/cases/{caseId}/re-examinations:
+    post:
+      operationId: createReexamination
+      tags:
+      - Medical Cases
+      summary: Record re-examination and recovery progress
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Reexamination'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReexaminationRequest'
+  /api/medical/cases/{caseId}/close:
+    post:
+      operationId: closeMedicalCase
+      tags:
+      - Medical Cases
+      summary: Close medical case after veterinarian review
+      description: 'Closing case must not implicitly lift training restriction without explicit approved business
+        rule.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/MedicalCase'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+  /api/medical/cases/{caseId}/treatment-plan:
+    get:
+      operationId: getTreatmentPlan
+      tags:
+      - Treatments
+      summary: Read medical treatment plan
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TreatmentPlan'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+    put:
+      operationId: putTreatmentPlan
+      tags:
+      - Treatments
+      summary: Create or update case treatment plan
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TreatmentPlan'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TreatmentPlanRequest'
+  /api/medical/cases/{caseId}/treatment-tasks:
+    get:
+      operationId: listTreatmentCaseTasks
+      tags:
+      - Treatments
+      summary: Vet views assigned treatment care tasks
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TreatmentTasksPage'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/caseId'
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/size'
+  /api/groom/treatment-tasks:
+    get:
+      operationId: getMyTreatmentTasks
+      tags:
+      - Treatments
+      summary: Groom reads only their assigned treatment tasks
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TreatmentTasksPage'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/size'
+      x-data-scope: Assignment-scoped, approved TreatmentPlan task only
+  /api/groom/treatment-tasks/{taskId}/complete:
+    post:
+      operationId: completeTreatmentTask
+      tags:
+      - Treatments
+      summary: Groom acknowledges completed treatment task
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TreatmentTask'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/taskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TreatmentTaskCompleteRequest'
+      x-data-scope: Assigned Groom only; does not allow clinical treatment edits
+  /api/horses/{horseId}/training-availability:
+    get:
+      operationId: getHorseTrainingAvailability
+      tags:
+      - Restrictions
+      summary: Read derived training availability
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - WORK_RIDER
+      - VETERINARIAN
+      - GROOM
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TrainingAvailabilityRead'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      x-data-scope: Trainer/Work Rider only related assigned horse/session
+  /api/medical/restrictions:
+    get:
+      operationId: listMedicalRestrictions
+      tags:
+      - Restrictions
+      summary: List medical restrictions
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - CLUB_MANAGER
+      - HEAD_TRAINER
+      - TRAINER
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/RestrictionsPage'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/size'
+      x-data-scope: Trainer assigned horses only
+  /api/horses/{horseId}/medical-restrictions:
+    post:
+      operationId: createMedicalRestriction
+      tags:
+      - Restrictions
+      summary: Vet sets LIMITED or LOCKED medical restriction
+      description: 'Invariant: at most one active restriction per horse. Availability derives from active record.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/MedicalRestriction'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicalRestrictionRequest'
+  /api/medical/restrictions/{restrictionId}/lift:
+    post:
+      operationId: liftMedicalRestriction
+      tags:
+      - Restrictions
+      summary: Vet lifts active restriction
+      description: 'After lift, AVAILABLE is derived if no restriction remains; session gate enforcement is
+        implemented by the responsible Flow 2 owner.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TrainingAvailabilityRead'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/restrictionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicalRestrictionLiftRequest'
+  /api/medical/thresholds:
+    get:
+      operationId: listGlobalMedicalThresholds
+      tags:
+      - Thresholds
+      summary: Read global default thresholds
+      description: 'Response is a proposal; may need an array type after domain model review.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - HEAD_TRAINER
+      - TRAINER
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Threshold'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/horses/{horseId}/medical-thresholds:
+    get:
+      operationId: getHorseThresholdOverrides
+      tags:
+      - Thresholds
+      summary: Read per-horse threshold overrides
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - HEAD_TRAINER
+      - TRAINER
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Threshold'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      x-data-scope: Trainer assigned horses only
+    put:
+      operationId: setHorseThresholdOverride
+      tags:
+      - Thresholds
+      summary: Vet sets per-horse threshold override
+      description: 'Must use approved global/horse threshold model; no schema change in CORE-006.
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Threshold'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+      - $ref: '#/components/parameters/horseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThresholdOverrideRequest'
+  /api/medical/herd-health:
+    get:
+      operationId: getHerdHealthOverview
+      tags:
+      - Herd Health
+      summary: Get veterinarian herd health overview
+      description: '
+
+        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      x-roles:
+      - VETERINARIAN
+      x-contract-review: PENDING — not approved for implementation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/HerdHealthOverview'
+                additionalProperties: false
+                required:
+                - success
+                - data
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden role or row-scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: State or concurrency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Business validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    horseId:
+      name: horseId
+      in: path
+      required: true
+      description: Horse identifier (canonical SQL type not yet confirmed)
+      schema:
+        type: string
+    incidentId:
+      name: incidentId
+      in: path
+      required: true
+      description: Incident identifier (canonical SQL type not yet confirmed)
+      schema:
+        type: string
+    caseId:
+      name: caseId
+      in: path
+      required: true
+      description: Medical case identifier (canonical SQL type not yet confirmed)
+      schema:
+        type: string
+    restrictionId:
+      name: restrictionId
+      in: path
+      required: true
+      description: Restriction identifier (canonical SQL type not yet confirmed)
+      schema:
+        type: string
+    taskId:
+      name: taskId
+      in: path
+      required: true
+      description: Care task identifier (canonical SQL type not yet confirmed)
+      schema:
+        type: string
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Zero-based page
+    size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code; canonical error enumeration pending approval
+        message:
+          type: string
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+            additionalProperties: false
+            required:
+            - field
+            - message
+      additionalProperties: false
+      required:
+      - code
+      - message
+    ErrorEnvelope:
+      type: object
+      properties:
+        success:
+          const: false
+        error:
+          $ref: '#/components/schemas/ApiError'
+      additionalProperties: false
+      required:
+      - success
+      - error
+    
+    HealthStatus:
+      type: string
+      enum:
+      - FIT
+      - MONITORING
+      - INJURED
+      - QUARANTINED
+    RestrictionLevel:
+      type: string
+      enum:
+      - LIMITED
+      - LOCKED
+      description: AVAILABLE is derived when there is no active restriction; never persisted as a restriction
+        level.
+    TrainingAvailability:
+      type: string
+      enum:
+      - AVAILABLE
+      - LIMITED
+      - LOCKED
+      readOnly: true
+    RecoveryStatus:
+      type: string
+      enum:
+      - NOT_RECOVERED
+      - IMPROVING
+      - RECOVERED
+    BaselineExaminationRequest:
+      type: object
+      properties:
+        weightKg:
+          type: number
+          exclusiveMinimum: 0
+        healthStatus:
+          $ref: '#/components/schemas/HealthStatus'
+        clinicalNotes:
+          type: string
+          description: Optional veterinarian observation (exact canonical field unconfirmed)
+      additionalProperties: false
+      required:
+      - weightKg
+      - healthStatus
+    WeightRecordRequest:
+      type: object
+      properties:
+        weightKg:
+          type: number
+          exclusiveMinimum: 0
+        recordedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - weightKg
+    IncidentCreateRequest:
+      type: object
+      properties:
+        horseId:
+          type: string
+          description: Must identify the horse
+        trainingSessionId:
+          type: string
+          description: Optional session context; allowed only for authorized assigned session
+        description:
+          type: string
+          description: Observed signs only; reporter is not required to diagnose
+          minLength: 1
+        observedAt:
+          type: string
+          format: date-time
+        photoIds:
+          type: array
+          items:
+            type: string
+          description: References to files managed by the approved upload API; exact schema pending
+      additionalProperties: false
+      required:
+      - horseId
+      - description
+    IncidentReviewRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - OPEN_CASE
+          - LINK_CASE
+          - RESOLVE
+        medicalCaseId:
+          type: string
+          description: Only for LINK_CASE action
+        comment:
+          type: string
+      additionalProperties: false
+      required:
+      - action
+      description: Action codes derive from merged permission matrix; required fields for each action need
+        approved decision.
+    MedicalCaseCreateRequest:
+      type: object
+      properties:
+        horseId:
+          type: string
+        incidentId:
+          type: string
+          description: Optional linked incident
+        reason:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - horseId
+      - reason
+    ExaminationRequest:
+      type: object
+      properties:
+        symptoms:
+          type: string
+          minLength: 1
+        diagnosis:
+          type: string
+          description: Vet diagnosis; exact requiredness pending
+        severity:
+          type: string
+          description: Severity taxonomy pending domain decision
+        examinedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - symptoms
+    InjuryRequest:
+      type: object
+      properties:
+        bodyRegion:
+          type: string
+          description: Region code per approved medical body map; canonical values pending
+        severity:
+          type: string
+          description: Severity enum not in supplied ERD Overview
+        recoveryStatus:
+          $ref: '#/components/schemas/RecoveryStatus'
+        position3d:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            z:
+              type: number
+          additionalProperties: false
+          required:
+          - x
+          - y
+          - z
+          description: Provisional 3D marker; must be checked against canonical schema and approved UI
+        clinicalNotes:
+          type: string
+      additionalProperties: false
+      required:
+      - bodyRegion
+      - severity
+    TreatmentPlanRequest:
+      type: object
+      properties:
+        medications:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              instructions:
+                type: string
+            additionalProperties: false
+            required:
+            - name
+        restInstructions:
+          type: string
+        groomTasks:
+          type: array
+          items:
+            type: object
+            properties:
+              instruction:
+                type: string
+              dueAt:
+                type: string
+                format: date-time
+            additionalProperties: false
+            required:
+            - instruction
+          description: Only treatment tasks explicitly approved in the TreatmentPlan; not the full Flow 4
+        reexaminationDate:
+          type: string
+          format: date
+      additionalProperties: false
+      description: Fields and medication details are provisional until ERD-Dxx and approved medical rule set
+        are available.
+    ReexaminationRequest:
+      type: object
+      properties:
+        recoveryStatus:
+          $ref: '#/components/schemas/RecoveryStatus'
+        findings:
+          type: string
+          minLength: 1
+        examinedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - recoveryStatus
+      - findings
+    MedicalRestrictionRequest:
+      type: object
+      properties:
+        level:
+          $ref: '#/components/schemas/RestrictionLevel'
+        reason:
+          type: string
+          minLength: 1
+        effectiveAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        allowedExerciseIds:
+          type: array
+          items:
+            type: string
+        prohibitedExerciseIds:
+          type: array
+          items:
+            type: string
+        medicalCaseId:
+          type: string
+          description: Optional case justification
+      additionalProperties: false
+      required:
+      - level
+      - reason
+      description: At most one active restriction for a horse; Vet-only writes. Allowed/prohibited semantics
+        pending canonical BR.
+    MedicalRestrictionLiftRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - reason
+    TreatmentTaskCompleteRequest:
+      type: object
+      properties:
+        completionNotes:
+          type: string
+      additionalProperties: false
+      description: Only assigned Groom may complete approved care task
+    ThresholdOverrideRequest:
+      type: object
+      properties:
+        metricType:
+          type: string
+          description: Metric code pending
+        thresholdValue:
+          type: number
+        reason:
+          type: string
+          minLength: 1
+      additionalProperties: false
+      required:
+      - metricType
+      - thresholdValue
+      - reason
+    BaselineExamination:
+      type: object
+      properties:
+        id:
+          type: string
+        horseId:
+          type: string
+        weightKg:
+          type: number
+        healthStatus:
+          $ref: '#/components/schemas/HealthStatus'
+        recordedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - id
+      - horseId
+      - weightKg
+      - healthStatus
+    WeightRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        horseId:
+          type: string
+        weightKg:
+          type: number
+        recordedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - id
+      - horseId
+      - weightKg
+    Incident:
+      type: object
+      properties:
+        id:
+          type: string
+        horseId:
+          type: string
+        trainingSessionId:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          description: Incident status enum unconfirmed
+      additionalProperties: false
+      required:
+      - id
+      - horseId
+      - description
+    MedicalCase:
+      type: object
+      properties:
+        id:
+          type: string
+        horseId:
+          type: string
+        incidentId:
+          type: string
+        status:
+          type: string
+          description: Case status enum unconfirmed
+        reason:
+          type: string
+      additionalProperties: false
+      required:
+      - id
+      - horseId
+    Examination:
+      type: object
+      properties:
+        id:
+          type: string
+        caseId:
+          type: string
+        symptoms:
+          type: string
+        diagnosis:
+          type: string
+        severity:
+          type: string
+      additionalProperties: false
+      required:
+      - id
+      - caseId
+    Injury:
+      type: object
+      properties:
+        id:
+          type: string
+        caseId:
+          type: string
+        bodyRegion:
+          type: string
+        severity:
+          type: string
+        recoveryStatus:
+          $ref: '#/components/schemas/RecoveryStatus'
+      additionalProperties: false
+      required:
+      - id
+      - caseId
+      - bodyRegion
+    TreatmentPlan:
+      type: object
+      properties:
+        id:
+          type: string
+        caseId:
+          type: string
+        status:
+          type: string
+          description: Status enum pending
+        reexaminationDate:
+          type: string
+          format: date
+      additionalProperties: false
+      required:
+      - id
+      - caseId
+    TreatmentTask:
+      type: object
+      properties:
+        id:
+          type: string
+        horseId:
+          type: string
+        caseId:
+          type: string
+        instruction:
+          type: string
+        status:
+          type: string
+      additionalProperties: false
+      required:
+      - id
+      - horseId
+      - instruction
+    Reexamination:
+      type: object
+      properties:
+        id:
+          type: string
+        caseId:
+          type: string
+        recoveryStatus:
+          $ref: '#/components/schemas/RecoveryStatus'
+        findings:
+          type: string
+      additionalProperties: false
+      required:
+      - id
+      - caseId
+      - recoveryStatus
+    TrainingAvailabilityRead:
+      type: object
+      properties:
+        horseId:
+          type: string
+        availability:
+          $ref: '#/components/schemas/TrainingAvailability'
+        reason:
+          type: string
+        activeRestrictionId:
+          type: string
+      additionalProperties: false
+      required:
+      - horseId
+      - availability
+    MedicalRestriction:
+      type: object
+      properties:
+        id:
+          type: string
+        horseId:
+          type: string
+        level:
+          $ref: '#/components/schemas/RestrictionLevel'
+        reason:
+          type: string
+        effectiveAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+      required:
+      - id
+      - horseId
+      - level
+      - reason
+    HerdHealthOverview:
+      type: object
+      properties:
+        totalHorses:
+          type: integer
+        fit:
+          type: integer
+        monitoring:
+          type: integer
+        injured:
+          type: integer
+        quarantined:
+          type: integer
+      additionalProperties: false
+      required:
+      - totalHorses
+    Threshold:
+      type: object
+      properties:
+        metricType:
+          type: string
+        thresholdValue:
+          type: number
+        scope:
+          type: string
+      additionalProperties: false
+      required:
+      - metricType
+      - thresholdValue
+    IncidentsPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incident'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+      additionalProperties: false
+      required:
+      - items
+      - page
+      - size
+      - totalElements
+    MedicalCasesPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalCase'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+      additionalProperties: false
+      required:
+      - items
+      - page
+      - size
+      - totalElements
+    WeightRecordsPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeightRecord'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+      additionalProperties: false
+      required:
+      - items
+      - page
+      - size
+      - totalElements
+    RestrictionsPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalRestriction'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+      additionalProperties: false
+      required:
+      - items
+      - page
+      - size
+      - totalElements
+    TreatmentTasksPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TreatmentTask'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+      additionalProperties: false
+      required:
+      - items
+      - page
+      - size
+      - totalElements
+x-open-review-questions:
+- Task Playbook Implementation Prompt, DoD, screen registry and role coverage matrix are absent from uploaded
+  workbook.
+- Canonical schema.sql, DB-01 and medical-domain ERDs are absent. Confirm identifiers, data types, foreign
+  keys and all DTO fields.
+- Approved URL paths, operation names, request/response models, exact status transitions and error codes are
+  not supplied.
+- 'Whether a Trainer/Work Rider may see all medical data or summary-only: follow merged permission matrix and
+  confirm projections.'
+- How 3D position and 2D body region persist must match approved schema; current coordinate proposal is provisional.
+- Incident review action semantics, related case linkage, and source of system notification need final business
+  decision.
+- TreatmentPlan Groom task XOR CareTask source must match canonical schema; do not expand to all Flow 4.
+- There is no standalone persisted AVAILABLE status; only active LIMITED/LOCKED MedicalRestriction drives derived
+  availability.
+- Need approval of HTTP status codes and whether POST close/lift uses 200 or 204 envelopes.
+- Threshold override read/write model and operation ownership must be agreed with assigned implementation owner.
