@@ -1,57 +1,40 @@
 openapi: 3.1.0
 info:
-  title: Racehorse Training & Management System — Flow 3 Medical API (DRAFT)
-  version: 0.0.0-draft
-  description: 'CORE-006 contract DESIGN DRAFT (not approved; must NOT be implemented or treated as PASS).
-    Proposed operations are derived from the received Core Flow Execution, approved 48H execution guide, Figma
-    Flow 3, ERD Overview and the merged CORE-003 permission matrix. Missing sources: Task Playbook/DoD; canonical
-    schema.sql and domain ERD-D01..D10; current decisions and approved path/DTO naming. Every path, ID type,
-    request field and response field must be reconciled with those sources and approved by the team before
-    integration.'
+  title: Racehorse Training & Management System — Flow 3 Medical API
+  version: 0.1.0
+  description: CORE-006 contract review revision. SQL-backed DTOs follow DB-01, shared errors and the merged seven-role permission matrix. Existing medical paths are retained for consumers; new exercise-rule operation follows the same restriction resource. This contract is submitted for team review, not a claim of approval or runtime implementation. Exact source provenance and remaining business/schema gaps are recorded in CORE-006-review.md. All writes require backend JWT identity and role/scope checks; actor IDs and server timestamps cannot be supplied by clients.
   contact:
     name: SWP391 Racehorse team
 servers:
-- url: http://localhost:8080
-  description: Development only
-tags:
-- name: Baseline
-  description: Flow 1 veterinarian initial health examination (CORE-014 implementation)
-- name: Incidents
-  description: Incident reporting and veterinarian handling (CORE-026 and CORE-035)
-- name: Medical Cases
-  description: Medical cases, exams, injury records and recovery (CORE-035)
-- name: Treatments
-  description: Treatment plans and approved Groom treatment acknowledgements (CORE-035)
-- name: Restrictions
-  description: Derived training availability and veterinarian medical restrictions (CORE-019 implementation
-    owned by Long)
-- name: Herd Health
-  description: Veterinarian health overview (CORE-035)
-- name: Thresholds
-  description: Global and per-horse monitoring thresholds (implementation ownership to confirm)
+  - url: http://localhost:8080
+    description: Development only
 security:
-- bearerAuth: []
-x-contract-status: DRAFT — NOT APPROVED
-x-owner-task: CORE-006
-x-authoritative-mapping:
-  roles: docs/api/permission-matrix.md in BE origin/dev (merged CORE-003)
-  shared-conventions: docs/api/shared.openapi.yaml in BE origin/dev (merged CORE-003)
-  persistence: UNVERIFIED — canonical schema.sql not provided
-  scope: CORE-006 contract only — no CORE-014/019/026/035 application code
+  - bearerAuth: []
+tags:
+  - name: Baseline
+    description: Flow 1 veterinarian initial health examination (CORE-014 implementation)
+  - name: Incidents
+    description: Incident reporting and veterinarian handling (CORE-026 and CORE-035)
+  - name: Medical Cases
+    description: Medical cases, exams, injury records and recovery (CORE-035)
+  - name: Treatments
+    description: Treatment plans and approved Groom treatment acknowledgements (CORE-035)
+  - name: Restrictions
+    description: Derived training availability and veterinarian medical restrictions (CORE-019 implementation owned by Long)
+  - name: Herd Health
+    description: Veterinarian health overview (CORE-035)
+  - name: Thresholds
+    description: HEART_RATE defaults and horse overrides; CORE-030 consumes them, CORE-011 supplies reference defaults. Override-service ownership is absent from the supplied workbook.
 paths:
   /api/horses/{horseId}/baseline-examinations:
     post:
       operationId: recordBaselineExamination
       tags:
-      - Baseline
+        - Baseline
       summary: Record initial veterinarian baseline
-      description: 'HealthStatus FIT/MONITORING/INJURED/QUARANTINED. Cross-flow activation validation belongs
-        to CORE-016.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Atomically record a BASELINE exam (medical_case_id NULL), BASELINE weight and horse.health_status/health_status_set. Duplicate baseline returns 409 CONFLICT (ux_veterinary_examination__baseline_per_horse). Actor and timestamps are server supplied. Does not activate the horse; CORE-016 owns activation.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -66,68 +49,60 @@ paths:
                     $ref: '#/components/schemas/BaselineExamination'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/horseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/BaselineExaminationRequest'
+      x-implementation-task: CORE-014
   /api/horses/{horseId}/weights:
     get:
       operationId: listHorseWeightRecords
       tags:
-      - Baseline
+        - Baseline
       summary: Read horse weight history
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Read weight history ordered by measured_at DESC, id DESC. TRAINER is scoped through an open trainer_assignment; other permitted roles follow the permission matrix.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - VETERINARIAN
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - VETERINARIAN
+        - GROOM
       responses:
         '200':
           description: Success
@@ -142,60 +117,52 @@ paths:
                     $ref: '#/components/schemas/WeightRecordsPage'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
-      - $ref: '#/components/parameters/page'
-      - $ref: '#/components/parameters/size'
+        - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
       x-data-scope: Trainer assigned horses only
+      x-implementation-task: CORE-014
     post:
       operationId: recordHorseWeight
       tags:
-      - Baseline
+        - Baseline
       summary: Record horse weight
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Persist positive DECIMAL(6,2) weight, measured_at and authenticated recorded_by_user_id. Does not update health status.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -210,67 +177,59 @@ paths:
                     $ref: '#/components/schemas/WeightRecord'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/horseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/WeightRecordRequest'
+      x-implementation-task: CORE-014
   /api/incidents:
     post:
       operationId: reportIncident
       tags:
-      - Incidents
+        - Incidents
       summary: Report observed incident
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Explicit creation stores REPORTED; server generates incident_code and supplies reporter/reported_at. Optional preSessionCheckId, trainingSessionId and careTaskId are mutually exclusive (at most one), refer to the same horse and require authorized source context. A second incident for the same pre-session check returns 409 CONFLICT (filtered unique index). TRAINER uses assigned horses; WORK_RIDER uses their assigned in-session context. An abnormal check alone does not create an Incident in this contract; the cross-contract BR-23 evidence gap is G6.
       x-roles:
-      - HEAD_TRAINER
-      - TRAINER
-      - WORK_RIDER
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - HEAD_TRAINER
+        - TRAINER
+        - WORK_RIDER
+        - GROOM
       responses:
         '201':
           description: Success
@@ -285,40 +244,34 @@ paths:
                     $ref: '#/components/schemas/Incident'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
@@ -330,22 +283,20 @@ paths:
             schema:
               $ref: '#/components/schemas/IncidentCreateRequest'
       x-data-scope: Trainer/Work Rider own authorized session; Groom assigned work list
+      x-implementation-task: CORE-026
     get:
       operationId: listIncidents
       tags:
-      - Incidents
+        - Incidents
       summary: List incidents
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN, CLUB_MANAGER and HEAD_TRAINER follow role-level reads. TRAINER, WORK_RIDER and GROOM see only their own reports. Scope is enforced in the database query; no clinical case joins.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - WORK_RIDER
-      - VETERINARIAN
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - WORK_RIDER
+        - VETERINARIAN
+        - GROOM
       responses:
         '200':
           description: Success
@@ -360,66 +311,57 @@ paths:
                     $ref: '#/components/schemas/IncidentsPage'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/page'
-      - $ref: '#/components/parameters/size'
-      x-data-scope: Trainer and Work Rider only own reports; Groom only own reports; client-side filtering
-        prohibited
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
+      x-data-scope: Trainer and Work Rider only own reports; Groom only own reports; client-side filtering prohibited
+      x-implementation-task: CORE-026
   /api/incidents/{incidentId}:
     get:
       operationId: getIncident
       tags:
-      - Incidents
+        - Incidents
       summary: Read incident
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Enforce the same reporter scope as the list. Unauthorized rows return 403 before disclosure; visible missing resource returns 404. Return reporter-facing data only.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - WORK_RIDER
-      - VETERINARIAN
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - WORK_RIDER
+        - VETERINARIAN
+        - GROOM
       responses:
         '200':
           description: Success
@@ -434,60 +376,51 @@ paths:
                     $ref: '#/components/schemas/Incident'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/incidentId'
+        - $ref: '#/components/parameters/incidentId'
       x-data-scope: Trainer/Work Rider/Groom own reports
+      x-implementation-task: CORE-026
   /api/incidents/{incidentId}/review:
     post:
       operationId: reviewIncident
       tags:
-      - Incidents
+        - Incidents
       summary: 'Vet reviews incident: open case, link case or resolve'
-      description: 'OPEN_CASE / LINK_CASE / RESOLVE are review action names in the merged permission matrix;
-        exact transition rules require review.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Review action is explicit. Validate same-horse case linkage and persist incident.reviewed_by_user_id/medical_case_id/status in one transaction. OPEN_CASE and LINK_CASE semantics follow their names; exact source-state/target-state rules require the decision listed as G3. Do not implement an invented transition table.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -502,64 +435,56 @@ paths:
                     $ref: '#/components/schemas/Incident'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/incidentId'
+        - $ref: '#/components/parameters/incidentId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/IncidentReviewRequest'
+      x-implementation-task: CORE-026
   /api/medical/cases:
     post:
       operationId: createMedicalCase
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: Open medical case
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Create OPEN medical_case with opened_at and actor from JWT. reason maps condition_summary. Optional incidentId links same-horse incident.medical_case_id atomically; never invent medical_case.incident_id.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -574,40 +499,34 @@ paths:
                     $ref: '#/components/schemas/MedicalCase'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
@@ -618,20 +537,18 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MedicalCaseCreateRequest'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
     get:
       operationId: listMedicalCases
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: List medical cases
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN receives clinical data. CLUB_MANAGER and HEAD_TRAINER receive MedicalCaseSummary; TRAINER receives that summary only for assigned horses. Projection is selected server-side, including every item in a list.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -646,64 +563,55 @@ paths:
                     $ref: '#/components/schemas/MedicalCasesPage'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/page'
-      - $ref: '#/components/parameters/size'
-      x-data-scope: Club Manager, Head Trainer and assigned Trainer receive summary-only projection; VET full
-        access
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
+      x-data-scope: Club Manager, Head Trainer and assigned Trainer receive summary-only projection; VET full access
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}:
     get:
       operationId: getMedicalCase
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: Read medical case
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN receives MedicalCase including persisted clinical history. Other allowed roles receive MedicalCaseSummary; TRAINER requires assigned horse. No diagnostic or treatment fields in summary responses.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -715,63 +623,54 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/MedicalCase'
+                    $ref: '#/components/schemas/MedicalCaseRead'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
-      x-data-scope: Non-veterinarian roles receive limited summary-only projection; exact projection schema
-        must be approved
+        - $ref: '#/components/parameters/caseId'
+      x-data-scope: Non-veterinarian roles receive limited summary-only projection; exact projection schema must be approved
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}/examinations:
     post:
       operationId: createMedicalExamination
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: Record examination and diagnosis
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Persist EXAMINATION with the path case and same horse. symptoms maps findings; diagnosis is nullable NVARCHAR(1000); severity is MILD/MODERATE/SEVERE. Optional healthStatus atomically updates horse.health_status and the exam health_status_set. No standalone competing health store.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -786,64 +685,56 @@ paths:
                     $ref: '#/components/schemas/Examination'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/caseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ExaminationRequest'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}/injuries:
     post:
       operationId: createInjury
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: Record injury, body region and optional 3D marker
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Store same-case injury; optional veterinaryExaminationId must belong to that case/horse. Body region is free NVARCHAR(100), side NVARCHAR(20), severity and recovery match SQL CHECKs. Opaque position3d maps VARCHAR(100); coordinate serialization is decision G4.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -858,64 +749,56 @@ paths:
                     $ref: '#/components/schemas/Injury'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/caseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/InjuryRequest'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}/re-examinations:
     post:
       operationId: createReexamination
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: Record re-examination and recovery progress
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Persist RE_EXAMINATION findings and recovery_outcome. Optional healthStatus atomically updates horse.health_status and health_status_set. Record Groom completion via the case treatment-task read before follow-up. Recovery outcome does not implicitly lift a restriction or close a case.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -930,65 +813,56 @@ paths:
                     $ref: '#/components/schemas/Reexamination'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/caseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ReexaminationRequest'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}/close:
     post:
       operationId: closeMedicalCase
       tags:
-      - Medical Cases
+        - Medical Cases
       summary: Close medical case after veterinarian review
-      description: 'Closing case must not implicitly lift training restriction without explicit approved business
-        rule.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Set CLOSED and server closed_at >= opened_at. Closure does not lift restrictions. Already closed returns 409 CONFLICT; additional clinical closure criteria are decision G3.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1003,58 +877,50 @@ paths:
                     $ref: '#/components/schemas/MedicalCase'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/caseId'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}/treatment-plan:
     get:
       operationId: getTreatmentPlan
       tags:
-      - Treatments
+        - Treatments
       summary: Read medical treatment plan
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN-only clinical TreatmentPlan, including medication/rest/care instructions. No plan for the visible case returns 404.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1069,57 +935,49 @@ paths:
                     $ref: '#/components/schemas/TreatmentPlan'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/caseId'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
     put:
       operationId: putTreatmentPlan
       tags:
-      - Treatments
+        - Treatments
       summary: Create or update case treatment plan
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Create/update the single plan for the case (unique medical_case_id). Materialize only explicitly approved groomTasks as treatment-sourced care_task rows in the same transaction. Full medications never cross the Groom boundary. Editing/materialization repeat policy is decision G1; do not duplicate or erase completed tasks silently.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1134,64 +992,56 @@ paths:
                     $ref: '#/components/schemas/TreatmentPlan'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/caseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TreatmentPlanRequest'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/medical/cases/{caseId}/treatment-tasks:
     get:
       operationId: listTreatmentCaseTasks
       tags:
-      - Treatments
+        - Treatments
       summary: Vet views assigned treatment care tasks
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Query care_task through treatment_plan.medical_case_id, excluding care/nutrition source tasks. Return completion actor/time for follow-up.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1206,60 +1056,52 @@ paths:
                     $ref: '#/components/schemas/TreatmentTasksPage'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/caseId'
-      - $ref: '#/components/parameters/page'
-      - $ref: '#/components/parameters/size'
+        - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/groom/treatment-tasks:
     get:
       operationId: getMyTreatmentTasks
       tags:
-      - Treatments
+        - Treatments
       summary: Groom reads only their assigned treatment tasks
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: 'GROOM only. Query only the authenticated Groom work list and treatment_plan-sourced tasks, return GroomTreatmentTask projection. No full TreatmentPlan, diagnosis, prescription or unrelated clinical data. DB-01 has no assigned-Groom column: authorization must fail closed until trusted work-list binding G1 is resolved.'
       x-roles:
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - GROOM
       responses:
         '200':
           description: Success
@@ -1271,63 +1113,55 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/TreatmentTasksPage'
+                    $ref: '#/components/schemas/GroomTreatmentTasksPage'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/page'
-      - $ref: '#/components/parameters/size'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
       x-data-scope: Assignment-scoped, approved TreatmentPlan task only
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/groom/treatment-tasks/{taskId}/complete:
     post:
       operationId: completeTreatmentTask
       tags:
-      - Treatments
+        - Treatments
       summary: Groom acknowledges completed treatment task
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: GROOM only. Check trusted work-list membership before loading or changing the task. Atomically set both completed_at and completed_by_user_id from the server/JWT. Already completed returns 409 CONFLICT. Return only GroomTreatmentTask; completion-note persistence is gap G2.
       x-roles:
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - GROOM
       responses:
         '200':
           description: Success
@@ -1339,49 +1173,43 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/TreatmentTask'
+                    $ref: '#/components/schemas/GroomTreatmentTask'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/taskId'
+        - $ref: '#/components/parameters/taskId'
       requestBody:
         required: true
         content:
@@ -1389,23 +1217,21 @@ paths:
             schema:
               $ref: '#/components/schemas/TreatmentTaskCompleteRequest'
       x-data-scope: Assigned Groom only; does not allow clinical treatment edits
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
   /api/horses/{horseId}/training-availability:
     get:
       operationId: getHorseTrainingAvailability
       tags:
-      - Restrictions
+        - Restrictions
       summary: Read derived training availability
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Derive AVAILABLE when no restriction has lifted_at IS NULL; otherwise return its LIMITED/LOCKED level and safe operational reason/rules. At most one unlifted row per horse. TRAINER uses assigned horses; WORK_RIDER uses assigned sessions. No availability column and no persisted AVAILABLE restriction. Future-dated effective_from handling is decision G5; it cannot release the unique active slot.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - WORK_RIDER
-      - VETERINARIAN
-      - GROOM
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - WORK_RIDER
+        - VETERINARIAN
+        - GROOM
       responses:
         '200':
           description: Success
@@ -1420,62 +1246,54 @@ paths:
                     $ref: '#/components/schemas/TrainingAvailabilityRead'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/horseId'
       x-data-scope: Trainer/Work Rider only related assigned horse/session
+      x-implementation-task: CORE-019
   /api/medical/restrictions:
     get:
       operationId: listMedicalRestrictions
       tags:
-      - Restrictions
+        - Restrictions
       summary: List medical restrictions
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Club restriction list; TRAINER restricted to assigned horses. VETERINARIAN receives MedicalRestriction, other permitted roles RestrictionSummary. No prescription or case diagnosis in training-facing reason.
       x-roles:
-      - CLUB_MANAGER
-      - HEAD_TRAINER
-      - TRAINER
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1490,60 +1308,52 @@ paths:
                     $ref: '#/components/schemas/RestrictionsPage'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/page'
-      - $ref: '#/components/parameters/size'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
       x-data-scope: Trainer assigned horses only
+      x-implementation-task: CORE-019
   /api/horses/{horseId}/medical-restrictions:
     post:
       operationId: createMedicalRestriction
       tags:
-      - Restrictions
+        - Restrictions
       summary: Vet sets LIMITED or LOCKED medical restriction
-      description: 'Invariant: at most one active restriction per horse. Availability derives from active record.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Insert LIMITED or LOCKED; never AVAILABLE. At most one row with lifted_at IS NULL per horse, enforced transactionally and by ux_medical_restriction__active_per_horse. A competing restriction, including a concurrent insert, returns 409 CONFLICT. Optional case must belong to the horse. No expiresAt; reviewDate does not auto-lift.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '201':
           description: Success
@@ -1558,65 +1368,56 @@ paths:
                     $ref: '#/components/schemas/MedicalRestriction'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/horseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/MedicalRestrictionRequest'
+      x-implementation-task: CORE-019
   /api/medical/restrictions/{restrictionId}/lift:
     post:
       operationId: liftMedicalRestriction
       tags:
-      - Restrictions
+        - Restrictions
       summary: Vet lifts active restriction
-      description: 'After lift, AVAILABLE is derived if no restriction remains; session gate enforcement is
-        implemented by the responsible Flow 2 owner.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Explicitly set server lifted_at >= effective_from. Already lifted returns 409 CONFLICT. With no unlifted restriction, subsequent training availability is AVAILABLE. Preserve restriction history; no implicit case closure.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1631,66 +1432,58 @@ paths:
                     $ref: '#/components/schemas/TrainingAvailabilityRead'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/restrictionId'
+        - $ref: '#/components/parameters/restrictionId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/MedicalRestrictionLiftRequest'
+      x-implementation-task: CORE-019
   /api/medical/thresholds:
     get:
       operationId: listGlobalMedicalThresholds
       tags:
-      - Thresholds
+        - Thresholds
       summary: Read global default thresholds
-      description: 'Response is a proposal; may need an array type after domain model review.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Return configured global HEART_RATE thresholds as a list. HEAD_TRAINER, TRAINER and VETERINARIAN read only. DB-01 deliberately excludes a global-threshold technical table; use managed configuration, document durable administration as G7. Never embed demo values as business rules.
       x-roles:
-      - HEAD_TRAINER
-      - TRAINER
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - HEAD_TRAINER
+        - TRAINER
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1702,61 +1495,53 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/Threshold'
+                    $ref: '#/components/schemas/ThresholdList'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
+      x-implementation-task: CORE-030 consumption; override service owner not assigned in supplied workbook
   /api/horses/{horseId}/medical-thresholds:
     get:
       operationId: getHorseThresholdOverrides
       tags:
-      - Thresholds
+        - Thresholds
       summary: Read per-horse threshold overrides
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: Return effective horse override and configured global fallback as a list. TRAINER is assignment-scoped. Evaluate effective_from/effective_to; HEART_RATE only. Override value and dates map horse_threshold_override.
       x-roles:
-      - HEAD_TRAINER
-      - TRAINER
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - HEAD_TRAINER
+        - TRAINER
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1768,61 +1553,53 @@ paths:
                   success:
                     const: true
                   data:
-                    $ref: '#/components/schemas/Threshold'
+                    $ref: '#/components/schemas/ThresholdList'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/horseId'
       x-data-scope: Trainer assigned horses only
+      x-implementation-task: CORE-030 consumption; override service owner not assigned in supplied workbook
     put:
       operationId: setHorseThresholdOverride
       tags:
-      - Thresholds
+        - Thresholds
       summary: Vet sets per-horse threshold override
-      description: 'Must use approved global/horse threshold model; no schema change in CORE-006.
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Persist HEART_RATE critical_value, reason, effective_from and JWT actor. At most one open-ended override per horse/metric (filtered index). Atomic replacement ends the current interval before inserting its successor; conflicting updates return 409 CONFLICT. Interval-overlap policy beyond open-ended uniqueness is G7.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1837,64 +1614,56 @@ paths:
                     $ref: '#/components/schemas/Threshold'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
-      - $ref: '#/components/parameters/horseId'
+        - $ref: '#/components/parameters/horseId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ThresholdOverrideRequest'
+      x-implementation-task: CORE-030 consumption; override service owner not assigned in supplied workbook
   /api/medical/herd-health:
     get:
       operationId: getHerdHealthOverview
       tags:
-      - Herd Health
+        - Herd Health
       summary: Get veterinarian herd health overview
-      description: '
-
-        DRAFT — path, DTO and status choices require Task Playbook + schema approval.'
+      description: VETERINARIAN only. Aggregate current club horses by health_status; include NULL as unassessed. Return counts only, never a broader clinical record collection.
       x-roles:
-      - VETERINARIAN
-      x-contract-review: PENDING — not approved for implementation
+        - VETERINARIAN
       responses:
         '200':
           description: Success
@@ -1909,44 +1678,167 @@ paths:
                     $ref: '#/components/schemas/HerdHealthOverview'
                 additionalProperties: false
                 required:
-                - success
-                - data
+                  - success
+                  - data
         '400':
-          description: Validation error
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
-          description: Missing or invalid JWT
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden role or row-scope
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Resource not found
+          description: 'NOT_FOUND: visible resource does not exist.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: State or concurrency conflict
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-        '422':
-          description: Business validation failure
+      x-implementation-task: CORE-035 medical scope; herd-health assignment requires confirmation
+  /api/medical/restrictions/{restrictionId}/exercise-rules:
+    put:
+      operationId: replaceRestrictionExerciseRules
+      tags:
+        - Restrictions
+      summary: Replace restriction exercise rules
+      description: VETERINARIAN only. Replace restriction_exercise_rule rows for an unlifted restriction atomically. Each rule is ALLOWED or PROHIBITED and has an exercise FK and/or note per SQL. Missing target returns 404; lifted restriction returns 409 CONFLICT. Never modify another horse restriction. Matching/precedence policy is G5.
+      x-roles:
+        - VETERINARIAN
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/MedicalRestriction'
+                additionalProperties: false
+                required:
+                  - success
+                  - data
+        '400':
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: visible resource does not exist.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - $ref: '#/components/parameters/restrictionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestrictionExerciseRulesRequest'
+      x-implementation-task: CORE-019
+  /api/horses/{horseId}/medical-thresholds/end:
+    post:
+      operationId: endHorseThresholdOverride
+      tags:
+        - Thresholds
+      summary: End the open horse threshold override
+      description: VETERINARIAN only. Set effective_to on the open HEART_RATE override, not a new table or status field. effective_to >= effective_from; no open override returns 404, concurrent termination returns 409 CONFLICT. Global configured fallback then applies.
+      x-roles:
+        - VETERINARIAN
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/Threshold'
+                additionalProperties: false
+                required:
+                  - success
+                  - data
+        '400':
+          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'UNAUTHORIZED: missing, invalid or expired JWT.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'FORBIDDEN: role or row scope denied; inactive authenticated account denied.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: visible resource does not exist.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - $ref: '#/components/parameters/horseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThresholdOverrideEndRequest'
+      x-implementation-task: CORE-030 consumption; override service owner not assigned in supplied workbook
 components:
   securitySchemes:
     bearerAuth:
@@ -1958,37 +1850,47 @@ components:
       name: horseId
       in: path
       required: true
-      description: Horse identifier (canonical SQL type not yet confirmed)
+      description: SQL BIGINT primary key; positive JSON integer.
       schema:
-        type: string
+        type: integer
+        format: int64
+        minimum: 1
     incidentId:
       name: incidentId
       in: path
       required: true
-      description: Incident identifier (canonical SQL type not yet confirmed)
+      description: SQL BIGINT primary key; positive JSON integer.
       schema:
-        type: string
+        type: integer
+        format: int64
+        minimum: 1
     caseId:
       name: caseId
       in: path
       required: true
-      description: Medical case identifier (canonical SQL type not yet confirmed)
+      description: SQL BIGINT primary key; positive JSON integer.
       schema:
-        type: string
+        type: integer
+        format: int64
+        minimum: 1
     restrictionId:
       name: restrictionId
       in: path
       required: true
-      description: Restriction identifier (canonical SQL type not yet confirmed)
+      description: SQL BIGINT primary key; positive JSON integer.
       schema:
-        type: string
+        type: integer
+        format: int64
+        minimum: 1
     taskId:
       name: taskId
       in: path
       required: true
-      description: Care task identifier (canonical SQL type not yet confirmed)
+      description: SQL BIGINT primary key; positive JSON integer.
       schema:
-        type: string
+        type: integer
+        format: int64
+        minimum: 1
     page:
       name: page
       in: query
@@ -2008,256 +1910,352 @@ components:
   schemas:
     ApiError:
       type: object
+      required:
+        - code
+        - message
+        - details
       properties:
         code:
-          type: string
-          description: Error code; canonical error enumeration pending approval
+          $ref: '#/components/schemas/ErrorCode'
         message:
           type: string
-        fieldErrors:
+        details:
           type: array
           items:
-            type: object
-            properties:
-              field:
-                type: string
-              message:
-                type: string
-            additionalProperties: false
-            required:
-            - field
-            - message
-      additionalProperties: false
-      required:
-      - code
-      - message
+            $ref: '#/components/schemas/ErrorDetail'
     ErrorEnvelope:
       type: object
+      required:
+        - success
+        - error
       properties:
         success:
+          type: boolean
           const: false
         error:
           $ref: '#/components/schemas/ApiError'
-      additionalProperties: false
-      required:
-      - success
-      - error
-    
     HealthStatus:
       type: string
       enum:
-      - FIT
-      - MONITORING
-      - INJURED
-      - QUARANTINED
+        - FIT
+        - MONITORING
+        - INJURED
+        - QUARANTINED
     RestrictionLevel:
       type: string
       enum:
-      - LIMITED
-      - LOCKED
-      description: AVAILABLE is derived when there is no active restriction; never persisted as a restriction
-        level.
+        - LIMITED
+        - LOCKED
+      description: Persisted medical_restriction.restriction_level; AVAILABLE is never persisted.
     TrainingAvailability:
       type: string
       enum:
-      - AVAILABLE
-      - LIMITED
-      - LOCKED
+        - AVAILABLE
+        - LIMITED
+        - LOCKED
       readOnly: true
     RecoveryStatus:
       type: string
       enum:
-      - NOT_RECOVERED
-      - IMPROVING
-      - RECOVERED
+        - NOT_RECOVERED
+        - IMPROVING
+        - RECOVERED
     BaselineExaminationRequest:
       type: object
       properties:
         weightKg:
           type: number
           exclusiveMinimum: 0
+          maximum: 9999.99
+          multipleOf: 0.01
+          description: Kilograms; dbo.weight_record.weight DECIMAL(6,2).
         healthStatus:
           $ref: '#/components/schemas/HealthStatus'
         clinicalNotes:
           type: string
-          description: Optional veterinarian observation (exact canonical field unconfirmed)
+          description: Maps to veterinary_examination.findings; not a separate clinical_notes column.
       additionalProperties: false
       required:
-      - weightKg
-      - healthStatus
+        - weightKg
+        - healthStatus
     WeightRecordRequest:
       type: object
       properties:
         weightKg:
           type: number
           exclusiveMinimum: 0
+          maximum: 9999.99
+          multipleOf: 0.01
+          description: Kilograms; dbo.weight_record.weight DECIMAL(6,2).
         recordedAt:
           type: string
           format: date-time
+          description: Maps to measured_at; omitted value uses server UTC time; future values rejected.
       additionalProperties: false
       required:
-      - weightKg
+        - weightKg
     IncidentCreateRequest:
       type: object
       properties:
         horseId:
-          type: string
-          description: Must identify the horse
+          type: integer
+          format: int64
+          minimum: 1
+        preSessionCheckId:
+          type: integer
+          format: int64
+          minimum: 1
         trainingSessionId:
-          type: string
-          description: Optional session context; allowed only for authorized assigned session
+          type: integer
+          format: int64
+          minimum: 1
+        careTaskId:
+          type: integer
+          format: int64
+          minimum: 1
+        incidentType:
+          $ref: '#/components/schemas/IncidentType'
+        observedSeverity:
+          $ref: '#/components/schemas/ObservedSeverity'
         description:
           type: string
-          description: Observed signs only; reporter is not required to diagnose
-          minLength: 1
+          maxLength: 2000
         observedAt:
           type: string
           format: date-time
-        photoIds:
-          type: array
-          items:
-            type: string
-          description: References to files managed by the approved upload API; exact schema pending
+          description: UTC timestamp; SQL DATETIME2(3).
       additionalProperties: false
       required:
-      - horseId
-      - description
+        - horseId
+        - incidentType
+        - observedSeverity
+        - observedAt
+      description: Explicit report. The optional context IDs identify the same horse and authorized work context. ck_incident__single_source_context allows zero or one source, never two or three. Photos remain a separate incident_photo capability gap in the review register.
+      allOf:
+        - not:
+            required:
+              - preSessionCheckId
+              - trainingSessionId
+            properties:
+              preSessionCheckId:
+                type: integer
+                format: int64
+                minimum: 1
+              trainingSessionId:
+                type: integer
+                format: int64
+                minimum: 1
+        - not:
+            required:
+              - preSessionCheckId
+              - careTaskId
+            properties:
+              preSessionCheckId:
+                type: integer
+                format: int64
+                minimum: 1
+              careTaskId:
+                type: integer
+                format: int64
+                minimum: 1
+        - not:
+            required:
+              - trainingSessionId
+              - careTaskId
+            properties:
+              trainingSessionId:
+                type: integer
+                format: int64
+                minimum: 1
+              careTaskId:
+                type: integer
+                format: int64
+                minimum: 1
     IncidentReviewRequest:
       type: object
       properties:
         action:
           type: string
           enum:
-          - OPEN_CASE
-          - LINK_CASE
-          - RESOLVE
+            - OPEN_CASE
+            - LINK_CASE
+            - RESOLVE
         medicalCaseId:
-          type: string
-          description: Only for LINK_CASE action
-        comment:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
       additionalProperties: false
       required:
-      - action
-      description: Action codes derive from merged permission matrix; required fields for each action need
-        approved decision.
+        - action
+      description: Action names come from merged permission matrix. OPEN_CASE creates a same-horse medical_case; LINK_CASE requires an existing same-horse case; RESOLVE records review. Exact allowed source-state transitions and re-review policy are a business decision gap (G3). No comment column exists.
+      oneOf:
+        - properties:
+            action:
+              const: OPEN_CASE
+            medicalCaseId:
+              type: integer
+              format: int64
+              minimum: 1
+          not:
+            required:
+              - medicalCaseId
+            properties:
+              medicalCaseId:
+                type: integer
+                format: int64
+                minimum: 1
+        - properties:
+            action:
+              const: LINK_CASE
+            medicalCaseId:
+              type: integer
+              format: int64
+              minimum: 1
+          required:
+            - medicalCaseId
+        - properties:
+            action:
+              const: RESOLVE
+            medicalCaseId:
+              type: integer
+              format: int64
+              minimum: 1
+          not:
+            required:
+              - medicalCaseId
+            properties:
+              medicalCaseId:
+                type: integer
+                format: int64
+                minimum: 1
     MedicalCaseCreateRequest:
       type: object
       properties:
         horseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         incidentId:
-          type: string
-          description: Optional linked incident
+          type: integer
+          format: int64
+          minimum: 1
         reason:
           type: string
+          maxLength: 2000
           minLength: 1
+          description: Maps to medical_case.condition_summary. incidentId links incident.medical_case_id, not a medical_case.incident_id column.
       additionalProperties: false
       required:
-      - horseId
-      - reason
+        - horseId
+        - reason
     ExaminationRequest:
       type: object
       properties:
         symptoms:
           type: string
           minLength: 1
+          description: Maps to veterinary_examination.findings.
         diagnosis:
           type: string
-          description: Vet diagnosis; exact requiredness pending
+          maxLength: 1000
         severity:
-          type: string
-          description: Severity taxonomy pending domain decision
+          $ref: '#/components/schemas/ClinicalSeverity'
         examinedAt:
           type: string
           format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        healthStatus:
+          $ref: '#/components/schemas/HealthStatus'
+          description: Atomically sets horse.health_status and veterinary_examination.health_status_set; Veterinarian only.
+        bodyCondition:
+          type: string
+          maxLength: 500
       additionalProperties: false
       required:
-      - symptoms
+        - symptoms
+        - examinedAt
     InjuryRequest:
       type: object
       properties:
         bodyRegion:
           type: string
-          description: Region code per approved medical body map; canonical values pending
+          maxLength: 100
+          minLength: 1
+          description: Free NVARCHAR(100); no approved body-region code taxonomy was supplied.
         severity:
-          type: string
-          description: Severity enum not in supplied ERD Overview
+          $ref: '#/components/schemas/ClinicalSeverity'
         recoveryStatus:
           $ref: '#/components/schemas/RecoveryStatus'
+        veterinaryExaminationId:
+          type: integer
+          format: int64
+          minimum: 1
         position3d:
-          type: object
-          properties:
-            x:
-              type: number
-            y:
-              type: number
-            z:
-              type: number
-          additionalProperties: false
-          required:
-          - x
-          - y
-          - z
-          description: Provisional 3D marker; must be checked against canonical schema and approved UI
-        clinicalNotes:
           type: string
+          maxLength: 100
+          description: Opaque VARCHAR(100) marker stored verbatim as position_3d. Coordinate serialization/model reference requires decision G4; no invented x/y/z persistence.
+        side:
+          type: string
+          maxLength: 20
       additionalProperties: false
       required:
-      - bodyRegion
-      - severity
+        - bodyRegion
+        - severity
+        - recoveryStatus
     TreatmentPlanRequest:
       type: object
       properties:
-        medications:
-          type: array
-          items:
-            type: object
-            properties:
-              name:
-                type: string
-              instructions:
-                type: string
-            additionalProperties: false
-            required:
-            - name
+        treatmentMedicationInstructions:
+          type: string
+          minLength: 1
+          description: Maps to treatment_medication_instructions NVARCHAR(MAX). Veterinarian-only clinical content.
         restInstructions:
           type: string
+          maxLength: 100
+          description: Maps to rest_period.
+        careInstructions:
+          type: string
+          maxLength: 2000
+          description: Maps to care_instructions; explicitly authorized operational instructions only.
         groomTasks:
           type: array
           items:
-            type: object
-            properties:
-              instruction:
-                type: string
-              dueAt:
-                type: string
-                format: date-time
-            additionalProperties: false
-            required:
-            - instruction
-          description: Only treatment tasks explicitly approved in the TreatmentPlan; not the full Flow 4
+            $ref: '#/components/schemas/GroomTaskInstruction'
         reexaminationDate:
           type: string
           format: date
       additionalProperties: false
-      description: Fields and medication details are provisional until ERD-Dxx and approved medical rule set
-        are available.
+      required:
+        - treatmentMedicationInstructions
+      description: One plan per case (uq_treatment_plan__medical_case_id). Saving groomTasks materializes care_task rows linked ONLY by treatment_plan_id (other source FKs NULL). No plan status column or structured medication table exists. Work-list assignment and completion-note persistence gaps are G1/G2.
     ReexaminationRequest:
       type: object
       properties:
         recoveryStatus:
           $ref: '#/components/schemas/RecoveryStatus'
+          description: Maps to veterinary_examination.recovery_outcome for RE_EXAMINATION.
         findings:
           type: string
           minLength: 1
         examinedAt:
           type: string
           format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        healthStatus:
+          $ref: '#/components/schemas/HealthStatus'
+        diagnosis:
+          type: string
+          maxLength: 1000
+        severity:
+          $ref: '#/components/schemas/ClinicalSeverity'
+        bodyCondition:
+          type: string
+          maxLength: 500
       additionalProperties: false
       required:
-      - recoveryStatus
-      - findings
+        - recoveryStatus
+        - findings
+        - examinedAt
     MedicalRestrictionRequest:
       type: object
       properties:
@@ -2265,289 +2263,569 @@ components:
           $ref: '#/components/schemas/RestrictionLevel'
         reason:
           type: string
+          maxLength: 1000
           minLength: 1
         effectiveAt:
           type: string
           format: date-time
-        expiresAt:
+          description: Maps to effective_from. Active-slot uniqueness is based on lifted_at IS NULL, including future-dated rows; effective-time gate policy is G5.
+        reviewDate:
           type: string
-          format: date-time
-        allowedExerciseIds:
-          type: array
-          items:
-            type: string
-        prohibitedExerciseIds:
-          type: array
-          items:
-            type: string
+          format: date
         medicalCaseId:
-          type: string
-          description: Optional case justification
+          type: integer
+          format: int64
+          minimum: 1
       additionalProperties: false
       required:
-      - level
-      - reason
-      description: At most one active restriction for a horse; Vet-only writes. Allowed/prohibited semantics
-        pending canonical BR.
+        - level
+        - reason
+        - effectiveAt
+      description: No expires_at field exists. reviewDate is a review reminder, not automatic expiry. Rules are edited via the dedicated PUT operation.
     MedicalRestrictionLiftRequest:
       type: object
-      properties:
-        reason:
-          type: string
-          minLength: 1
+      properties: {}
       additionalProperties: false
-      required:
-      - reason
+      required: []
+      description: Explicit lift. Server sets lifted_at >= effective_from. SQL has no lift reason or lifted_by_user_id; trace actor with technical audit only, while a clinical lift-reason requirement is retained as gap G2.
     TreatmentTaskCompleteRequest:
       type: object
-      properties:
-        completionNotes:
-          type: string
+      properties: {}
       additionalProperties: false
-      description: Only assigned Groom may complete approved care task
+      required: []
+      description: Authenticated Groom explicitly acknowledges completion. Server supplies completed_at and completed_by_user_id atomically. Completion notes are a recorded requirement gap G2, not discarded or written to audit_log as a business record.
     ThresholdOverrideRequest:
       type: object
       properties:
         metricType:
-          type: string
-          description: Metric code pending
+          $ref: '#/components/schemas/MonitoringMetric'
         thresholdValue:
           type: number
+          exclusiveMinimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Beats/minute; DECIMAL(7,2), configured clinical threshold, no universal default.
         reason:
           type: string
-          minLength: 1
+          maxLength: 1000
+        effectiveFrom:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
       additionalProperties: false
       required:
-      - metricType
-      - thresholdValue
-      - reason
+        - metricType
+        - thresholdValue
+        - effectiveFrom
     BaselineExamination:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         horseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         weightKg:
           type: number
+          exclusiveMinimum: 0
+          maximum: 9999.99
+          multipleOf: 0.01
+          description: Kilograms; dbo.weight_record.weight DECIMAL(6,2).
         healthStatus:
           $ref: '#/components/schemas/HealthStatus'
         recordedAt:
           type: string
           format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
       additionalProperties: false
       required:
-      - id
-      - horseId
-      - weightKg
-      - healthStatus
+        - id
+        - horseId
+        - weightKg
+        - healthStatus
+        - recordedAt
+      description: BASELINE veterinary_examination + BASELINE-context weight_record + horse.health_status written atomically.
     WeightRecord:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         horseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         weightKg:
           type: number
+          exclusiveMinimum: 0
+          maximum: 9999.99
+          multipleOf: 0.01
+          description: Kilograms; dbo.weight_record.weight DECIMAL(6,2).
         recordedAt:
           type: string
           format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
       additionalProperties: false
       required:
-      - id
-      - horseId
-      - weightKg
+        - id
+        - horseId
+        - weightKg
+        - recordedAt
     Incident:
       type: object
       properties:
         id:
+          type: integer
+          format: int64
+          minimum: 1
+        incidentCode:
           type: string
+          maxLength: 20
         horseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
+        reportedByUserId:
+          type: integer
+          format: int64
+          minimum: 1
+        medicalCaseId:
+          type: integer
+          format: int64
+          minimum: 1
+        preSessionCheckId:
+          type: integer
+          format: int64
+          minimum: 1
         trainingSessionId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
+        careTaskId:
+          type: integer
+          format: int64
+          minimum: 1
+        incidentType:
+          $ref: '#/components/schemas/IncidentType'
+        observedSeverity:
+          $ref: '#/components/schemas/ObservedSeverity'
         description:
           type: string
-        status:
+          maxLength: 2000
+        observedAt:
           type: string
-          description: Incident status enum unconfirmed
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        reportedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
       additionalProperties: false
       required:
-      - id
-      - horseId
-      - description
+        - id
+        - incidentCode
+        - horseId
+        - reportedByUserId
+        - incidentType
+        - observedSeverity
+        - observedAt
+        - reportedAt
+        - status
+      description: Reporter-facing incident only; no joined case diagnosis, prescription or examination findings. Null SQL optional fields are omitted.
     MedicalCase:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         horseId:
-          type: string
-        incidentId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         status:
+          $ref: '#/components/schemas/MedicalCaseStatus'
+        openedAt:
           type: string
-          description: Case status enum unconfirmed
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        closedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
         reason:
           type: string
+          maxLength: 2000
+        incidentIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+        examinations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Examination'
+        injuries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Injury'
+        treatmentPlan:
+          $ref: '#/components/schemas/TreatmentPlan'
+        reexaminations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reexamination'
       additionalProperties: false
       required:
-      - id
-      - horseId
+        - id
+        - horseId
+        - status
+        - openedAt
+        - incidentIds
+        - examinations
+        - injuries
+        - reexaminations
+      description: Veterinarian-only clinical projection. incidentIds derives from incident.medical_case_id; no reverse FK column is created. Optional SQL NULL values are omitted.
     Examination:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         caseId:
+          type: integer
+          format: int64
+          minimum: 1
+        horseId:
+          type: integer
+          format: int64
+          minimum: 1
+        examinedAt:
           type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
         symptoms:
           type: string
+          description: Maps to findings.
         diagnosis:
           type: string
+          maxLength: 1000
         severity:
+          $ref: '#/components/schemas/ClinicalSeverity'
+        healthStatus:
+          $ref: '#/components/schemas/HealthStatus'
+        bodyCondition:
           type: string
+          maxLength: 500
       additionalProperties: false
       required:
-      - id
-      - caseId
+        - id
+        - caseId
+        - horseId
+        - examinedAt
     Injury:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         caseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         bodyRegion:
           type: string
+          maxLength: 100
+          minLength: 1
+          description: Free NVARCHAR(100); no approved body-region code taxonomy was supplied.
         severity:
-          type: string
+          $ref: '#/components/schemas/ClinicalSeverity'
         recoveryStatus:
           $ref: '#/components/schemas/RecoveryStatus'
+        veterinaryExaminationId:
+          type: integer
+          format: int64
+          minimum: 1
+        position3d:
+          type: string
+          maxLength: 100
+          description: Opaque VARCHAR(100) marker stored verbatim as position_3d. Coordinate serialization/model reference requires decision G4; no invented x/y/z persistence.
+        side:
+          type: string
+          maxLength: 20
       additionalProperties: false
       required:
-      - id
-      - caseId
-      - bodyRegion
+        - id
+        - caseId
+        - bodyRegion
+        - severity
+        - recoveryStatus
     TreatmentPlan:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         caseId:
+          type: integer
+          format: int64
+          minimum: 1
+        treatmentMedicationInstructions:
           type: string
-        status:
+        restInstructions:
           type: string
-          description: Status enum pending
+          maxLength: 100
+        careInstructions:
+          type: string
+          maxLength: 2000
         reexaminationDate:
           type: string
           format: date
+        createdAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
       additionalProperties: false
       required:
-      - id
-      - caseId
+        - id
+        - caseId
+        - treatmentMedicationInstructions
+        - createdAt
+      description: Veterinarian projection; no fictional plan status.
     TreatmentTask:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         horseId:
-          type: string
-        caseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         instruction:
           type: string
-        status:
+          maxLength: 2000
+        taskDate:
           type: string
+          format: date
+        scheduledSlot:
+          type: string
+          maxLength: 50
+        status:
+          $ref: '#/components/schemas/TreatmentTaskStatus'
+        completedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        caseId:
+          type: integer
+          format: int64
+          minimum: 1
+        treatmentPlanId:
+          type: integer
+          format: int64
+          minimum: 1
+        completedByUserId:
+          type: integer
+          format: int64
+          minimum: 1
       additionalProperties: false
       required:
-      - id
-      - horseId
-      - instruction
+        - id
+        - horseId
+        - caseId
+        - treatmentPlanId
+        - instruction
+        - taskDate
+        - status
+      description: Veterinarian follow-up projection of treatment-sourced care_task.
     Reexamination:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         caseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
+        horseId:
+          type: integer
+          format: int64
+          minimum: 1
         recoveryStatus:
           $ref: '#/components/schemas/RecoveryStatus'
+          description: Maps to veterinary_examination.recovery_outcome for RE_EXAMINATION.
         findings:
           type: string
+          minLength: 1
+        examinedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        healthStatus:
+          $ref: '#/components/schemas/HealthStatus'
+        diagnosis:
+          type: string
+          maxLength: 1000
+        severity:
+          $ref: '#/components/schemas/ClinicalSeverity'
+        bodyCondition:
+          type: string
+          maxLength: 500
       additionalProperties: false
       required:
-      - id
-      - caseId
-      - recoveryStatus
+        - id
+        - caseId
+        - horseId
+        - recoveryStatus
+        - findings
+        - examinedAt
     TrainingAvailabilityRead:
       type: object
       properties:
         horseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         availability:
           $ref: '#/components/schemas/TrainingAvailability'
         reason:
           type: string
+          maxLength: 1000
+          description: Operational reason safe for all allowed readers; no diagnosis or prescription.
         activeRestrictionId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
+        exerciseRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestrictionExerciseRule'
       additionalProperties: false
       required:
-      - horseId
-      - availability
+        - horseId
+        - availability
+      description: Derived solely from the unlifted restriction. No unlifted row = AVAILABLE; unlifted LIMITED = LIMITED; unlifted LOCKED = LOCKED. Never persist AVAILABLE or a horse availability column.
     MedicalRestriction:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         horseId:
-          type: string
+          type: integer
+          format: int64
+          minimum: 1
         level:
           $ref: '#/components/schemas/RestrictionLevel'
         reason:
           type: string
+          maxLength: 1000
         effectiveAt:
           type: string
           format: date-time
-        expiresAt:
+          description: UTC timestamp; SQL DATETIME2(3).
+        liftedAt:
           type: string
           format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        reviewDate:
+          type: string
+          format: date
+        medicalCaseId:
+          type: integer
+          format: int64
+          minimum: 1
+        exerciseRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestrictionExerciseRule'
       additionalProperties: false
       required:
-      - id
-      - horseId
-      - level
-      - reason
+        - id
+        - horseId
+        - level
+        - reason
+        - effectiveAt
+      description: Clinical restriction response for Veterinarian.
     HerdHealthOverview:
       type: object
       properties:
         totalHorses:
           type: integer
+          minimum: 0
         fit:
           type: integer
+          minimum: 0
         monitoring:
           type: integer
+          minimum: 0
         injured:
           type: integer
+          minimum: 0
         quarantined:
           type: integer
+          minimum: 0
+        unassessed:
+          type: integer
+          minimum: 0
       additionalProperties: false
       required:
-      - totalHorses
+        - totalHorses
+        - fit
+        - monitoring
+        - injured
+        - quarantined
+        - unassessed
+      description: Veterinarian-only club aggregate of horse.health_status; NULL counts as unassessed, not FIT.
     Threshold:
       type: object
       properties:
         metricType:
-          type: string
+          $ref: '#/components/schemas/MonitoringMetric'
         thresholdValue:
           type: number
+          exclusiveMinimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Beats/minute; DECIMAL(7,2), configured clinical threshold, no universal default.
         scope:
           type: string
+          enum:
+            - GLOBAL
+            - HORSE_OVERRIDE
+        horseId:
+          type: integer
+          format: int64
+          minimum: 1
+        effectiveFrom:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        effectiveTo:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
       additionalProperties: false
       required:
-      - metricType
-      - thresholdValue
+        - metricType
+        - thresholdValue
+        - scope
+      description: Global values come from managed configuration, not a business table in DB-01. Horse values map horse_threshold_override.metric/critical_value. Effective override wins; otherwise use configured global default. No demonstration value is a universal rule.
     IncidentsPage:
       type: object
       properties:
@@ -2557,35 +2835,45 @@ components:
             $ref: '#/components/schemas/Incident'
         page:
           type: integer
+          minimum: 0
         size:
           type: integer
+          minimum: 1
+          maximum: 100
         totalElements:
           type: integer
+          format: int64
+          minimum: 0
       additionalProperties: false
       required:
-      - items
-      - page
-      - size
-      - totalElements
+        - items
+        - page
+        - size
+        - totalElements
     MedicalCasesPage:
       type: object
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/MedicalCase'
+            $ref: '#/components/schemas/MedicalCaseRead'
         page:
           type: integer
+          minimum: 0
         size:
           type: integer
+          minimum: 1
+          maximum: 100
         totalElements:
           type: integer
+          format: int64
+          minimum: 0
       additionalProperties: false
       required:
-      - items
-      - page
-      - size
-      - totalElements
+        - items
+        - page
+        - size
+        - totalElements
     WeightRecordsPage:
       type: object
       properties:
@@ -2595,35 +2883,45 @@ components:
             $ref: '#/components/schemas/WeightRecord'
         page:
           type: integer
+          minimum: 0
         size:
           type: integer
+          minimum: 1
+          maximum: 100
         totalElements:
           type: integer
+          format: int64
+          minimum: 0
       additionalProperties: false
       required:
-      - items
-      - page
-      - size
-      - totalElements
+        - items
+        - page
+        - size
+        - totalElements
     RestrictionsPage:
       type: object
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/MedicalRestriction'
+            $ref: '#/components/schemas/RestrictionRead'
         page:
           type: integer
+          minimum: 0
         size:
           type: integer
+          minimum: 1
+          maximum: 100
         totalElements:
           type: integer
+          format: int64
+          minimum: 0
       additionalProperties: false
       required:
-      - items
-      - page
-      - size
-      - totalElements
+        - items
+        - page
+        - size
+        - totalElements
     TreatmentTasksPage:
       type: object
       properties:
@@ -2633,30 +2931,296 @@ components:
             $ref: '#/components/schemas/TreatmentTask'
         page:
           type: integer
+          minimum: 0
         size:
           type: integer
+          minimum: 1
+          maximum: 100
         totalElements:
           type: integer
+          format: int64
+          minimum: 0
       additionalProperties: false
       required:
-      - items
-      - page
-      - size
-      - totalElements
-x-open-review-questions:
-- Task Playbook Implementation Prompt, DoD, screen registry and role coverage matrix are absent from uploaded
-  workbook.
-- Canonical schema.sql, DB-01 and medical-domain ERDs are absent. Confirm identifiers, data types, foreign
-  keys and all DTO fields.
-- Approved URL paths, operation names, request/response models, exact status transitions and error codes are
-  not supplied.
-- 'Whether a Trainer/Work Rider may see all medical data or summary-only: follow merged permission matrix and
-  confirm projections.'
-- How 3D position and 2D body region persist must match approved schema; current coordinate proposal is provisional.
-- Incident review action semantics, related case linkage, and source of system notification need final business
-  decision.
-- TreatmentPlan Groom task XOR CareTask source must match canonical schema; do not expand to all Flow 4.
-- There is no standalone persisted AVAILABLE status; only active LIMITED/LOCKED MedicalRestriction drives derived
-  availability.
-- Need approval of HTTP status codes and whether POST close/lift uses 200 or 204 envelopes.
-- Threshold override read/write model and operation ownership must be agreed with assigned implementation owner.
+        - items
+        - page
+        - size
+        - totalElements
+    ErrorDetail:
+      type: object
+      required:
+        - message
+      properties:
+        field:
+          type:
+            - string
+            - 'null'
+        message:
+          type: string
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - NOT_FOUND
+        - METHOD_NOT_ALLOWED
+        - CONFLICT
+        - BUSINESS_RULE_VIOLATION
+        - TOO_MANY_REQUESTS
+        - INTERNAL_ERROR
+    ClinicalSeverity:
+      type: string
+      enum:
+        - MILD
+        - MODERATE
+        - SEVERE
+    IncidentType:
+      type: string
+      enum:
+        - OFF_FEED
+        - COLIC_SIGNS
+        - FEVER
+        - HOOF_OR_LEG_PROBLEM
+        - OTHER
+    ObservedSeverity:
+      type: string
+      enum:
+        - LOW
+        - MEDIUM
+        - HIGH
+    IncidentStatus:
+      type: string
+      enum:
+        - REPORTED
+        - UNDER_REVIEW
+        - RESOLVED
+    MedicalCaseStatus:
+      type: string
+      enum:
+        - OPEN
+        - CLOSED
+    TreatmentTaskStatus:
+      type: string
+      enum:
+        - PENDING
+        - COMPLETED
+      readOnly: true
+      description: 'Derived from care_task completion pair: both columns NULL = PENDING; both non-NULL = COMPLETED. No status column is added.'
+    MonitoringMetric:
+      type: string
+      enum:
+        - HEART_RATE
+      description: ck_horse_threshold_override__metric and ck_monitoring_alert__metric; no unsupported metric codes.
+    MedicalCaseSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        horseId:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/MedicalCaseStatus'
+        openedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        closedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+      additionalProperties: false
+      required:
+        - id
+        - horseId
+        - status
+        - openedAt
+      description: Authorization-safe summary for CLUB_MANAGER, HEAD_TRAINER and assigned TRAINER. No clinical reason, diagnosis, prescription or treatment protocol.
+    GroomTaskInstruction:
+      type: object
+      properties:
+        instruction:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          description: Groom-safe instruction_snapshot approved by the Veterinarian; must not copy treatment_medication_instructions or diagnostic text.
+        taskDate:
+          type: string
+          format: date
+        scheduledSlot:
+          type: string
+          maxLength: 50
+      additionalProperties: false
+      required:
+        - instruction
+        - taskDate
+    GroomTreatmentTask:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        horseId:
+          type: integer
+          format: int64
+          minimum: 1
+        instruction:
+          type: string
+          maxLength: 2000
+        taskDate:
+          type: string
+          format: date
+        scheduledSlot:
+          type: string
+          maxLength: 50
+        status:
+          $ref: '#/components/schemas/TreatmentTaskStatus'
+        completedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+      additionalProperties: false
+      required:
+        - id
+        - horseId
+        - instruction
+        - taskDate
+        - status
+      description: Only tasks in the authenticated Groom work list. No caseId, diagnosis, prescription, medication instructions, clinical findings or whole TreatmentPlan. Work-list authorization must fail closed until G1 is resolved.
+    MedicalCaseRead:
+      oneOf:
+        - $ref: '#/components/schemas/MedicalCaseSummary'
+        - $ref: '#/components/schemas/MedicalCase'
+      description: 'Backend selects by role: VETERINARIAN receives MedicalCase; other allowed roles receive MedicalCaseSummary. Clients cannot request the clinical variant.'
+    RestrictionExerciseRule:
+      type: object
+      properties:
+        exerciseDefinitionId:
+          type: integer
+          format: int64
+          minimum: 1
+        ruleType:
+          type: string
+          enum:
+            - ALLOWED
+            - PROHIBITED
+        exerciseTypeNote:
+          type: string
+          maxLength: 200
+      additionalProperties: false
+      required:
+        - ruleType
+      description: Maps to restriction_exercise_rule. At least one of exerciseDefinitionId or exerciseTypeNote is present; SQL permits both. Matching/precedence policy for simultaneous allow/prohibit is decision G5.
+      anyOf:
+        - required:
+            - exerciseDefinitionId
+        - required:
+            - exerciseTypeNote
+    RestrictionExerciseRulesRequest:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestrictionExerciseRule'
+      additionalProperties: false
+      required:
+        - rules
+      description: Replace this restriction rule set atomically; target references must exist. Empty rules list clears the set. Veterinarian only.
+    RestrictionSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        horseId:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          $ref: '#/components/schemas/RestrictionLevel'
+        reason:
+          type: string
+          maxLength: 1000
+        effectiveAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        liftedAt:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+        reviewDate:
+          type: string
+          format: date
+        exerciseRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestrictionExerciseRule'
+      additionalProperties: false
+      required:
+        - id
+        - horseId
+        - level
+        - reason
+        - effectiveAt
+      description: Training-facing restriction reason and operational rules only. Reason must be a safe training explanation without diagnosis/prescription. No clinical case join.
+    RestrictionRead:
+      anyOf:
+        - $ref: '#/components/schemas/RestrictionSummary'
+        - $ref: '#/components/schemas/MedicalRestriction'
+      description: Server selects the clinical variant only for VETERINARIAN; shapes can coincide when the case reference is absent.
+    ThresholdList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Threshold'
+    ThresholdOverrideEndRequest:
+      type: object
+      properties:
+        effectiveTo:
+          type: string
+          format: date-time
+          description: UTC timestamp; SQL DATETIME2(3).
+      additionalProperties: false
+      required:
+        - effectiveTo
+      description: Ends the open override by setting effective_to >= effective_from.
+    GroomTreatmentTasksPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroomTreatmentTask'
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalElements:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+x-contract-status: IN_REVIEW
+x-owner-task: CORE-006
+x-authoritative-mapping:
+  roles: docs/api/permission-matrix.md (merged CORE-003)
+  shared-conventions: docs/api/shared.openapi.yaml (merged CORE-003)
+  persistence: DB-01 copy in origin/feat/CORE-001-be-foundation:database/schema.sql; canonical provenance declared by its README; SHA256 416eb579e59f926e01c08bdfb25af6db5bc9376e87ec93eb7b6aa35d512a9141
+  ownership: project-context/Racehorse_Core_Flow_Execution.xlsx, Core Flow Execution
+  scope: CORE-006 contract only; schema and application code unchanged
+x-gap-register: CORE-006-review.md#remaining-decisions-and-schema-gaps
