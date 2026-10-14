@@ -1,0 +1,4 @@
+# Dev profile (the default). DEC-008 §6 R10: Swagger is public in dev only.
+app:
+  security:
+    public-api-docs: true
