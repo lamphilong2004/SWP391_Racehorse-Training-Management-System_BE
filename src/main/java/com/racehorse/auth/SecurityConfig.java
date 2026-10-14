@@ -81,6 +81,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.POST, PUBLIC_AUTH_POSTS).permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/api/health").permitAll();
+                    // DEMO INTEGRATION: WebSocket handshake; the JWT is verified on the STOMP CONNECT frame (flow2-stomp.md).
+                    auth.requestMatchers("/ws", "/ws/**").permitAll();
                     if (props.publicApiDocs()) {
                         auth.requestMatchers(HttpMethod.GET, API_DOCS).permitAll();
                     }

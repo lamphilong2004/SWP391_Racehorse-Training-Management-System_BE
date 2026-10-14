@@ -12,7 +12,7 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
-@Service
+@Service("medicalCaseService") // DEMO INTEGRATION: bean name clashed with com.racehorse.medical.MedicalService
 public class MedicalService {
     private final MedicalCases cases;
     private final ExaminationStore exams;
@@ -216,8 +216,6 @@ public class MedicalService {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.treatmentMedicationInstructions() == null || request.treatmentMedicationInstructions().isBlank())
             throw error(ErrorCode.VALIDATION_ERROR, "Treatment instructions required.");
-        if (request.groomTasks() != null && !request.groomTasks().isEmpty())
-            throw error(ErrorCode.CONFLICT, "Groom task materialization policy is unavailable.");
         TreatmentPlanEntity p = plans.findByMedicalCaseId(c.id).orElseGet(() -> {
             TreatmentPlanEntity value = new TreatmentPlanEntity();
             value.medicalCaseId = c.id; value.createdByUserId = actor.id(); value.createdAt = now();
@@ -226,8 +224,14 @@ public class MedicalService {
         p.treatmentMedicationInstructions = request.treatmentMedicationInstructions();
         p.restPeriod = request.restInstructions(); p.careInstructions = request.careInstructions();
         p.reExaminationDate = request.reexaminationDate(); p.updatedAt = now();
-        try { return planView(plans.saveAndFlush(p)); }
+        TreatmentPlanEntity saved;
+        try { saved = plans.saveAndFlush(p); }
         catch (DataIntegrityViolationException ex) { throw error(ErrorCode.CONFLICT, "Treatment plan changed concurrently."); }
+        // DEMO INTEGRATION (DEC-009 §2): treatment-linked care tasks for the Groom pool (care_task.treatment_plan_id set).
+        if (request.groomTasks() != null) for (GroomInstruction g : request.groomTasks())
+            sql.update("insert into dbo.care_task(horse_id,treatment_plan_id,task_date,scheduled_slot,instruction_snapshot,created_at) values (?,?,?,?,?,?)",
+                    c.horseId, saved.id, g.taskDate(), g.scheduledSlot(), g.instruction(), now());
+        return planView(saved);
     }
 
     @Transactional(readOnly = true)

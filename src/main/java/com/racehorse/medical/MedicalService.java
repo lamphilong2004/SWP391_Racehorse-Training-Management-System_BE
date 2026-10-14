@@ -20,15 +20,29 @@ public class MedicalService {
     private final VeterinaryExaminationRepository examinations;
     private final WeightRecordRepository weights;
     private final Validator validator;
+    // DEMO INTEGRATION: Flow 1 automatic activation re-check after the baseline (DEC-009 §1).
+    private final org.springframework.beans.factory.ObjectProvider<com.racehorse.integration.ActivationHook> activation;
 
+    /** Original CORE-014 signature (kept for its unit tests); no activation hook. */
     public MedicalService(MedicalAccess access, MedicalHorseRepository horses,
                           VeterinaryExaminationRepository examinations, WeightRecordRepository weights,
                           Validator validator) {
+        this(access, horses, examinations, weights, validator,
+                new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                        .getBeanProvider(com.racehorse.integration.ActivationHook.class));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MedicalService(MedicalAccess access, MedicalHorseRepository horses,
+                          VeterinaryExaminationRepository examinations, WeightRecordRepository weights,
+                          Validator validator,
+                          org.springframework.beans.factory.ObjectProvider<com.racehorse.integration.ActivationHook> activation) {
         this.access = access;
         this.horses = horses;
         this.examinations = examinations;
         this.weights = weights;
         this.validator = validator;
+        this.activation = activation;
     }
 
     @Transactional
@@ -46,6 +60,7 @@ public class MedicalService {
                 request.healthStatus(), request.clinicalNotes(), now));
         weights.saveAndFlush(new WeightRecord(horseId, identity.userId(), request.weightKg(), now, now, "BASELINE"));
         horses.updateHealth(horseId, request.healthStatus(), now);
+        activation.ifAvailable(hook -> hook.evaluate(horseId));
         return new BaselineExaminationResponse(examination.id, horseId, request.weightKg(), request.healthStatus(), now);
     }
 

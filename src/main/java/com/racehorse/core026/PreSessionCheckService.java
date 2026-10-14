@@ -32,8 +32,7 @@ public class PreSessionCheckService {
         this.projections = projections;
     }
 
-    private record Observations(Boolean conditionNormal, Boolean legsHoovesNormal, java.math.BigDecimal temperatureC,
-            String notes) {
+    private record Observations(CheckItems items, String notes) {
     }
 
     @Transactional
@@ -44,9 +43,7 @@ public class PreSessionCheckService {
             throw invalid("Positive session ID required.");
         AccessPolicy.require(scope.mayCheck(actor, sessionId));
         validate(validator, request);
-        if (request.overallResult() == CheckResult.ALL_NORMAL
-                && (!request.conditionNormal() || !request.legsHoovesNormal()))
-            throw invalid("ALL_NORMAL requires normal condition and legs/hooves.");
+        CheckResult overall = request.items().derived();
         // BR-23 automatic reporting is unapproved. Reject nested incident instead of
         // silently dropping it.
         if (request.incident() != null)
@@ -56,20 +53,19 @@ public class PreSessionCheckService {
             throw conflict("Only SCHEDULED sessions accept a pre-session check.");
         if (store.checkResult(sessionId).isPresent())
             throw conflict("This session already has a pre-session check.");
-        String observations = json.writeValueAsString(new Observations(request.conditionNormal(),
-                request.legsHoovesNormal(), request.temperatureC(), request.notes()));
+        String observations = json.writeValueAsString(new Observations(request.items(), request.notes()));
         if (observations.length() > 4000)
             throw invalid("Serialized observations exceed 4000 characters.");
         Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
         UserRef performer = store.user(actor.id());
         long id;
         try {
-            id = store.insertCheck(sessionId, actor.id(), request.overallResult(), observations, now);
+            id = store.insertCheck(sessionId, actor.id(), overall, observations, now);
         } catch (DataIntegrityViolationException e) {
             throw conflict("Pre-session check uniqueness or relationship changed concurrently.");
         }
-        events.publishEvent(new CheckRecorded(id, sessionId, request.overallResult()));
-        return new PreSessionCheck(id, sessionId, request.overallResult(), observations, performer, now, null);
+        events.publishEvent(new CheckRecorded(id, sessionId, overall));
+        return new PreSessionCheck(id, sessionId, overall, observations, performer, now, null);
     }
 
     @Transactional(readOnly = true)

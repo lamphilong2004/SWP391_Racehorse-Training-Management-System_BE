@@ -114,7 +114,8 @@ class IntegrationBoundaryTest {
         when(store.checkResult(1)).thenReturn(Optional.empty());
         when(store.user(1)).thenReturn(new UserRef(1, "U1", "Groom"));
         when(store.insertCheck(eq(1L), eq(1L), any(), anyString(), any())).thenThrow(new DuplicateKeyException("race"));
-        var request = new PreSessionCheckRequest(CheckResult.ALL_NORMAL, true, true, null, null, null);
+        var ok = new CheckItem(ItemResult.NORMAL, null);
+        var request = new PreSessionCheckRequest(new CheckItems(ok, ok, ok, ok, ok, null), null, null);
         assertEquals(ErrorCode.CONFLICT,
                 assertThrows(BusinessException.class, () -> checks().submit(1, request)).code());
         verifyNoInteractions(events);

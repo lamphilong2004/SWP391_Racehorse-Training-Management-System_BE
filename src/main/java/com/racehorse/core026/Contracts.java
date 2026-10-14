@@ -72,9 +72,26 @@ public final class Contracts {
             @Size(max = 2000) String description) {
     }
 
-    public record PreSessionCheckRequest(@NotNull CheckResult overallResult, @NotNull Boolean conditionNormal,
-            @NotNull Boolean legsHoovesNormal, @DecimalMin("30") @DecimalMax("45") BigDecimal temperatureC,
-            @Size(max = 3000) String notes, @Valid IncidentInput incident) {
+    /** DEMO INTEGRATION: approved 5-item checklist (Figma SCR-TRAIN-007); overall result is derived server-side. */
+    public enum ItemResult {
+        NORMAL, ABNORMAL
+    }
+
+    public record CheckItem(@NotNull ItemResult result, @Size(max = 500) String observation) {
+    }
+
+    public record CheckItems(@NotNull @Valid CheckItem generalCondition, @NotNull @Valid CheckItem appetiteBehaviour,
+            @NotNull @Valid CheckItem legsHooves, @NotNull @Valid CheckItem movement,
+            @NotNull @Valid CheckItem temperature, @DecimalMin("30") @DecimalMax("45") BigDecimal temperatureC) {
+        public CheckResult derived() {
+            boolean abnormal = java.util.stream.Stream.of(generalCondition, appetiteBehaviour, legsHooves, movement,
+                    temperature).anyMatch(i -> i != null && i.result() == ItemResult.ABNORMAL);
+            return abnormal ? CheckResult.ABNORMAL : CheckResult.ALL_NORMAL;
+        }
+    }
+
+    public record PreSessionCheckRequest(@NotNull @Valid CheckItems items, @Size(max = 1000) String notes,
+            @Valid IncidentInput incident) {
         @JsonAnySetter
         public void rejectUnknown(String field, Object value) {
             throw new IllegalArgumentException("Unsupported pre-session check field: " + field);

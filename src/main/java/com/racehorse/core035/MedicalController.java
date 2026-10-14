@@ -7,7 +7,7 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
-@RestController
+@RestController("medicalCaseController") // DEMO INTEGRATION: bean name clashed with com.racehorse.medical.MedicalController
 public class MedicalController {
     private final MedicalService service;
     public MedicalController(MedicalService service) { this.service = service; }

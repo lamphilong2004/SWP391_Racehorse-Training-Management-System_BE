@@ -1,0 +1,13 @@
+# DEMO profile (demo/main-flow-hour1). Activate together with dev: SPRING_PROFILES_ACTIVE=dev,demo
+# Needs DB_URL, JWT_SECRET and DEMO_PASSWORD in the environment (never committed).
+app:
+  demo:
+    reset-on-start: ${DEMO_RESET_ON_START:true}
+
+racehorse:
+  monitoring:
+    # DEMO DATA, not veterinary guidance (proposal P-07): global default critical heart rate and the warning margin.
+    hr-critical-default: 180
+    hr-warning-margin: 10
+    # Proposal P-08: unacknowledged CRITICAL alerts escalate to Veterinarians after this delay.
+    escalation-delay: PT120S
