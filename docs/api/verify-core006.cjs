@@ -137,6 +137,29 @@ for(const [action,state,linkedCase,targetCase,expected]of [
  ['RESOLVE','RESOLVED',true,null,409],
 ])check(reviewOutcome(action,state,linkedCase,targetCase)===expected,`Incident transition ${action}/${state}/${linkedCase}/${targetCase?.status??'none'}`);
 
+const caseCreateOperation=get('/api/medical/cases','post');
+const caseCreateSchema=s.MedicalCaseCreateRequest;
+check(caseCreateOperation.requestBody.content['application/json'].schema.$ref==='#/components/schemas/MedicalCaseCreateRequest','Independent case POST uses MedicalCaseCreateRequest');
+check(JSON.stringify(Object.keys(caseCreateSchema.properties))==='["horseId","reason"]','Case create permits only horseId and reason');
+check(!Object.hasOwn(caseCreateSchema.properties,'incidentId'),'Case create cannot accept incidentId');
+check(JSON.stringify(caseCreateSchema.required)==='["horseId","reason"]','Case create requires horseId and reason');
+check(caseCreateSchema.additionalProperties===false,'Case create rejects extra properties');
+check(/Create an independent MedicalCase with status OPEN/.test(caseCreateOperation.description),'Case POST creates independent OPEN case');
+check(/This operation cannot link an Incident/.test(caseCreateOperation.description),'Case POST has no Incident linkage');
+check(/only by OPEN_CASE or LINK_CASE through POST \/api\/incidents\/\{incidentId\}\/review/.test(caseCreateOperation.description),'Review is the exclusive Incident linkage path');
+check(!/incidentId|link.*Incident/i.test(caseCreateSchema.properties.reason.description),'Case reason does not imply Incident linkage');
+check(/unsupported incidentId/.test(caseCreateOperation.responses['400'].description),'Case POST rejects bypass field with validation error');
+check(!Object.hasOwn(s.IncidentCreateRequest.properties,'medicalCaseId'),'Incident reporting cannot bypass review by setting medicalCaseId');
+check(ids.size===29,'No additional operation may bypass Incident Review');
+for(const [path,pathItem]of Object.entries(d.paths))for(const [method,operation]of Object.entries(pathItem)){
+ if(!operation.operationId||method==='get'||path==='/api/incidents/{incidentId}/review')continue;
+ const inlineRequestSchema=operation.requestBody?.content?.['application/json']?.schema;
+ const requestRef=inlineRequestSchema?.$ref;
+ const requestSchema=requestRef?.startsWith('#/components/schemas/')?s[requestRef.split('/').at(-1)]:inlineRequestSchema;
+ check(!requestSchema?.properties?.incidentId,`No alternate Incident linkage request ${method} ${path}`);
+ check(requestRef!=='#/components/schemas/IncidentReviewRequest',`Review actions are exclusive to Review POST ${method} ${path}`);
+}
+
 const closeOperation=get('/api/medical/cases/{caseId}/close','post');
 const closeRule=decision.medicalCaseClosure;
 check(closeOperation['x-close-conditions']?.$ref==='#/x-approved-flow3-decisions/medicalCaseClosure','Close operation binds approved gates');

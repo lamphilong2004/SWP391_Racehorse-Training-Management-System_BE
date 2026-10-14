@@ -562,7 +562,7 @@ paths:
       tags:
         - Medical Cases
       summary: Open medical case
-      description: VETERINARIAN only. Create OPEN medical_case with opened_at and actor from JWT. reason maps condition_summary. Optional incidentId links same-horse incident.medical_case_id atomically; never invent medical_case.incident_id.
+      description: VETERINARIAN only. Create an independent MedicalCase with status OPEN, opened_at and actor from JWT; reason maps to condition_summary. This operation cannot link an Incident. Incident-to-case linkage is established only by OPEN_CASE or LINK_CASE through POST /api/incidents/{incidentId}/review, subject to the approved state transitions and 409 conflicts.
       x-roles:
         - VETERINARIAN
       responses:
@@ -582,7 +582,7 @@ paths:
                   - success
                   - data
         '400':
-          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
+          description: 'VALIDATION_ERROR: invalid fields, including unsupported incidentId.'
           content:
             application/json:
               schema:
@@ -2227,15 +2227,11 @@ components:
           type: integer
           format: int64
           minimum: 1
-        incidentId:
-          type: integer
-          format: int64
-          minimum: 1
         reason:
           type: string
           maxLength: 2000
           minLength: 1
-          description: Maps to medical_case.condition_summary. incidentId links incident.medical_case_id, not a medical_case.incident_id column.
+          description: Maps to medical_case.condition_summary for an independent case.
       additionalProperties: false
       required:
         - horseId
