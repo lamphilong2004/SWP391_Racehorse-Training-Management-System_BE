@@ -32,6 +32,48 @@ x-downstream-ownership:
   CORE-045: Ngô Minh Tiến
   CORE-046: Nguyễn Đình Minh Đức
 x-approved-flow3-decisions:
+  incidentReview:
+    transitions:
+      OPEN_CASE:
+        from: [REPORTED]
+        to: UNDER_REVIEW
+        requiresUnlinkedIncident: true
+        caseDisposition: CREATE_OPEN_SAME_HORSE
+      LINK_CASE:
+        from: [REPORTED]
+        to: UNDER_REVIEW
+        requiresUnlinkedIncident: true
+        caseDisposition: LINK_EXISTING_OPEN_SAME_HORSE
+      RESOLVE:
+        from: [REPORTED, UNDER_REVIEW]
+        to: RESOLVED
+        preservesLinkedCase: true
+        closesMedicalCase: false
+    terminalState: RESOLVED
+    reviewedByUserIdSource: JWT
+    invalidReviewHttpStatus: 409
+  medicalCaseClosure:
+    requiresStatus: OPEN
+    minimumClinicalExaminations: 1
+    clinicalExaminationTypes: [EXAMINATION, RE_EXAMINATION]
+    recoveryGate:
+      whenAny: [INJURY_EXISTS, TREATMENT_PLAN_EXISTS]
+      minimumReexaminations: 1
+      latestRecoveryOutcome: RECOVERED
+    treatmentTasksCompleteIfPlanExists: true
+    linkedRestrictionsLifted: true
+    linkedIncidentsResolved: true
+    injuryRecoveryStatusIndependentGate: false
+    cascadeIncidentResolve: false
+    cascadeRestrictionLift: false
+    cascadeGroomCompletion: false
+    invalidCloseHttpStatus: 409
+  restrictionEffectiveAt:
+    futureAllowed: false
+    compareTo: SERVER_NOW
+    futureErrorHttpStatus: 400
+    futureErrorCode: VALIDATION_ERROR
+    effectiveImmediatelyOnCreate: true
   abnormalPreSessionCheck:
     persistCheck: true
     overallResult: ABNORMAL
@@ -447,7 +489,16 @@ paths:
       tags:
         - Incidents
       summary: 'Vet reviews incident: open case, link case or resolve'
-      description: VETERINARIAN only. Review action is explicit. Validate same-horse case linkage and persist incident.reviewed_by_user_id/medical_case_id/status in one transaction. OPEN_CASE and LINK_CASE semantics follow their names; exact source-state/target-state rules require the decision listed as G3. Do not implement an invented transition table.
+      description: |
+        VETERINARIAN only. Persist incident.reviewed_by_user_id from JWT, medical_case_id and status atomically.
+        OPEN_CASE requires a REPORTED incident with no linked case; create an OPEN MedicalCase for the same horse,
+        link it and transition to UNDER_REVIEW. LINK_CASE requires a REPORTED incident with no linked case and an
+        existing OPEN MedicalCase for the same horse; link it and transition to UNDER_REVIEW. RESOLVE permits
+        REPORTED or UNDER_REVIEW to transition to RESOLVED, preserving any case link; it never closes the case.
+        RESOLVED is terminal. Re-review, backward transitions, changing a linked case and auto-reopen are forbidden.
+        Invalid source state, existing/wrong-horse/CLOSED case link or repeated review returns 409.
+      x-state-transitions:
+        $ref: '#/x-approved-flow3-decisions/incidentReview'
       x-roles:
         - VETERINARIAN
       responses:
@@ -491,7 +542,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: invalid transition, repeated review, linked case conflict, wrong horse or CLOSED case.'
           content:
             application/json:
               schema:
@@ -889,7 +940,17 @@ paths:
       tags:
         - Medical Cases
       summary: Close medical case after veterinarian review
-      description: VETERINARIAN only. Set CLOSED and server closed_at >= opened_at. Closure does not lift restrictions. Already closed returns 409 CONFLICT; additional clinical closure criteria are decision G3.
+      description: |
+        VETERINARIAN only. Close only an OPEN case with at least one case EXAMINATION or RE_EXAMINATION.
+        If the case has any Injury or a TreatmentPlan, require at least one RE_EXAMINATION and require the latest
+        RE_EXAMINATION recoveryOutcome to be RECOVERED; injury.recovery_status alone is not a closure gate.
+        If a TreatmentPlan exists, all materialized treatment-sourced care_task rows for that plan must be COMPLETED
+        (completed_at and completed_by_user_id present). Every MedicalRestriction directly linked to the case must
+        be lifted, and every Incident linked to the case must be RESOLVED. Set status CLOSED and server closed_at
+        >= opened_at only after all checks pass. Do not resolve Incidents, lift restrictions or complete Groom tasks
+        as a side effect. Already CLOSED or any unmet closure condition returns 409.
+      x-close-conditions:
+        $ref: '#/x-approved-flow3-decisions/medicalCaseClosure'
       x-roles:
         - VETERINARIAN
       responses:
@@ -933,7 +994,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: state, uniqueness or concurrency conflict.'
+          description: 'CONFLICT or BUSINESS_RULE_VIOLATION: case already CLOSED, missing examination/recovery, incomplete treatment task, unlifted linked restriction or unresolved linked Incident.'
           content:
             application/json:
               schema:
@@ -1253,7 +1314,7 @@ paths:
       tags:
         - Restrictions
       summary: Read derived training availability
-      description: Derive AVAILABLE when no restriction has lifted_at IS NULL; otherwise return its LIMITED/LOCKED level and safe operational reason/rules. At most one unlifted row per horse. LOCKED blocks all training scheduling and Start. LIMITED denies a matching PROHIBITED rule first; when ALLOWED rules exist, the exercise must match an ALLOWED rule and no PROHIBITED rule; without ALLOWED rules, it is allowed unless PROHIBITED matches. TRAINER uses assigned horses; WORK_RIDER uses assigned sessions. No availability column and no persisted AVAILABLE restriction. Future-dated effective_from never releases the unique unlifted slot.
+      description: Derive AVAILABLE when no restriction has lifted_at IS NULL; otherwise return its immediately effective LIMITED/LOCKED level and safe operational reason/rules. At most one unlifted row per horse. Creation rejects effectiveAt later than server now, so future scheduled restrictions do not exist. LOCKED blocks all training scheduling and Start. LIMITED denies a matching PROHIBITED rule first; when ALLOWED rules exist, the exercise must match an ALLOWED rule and no PROHIBITED rule; without ALLOWED rules, it is allowed unless PROHIBITED matches. TRAINER uses assigned horses; WORK_RIDER uses assigned sessions. No availability column and no persisted AVAILABLE restriction.
       x-roles:
         - CLUB_MANAGER
         - HEAD_TRAINER
@@ -1380,7 +1441,9 @@ paths:
       tags:
         - Restrictions
       summary: Vet sets LIMITED or LOCKED medical restriction
-      description: VETERINARIAN only. Insert LIMITED or LOCKED; never AVAILABLE. At most one row with lifted_at IS NULL per horse, enforced transactionally and by ux_medical_restriction__active_per_horse. A competing restriction, including a concurrent insert, returns 409 CONFLICT. Optional case must belong to the horse. No expiresAt; reviewDate does not auto-lift.
+      description: VETERINARIAN only. Insert immediately effective LIMITED or LOCKED; never AVAILABLE. Reject effectiveAt later than server now with 400 VALIDATION_ERROR; future scheduled restrictions and a scheduler are not supported. At most one row with lifted_at IS NULL per horse, enforced transactionally and by ux_medical_restriction__active_per_horse. A competing restriction, including a concurrent insert, returns 409 CONFLICT. Optional case must belong to the horse. No expiresAt; reviewDate does not auto-lift.
+      x-effective-at-validation:
+        $ref: '#/x-approved-flow3-decisions/restrictionEffectiveAt'
       x-roles:
         - VETERINARIAN
       responses:
@@ -1400,7 +1463,7 @@ paths:
                   - success
                   - data
         '400':
-          description: 'VALIDATION_ERROR: invalid fields or source-context constraint.'
+          description: 'VALIDATION_ERROR: invalid fields, including effectiveAt later than server now.'
           content:
             application/json:
               schema:
@@ -2116,7 +2179,7 @@ components:
       additionalProperties: false
       required:
         - action
-      description: Action names come from merged permission matrix. OPEN_CASE creates a same-horse medical_case; LINK_CASE requires an existing same-horse case; RESOLVE records review. Exact allowed source-state transitions and re-review policy are a business decision gap (G3). No comment column exists.
+      description: OPEN_CASE and LINK_CASE require a REPORTED unlinked Incident and transition it to UNDER_REVIEW; OPEN_CASE creates an OPEN same-horse case, while LINK_CASE requires an existing OPEN same-horse case. RESOLVE accepts REPORTED or UNDER_REVIEW and transitions to terminal RESOLVED without changing a linked case or closing it. Re-review, backward transitions and case relinking return 409. No comment column exists.
       oneOf:
         - properties:
             action:
@@ -2297,7 +2360,7 @@ components:
         effectiveAt:
           type: string
           format: date-time
-          description: Maps to effective_from. Active-slot uniqueness is based on lifted_at IS NULL, including future-dated rows; an unlifted row always reserves the unique slot.
+          description: Maps to effective_from. Must be no later than the server's current time; future values return 400 VALIDATION_ERROR. The restriction is effective immediately on creation. Active-slot uniqueness is based on lifted_at IS NULL.
         reviewDate:
           type: string
           format: date
@@ -2310,7 +2373,7 @@ components:
         - level
         - reason
         - effectiveAt
-      description: No expires_at field exists. reviewDate is a review reminder, not automatic expiry. Rules are edited via the dedicated PUT operation.
+      description: No expires_at field or future scheduled restriction exists. reviewDate is a review reminder, not automatic expiry. Rules are edited via the dedicated PUT operation.
     MedicalRestrictionLiftRequest:
       type: object
       properties: {}

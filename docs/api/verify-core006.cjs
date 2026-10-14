@@ -99,6 +99,76 @@ check(decision.abnormalPreSessionCheck.incidentCreation==='EXPLICIT_ONLY','No au
 check(/ABNORMAL.*persisted.*SCHEDULED.*blocks Start.*never automatically creates an Incident/i.test(get('/api/incidents','post').description),'Incident operation reflects pre-check decision');
 check(body.description.includes('does not automatically create an Incident'),'Incident request requires explicit creation');
 
+const reviewOperation=get('/api/incidents/{incidentId}/review','post');
+const reviewRule=decision.incidentReview;
+const transitions=reviewRule.transitions;
+check(reviewOperation['x-state-transitions']?.$ref==='#/x-approved-flow3-decisions/incidentReview','Review operation binds approved transitions');
+check(JSON.stringify(s.IncidentStatus.enum)==='["REPORTED","UNDER_REVIEW","RESOLVED"]','Approved Incident states');
+check(JSON.stringify(s.IncidentReviewRequest.properties.action.enum)===JSON.stringify(Object.keys(transitions)),'Review request actions match transitions');
+check(reviewOperation.requestBody.content['application/json'].schema.$ref==='#/components/schemas/IncidentReviewRequest','Review request schema');
+check(JSON.stringify(transitions.OPEN_CASE.from)==='["REPORTED"]'&&transitions.OPEN_CASE.to==='UNDER_REVIEW','OPEN_CASE transition');
+check(transitions.OPEN_CASE.requiresUnlinkedIncident===true&&transitions.OPEN_CASE.caseDisposition==='CREATE_OPEN_SAME_HORSE','OPEN_CASE creates same-horse OPEN case');
+check(JSON.stringify(transitions.LINK_CASE.from)==='["REPORTED"]'&&transitions.LINK_CASE.to==='UNDER_REVIEW','LINK_CASE transition');
+check(transitions.LINK_CASE.requiresUnlinkedIncident===true&&transitions.LINK_CASE.caseDisposition==='LINK_EXISTING_OPEN_SAME_HORSE','LINK_CASE requires existing OPEN same-horse case');
+check(JSON.stringify(transitions.RESOLVE.from)==='["REPORTED","UNDER_REVIEW"]'&&transitions.RESOLVE.to==='RESOLVED','RESOLVE direct and reviewed transitions');
+check(transitions.RESOLVE.preservesLinkedCase===true&&transitions.RESOLVE.closesMedicalCase===false,'RESOLVE retains link and leaves case open');
+check(reviewRule.terminalState==='RESOLVED'&&reviewRule.invalidReviewHttpStatus===409,'Terminal Incident and invalid review conflict');
+check(reviewRule.reviewedByUserIdSource==='JWT','Review actor from JWT');
+check(reviewOperation.responses['409'].content['application/json'].schema.$ref==='#/components/schemas/ErrorEnvelope'&&/invalid transition.*repeated review.*wrong horse.*CLOSED case/i.test(reviewOperation.responses['409'].description),'Review conflict response');
+check(/Re-review.*backward transitions.*changing a linked case.*auto-reopen/.test(reviewOperation.description),'Review operation rejects re-review, reversal and relinking');
+check(/REPORTED unlinked Incident.*UNDER_REVIEW.*RESOLVE accepts REPORTED or UNDER_REVIEW.*terminal RESOLVED/s.test(s.IncidentReviewRequest.description),'Review request transition semantics');
+function reviewOutcome(action,state,linkedCase,targetCase){
+ const rule=transitions[action];
+ if(!rule?.from.includes(state)||rule.requiresUnlinkedIncident&&linkedCase)return 409;
+ if(action==='LINK_CASE'&&(!targetCase||targetCase.status!=='OPEN'||!targetCase.sameHorse))return 409;
+ return rule.to;
+}
+for(const [action,state,linkedCase,targetCase,expected]of [
+ ['OPEN_CASE','REPORTED',false,null,'UNDER_REVIEW'],
+ ['OPEN_CASE','REPORTED',true,null,409],
+ ['OPEN_CASE','UNDER_REVIEW',false,null,409],
+ ['LINK_CASE','REPORTED',false,{status:'OPEN',sameHorse:true},'UNDER_REVIEW'],
+ ['LINK_CASE','REPORTED',false,{status:'CLOSED',sameHorse:true},409],
+ ['LINK_CASE','REPORTED',false,{status:'OPEN',sameHorse:false},409],
+ ['LINK_CASE','REPORTED',true,{status:'OPEN',sameHorse:true},409],
+ ['LINK_CASE','UNDER_REVIEW',false,{status:'OPEN',sameHorse:true},409],
+ ['RESOLVE','REPORTED',false,null,'RESOLVED'],
+ ['RESOLVE','UNDER_REVIEW',true,null,'RESOLVED'],
+ ['RESOLVE','RESOLVED',true,null,409],
+])check(reviewOutcome(action,state,linkedCase,targetCase)===expected,`Incident transition ${action}/${state}/${linkedCase}/${targetCase?.status??'none'}`);
+
+const closeOperation=get('/api/medical/cases/{caseId}/close','post');
+const closeRule=decision.medicalCaseClosure;
+check(closeOperation['x-close-conditions']?.$ref==='#/x-approved-flow3-decisions/medicalCaseClosure','Close operation binds approved gates');
+check(JSON.stringify(s.MedicalCaseStatus.enum)==='["OPEN","CLOSED"]'&&closeRule.requiresStatus==='OPEN','Only OPEN case may close');
+check(closeRule.minimumClinicalExaminations===1&&JSON.stringify(closeRule.clinicalExaminationTypes)==='["EXAMINATION","RE_EXAMINATION"]','At least one clinical examination');
+check(JSON.stringify(closeRule.recoveryGate.whenAny)==='["INJURY_EXISTS","TREATMENT_PLAN_EXISTS"]'&&closeRule.recoveryGate.minimumReexaminations===1&&closeRule.recoveryGate.latestRecoveryOutcome==='RECOVERED','Latest re-exam recovery gate');
+check(closeRule.treatmentTasksCompleteIfPlanExists===true&&closeRule.linkedRestrictionsLifted===true&&closeRule.linkedIncidentsResolved===true,'Treatment, restriction and incident closure gates');
+check(closeRule.injuryRecoveryStatusIndependentGate===false,'Injury recovery_status is not an independent close gate');
+check(closeRule.cascadeIncidentResolve===false&&closeRule.cascadeRestrictionLift===false&&closeRule.cascadeGroomCompletion===false,'Close does not cascade into other actions');
+check(closeRule.invalidCloseHttpStatus===409&&closeOperation.responses['409'].content['application/json'].schema.$ref==='#/components/schemas/ErrorEnvelope','Invalid close returns shared 409');
+check(/completed_at and completed_by_user_id present/.test(closeOperation.description),'Completed treatment tasks use persisted completion pair');
+check(/Do not resolve Incidents, lift restrictions or complete Groom tasks/.test(closeOperation.description),'Close operation is non-cascading');
+function mayClose(state){
+ const gate=closeRule;
+ if(state.status!==gate.requiresStatus)return false;
+ if(state.exams.filter(type=>gate.clinicalExaminationTypes.includes(type)).length<gate.minimumClinicalExaminations)return false;
+ if(gate.recoveryGate.whenAny.some(x=>(x==='INJURY_EXISTS'&&state.injury)||(x==='TREATMENT_PLAN_EXISTS'&&state.plan))){
+  if(state.reexams.length<gate.recoveryGate.minimumReexaminations||state.reexams.at(-1)!==gate.recoveryGate.latestRecoveryOutcome)return false;
+ }
+ return (!state.plan||state.tasksComplete)&&state.restrictionsLifted&&state.incidentsResolved;
+}
+const closeBase={status:'OPEN',exams:['EXAMINATION'],injury:false,plan:false,reexams:[],tasksComplete:true,restrictionsLifted:true,incidentsResolved:true};
+for(const [change,expected]of [
+ [{},true], [{status:'CLOSED'},false], [{exams:[]},false],
+ [{injury:true},false], [{injury:true,reexams:['RECOVERED']},true],
+ [{injury:true,reexams:['RECOVERED'],injuryRecoveryStatus:'NOT_RECOVERED'},true],
+ [{injury:true,reexams:['RECOVERED','IMPROVING']},false],
+ [{plan:true,reexams:['RECOVERED'],tasksComplete:false},false],
+ [{plan:true,reexams:['RECOVERED'],tasksComplete:true},true],
+ [{restrictionsLifted:false},false], [{incidentsResolved:false},false],
+])check(mayClose({...closeBase,...change})===expected,`Case closure gate ${JSON.stringify(change)}`);
+
 const assignment=decision.treatmentGroomAssignment;
 check(assignment.schemaAdditionApproved==='care_task.assigned_groom_user_id BIGINT NULL FK app_user(id)','Approved nullable Groom FK recorded');
 check(assignment.treatmentTaskRequiresAssignedGroom===true,'Treatment assignment mandatory by business validation');
@@ -142,6 +212,19 @@ for(const exerciseId of [false,true])for(const exerciseTypeNote of [false,true])
 check(/LOCKED blocks all/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability LOCKED behavior');
 check(/PROHIBITED rule first/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability PROHIBITED precedence');
 check(/when ALLOWED rules exist/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability ALLOWED semantics');
+const effective=decision.restrictionEffectiveAt;
+const restrictionCreate=get('/api/horses/{horseId}/medical-restrictions','post');
+check(restrictionCreate['x-effective-at-validation']?.$ref==='#/x-approved-flow3-decisions/restrictionEffectiveAt','Restriction create binds approved time validation');
+check(effective.futureAllowed===false&&effective.compareTo==='SERVER_NOW'&&effective.effectiveImmediatelyOnCreate===true,'Option A immediate restriction');
+check(effective.futureErrorHttpStatus===400&&effective.futureErrorCode==='VALIDATION_ERROR','Future restriction uses 400 validation error');
+check(s.MedicalRestrictionRequest.required.includes('effectiveAt')&&s.MedicalRestrictionRequest.properties.effectiveAt.format==='date-time','Required effectiveAt timestamp');
+check(/no later than the server's current time.*future values return 400 VALIDATION_ERROR/i.test(s.MedicalRestrictionRequest.properties.effectiveAt.description),'Request rejects future effectiveAt');
+check(/Reject effectiveAt later than server now with 400 VALIDATION_ERROR/.test(restrictionCreate.description),'Create operation rejects future effectiveAt');
+check(/effectiveAt later than server now/.test(restrictionCreate.responses['400'].description)&&restrictionCreate.responses['400'].content['application/json'].schema.$ref==='#/components/schemas/ErrorEnvelope','Future effectiveAt response');
+check(/immediately effective LIMITED\/LOCKED/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability is immediate');
+check(!/future-dated rows|future scheduled restriction is allowed/i.test(JSON.stringify(d)),'No future scheduled restriction semantics');
+function acceptsEffectiveAt(effectiveAt,serverNow){return effective.futureAllowed||effective.compareTo==='SERVER_NOW'&&effectiveAt<=serverNow;}
+for(const [offset,expected]of [[-1,true],[0,true],[1,false]])check(acceptsEffectiveAt(1000+offset,1000)===expected,`effectiveAt offset ${offset}`);
 
 const threshold=decision.thresholdResolution;
 check(threshold.owner==='CORE-019'&&threshold.consumer==='CORE-030','Threshold ownership');
