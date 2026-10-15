@@ -4,6 +4,7 @@ info:
   version: 0.1.0
   description: |
     CORE-004 contract. Owner: Dũng. Reviewers: Đức, Hoàng; Long (Owner row-scope security).
+    Initial draft: Lâm Phi Long (commit 6976c77, 2026-10-10). Review and revisions: Cao Thanh Dũng.
 
     Sources: analysis/business-flows.md §FLOW 1 (1.1–1.5); BR-01…BR-07; BR-D01; BR-D05; DEC-009 §1 (automatic activation)
     and §5 (Owner minimum workspace); Figma SCR-HORSE-001…007, SCR-OWNER-001/002; database/schema.sql horse,
@@ -813,10 +814,10 @@ components:
         uploadedAt: { type: string, format: date-time }
     WeightPoint:
       type: object
-      required: [weightKg, measuredAt]
+      required: [weightKg, recordedAt]
       properties:
-        weightKg: { type: number, exclusiveMinimum: 0, description: "ASSUMPTION unit kg (physical-schema §11 #4)." }
-        measuredAt: { type: string, format: date-time }
+        weightKg: { type: number, exclusiveMinimum: 0, maximum: 9999.99, multipleOf: 0.01, description: "Kilograms; dbo.weight_record.weight DECIMAL(6,2). ASSUMPTION unit kg (physical-schema §11 #4)." }
+        recordedAt: { type: string, format: date-time, description: UTC timestamp; maps to dbo.weight_record.measured_at DATETIME2(3). Aligned with flow3-medical WeightRecord.recordedAt (CORE-006). }
     TimelineEvent:
       type: object
       required: [occurredAt, eventType, title]
