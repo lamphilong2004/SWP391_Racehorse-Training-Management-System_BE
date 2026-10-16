@@ -51,6 +51,13 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 
 `mvn verify` — runs on the `test` profile with an in-memory H2 database; no SQL Server required.
 
+## CORE-019 Integration Boundary
+
+- Medical restriction endpoints derive availability from `medical_restriction`; `AVAILABLE` is never persisted. The active-row unique index in DB-01 remains the final duplicate-create guard.
+- `MedicalRestrictionService.exerciseAllowed` exposes the `LIMITED`/`LOCKED` exercise gate for training scheduling and start workflows. This backend snapshot has no training controller/service implementation to wire into those call sites; that consumer integration remains pending.
+- `CurrentActorProvider` is the CORE-007-compatible boundary. The CORE-007 provider/security implementation is not part of this branch; until a provider is wired, restriction endpoints fail closed with `401 UNAUTHORIZED`.
+- H2 tests exercise persistence and a unique-key concurrency analogue. SQL Server integration and filtered-index behavior against a real SQL Server instance have not been run by these tests.
+
 ## Work tracking
 
 Implementation follows `project-docs/planning/Racehorse_Core_Flow_Execution.xlsx` (one branch per CORE task:
