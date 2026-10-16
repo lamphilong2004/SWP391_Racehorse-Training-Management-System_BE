@@ -138,6 +138,14 @@ paths:
                   - properties:
                       data: { $ref: '#/components/schemas/CurrentUser' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The authenticated account is deactivated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error: { code: FORBIDDEN, message: Your account is deactivated., details: [] }
 
   /api/auth/logout:
     post:
