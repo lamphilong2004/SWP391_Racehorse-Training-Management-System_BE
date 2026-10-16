@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -39,6 +40,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(FoundationApiTest.ProbeConfig.class)
 class FoundationApiTest {
 
+    private static final long AUTHENTICATED_TEST_USER_ID = 9000;
+
     @DynamicPropertySource
     static void jwtProperties(DynamicPropertyRegistry registry) {
         TestJwtProperties.register(registry);
@@ -47,10 +50,20 @@ class FoundationApiTest {
     @Autowired
     private WebApplicationContext context;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM dbo.user_role WHERE user_id = ?", AUTHENTICATED_TEST_USER_ID);
+        jdbcTemplate.update("DELETE FROM dbo.app_user WHERE id = ?", AUTHENTICATED_TEST_USER_ID);
+        jdbcTemplate.update("""
+                INSERT INTO dbo.app_user (id, user_code, full_name, email, password_hash, account_status)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, AUTHENTICATED_TEST_USER_ID, "FOUNDATION-TEST", "Foundation Test",
+                "foundation-test@example.test", "unused", "ACTIVE");
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
@@ -67,7 +80,7 @@ class FoundationApiTest {
 
     @Test
     void validationErrorReturns400Envelope() throws Exception {
-        mvc.perform(post("/api/test-probe/validate").with(jwt())
+        mvc.perform(post("/api/test-probe/validate").with(authenticatedJwt())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
@@ -77,7 +90,7 @@ class FoundationApiTest {
 
     @Test
     void malformedJsonReturns400Envelope() throws Exception {
-        mvc.perform(post("/api/test-probe/validate").with(jwt())
+        mvc.perform(post("/api/test-probe/validate").with(authenticatedJwt())
                         .contentType(MediaType.APPLICATION_JSON).content("{not json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
@@ -85,7 +98,7 @@ class FoundationApiTest {
 
     @Test
     void businessExceptionUsesItsCodeAndStatus() throws Exception {
-        mvc.perform(get("/api/test-probe/conflict").with(jwt()))
+        mvc.perform(get("/api/test-probe/conflict").with(authenticatedJwt()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("CONFLICT"))
                 .andExpect(jsonPath("$.error.message").value("Horse code already exists."));
@@ -93,7 +106,7 @@ class FoundationApiTest {
 
     @Test
     void unknownRouteReturns404Envelope() throws Exception {
-        mvc.perform(get("/api/does-not-exist").with(jwt()))
+        mvc.perform(get("/api/does-not-exist").with(authenticatedJwt()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
@@ -101,14 +114,14 @@ class FoundationApiTest {
 
     @Test
     void unsupportedMethodReturns405Envelope() throws Exception {
-        mvc.perform(delete("/api/health").with(jwt()))
+        mvc.perform(delete("/api/health").with(authenticatedJwt()))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.error.code").value("METHOD_NOT_ALLOWED"));
     }
 
     @Test
     void unexpectedErrorReturns500WithoutInternalDetails() throws Exception {
-        mvc.perform(get("/api/test-probe/boom").with(jwt()))
+        mvc.perform(get("/api/test-probe/boom").with(authenticatedJwt()))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
                 .andExpect(jsonPath("$.error.message").value("An unexpected error occurred."));
@@ -133,6 +146,10 @@ class FoundationApiTest {
                 .andExpect(jsonPath("$.paths['/api/auth/me'].get.security[0].bearerAuth").exists())
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"));
+    }
+
+    private org.springframework.test.web.servlet.request.RequestPostProcessor authenticatedJwt() {
+        return jwt().jwt(token -> token.subject(Long.toString(AUTHENTICATED_TEST_USER_ID)));
     }
 
     @TestConfiguration

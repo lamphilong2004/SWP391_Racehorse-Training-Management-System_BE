@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 import javax.crypto.SecretKey;
@@ -45,6 +46,7 @@ public class SecurityConfiguration {
             HttpSecurity http,
             JsonSecurityHandlers securityHandlers,
             JwtAuthenticationConverter jwtAuthenticationConverter,
+            CurrentAccountStatusFilter currentAccountStatusFilter,
             Environment environment) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -71,6 +73,7 @@ public class SecurityConfiguration {
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint(securityHandlers));
+        http.addFilterAfter(currentAccountStatusFilter, BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 

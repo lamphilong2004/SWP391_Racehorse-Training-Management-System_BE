@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,19 +29,39 @@ public class AuthRepository {
         return users.stream().findFirst();
     }
 
-    public Optional<CurrentUser> findCurrentUser(long id, List<RoleCode> roles) {
-        List<CurrentUser> users = jdbcTemplate.query("""
-                SELECT id, user_code, full_name, email, account_status
-                FROM dbo.app_user
-                WHERE id = ?
-                """, (rs, rowNum) -> new CurrentUser(
+    public Optional<CurrentUser> findCurrentUser(long id) {
+        List<CurrentUserRow> rows = jdbcTemplate.query("""
+                SELECT u.id, u.user_code, u.full_name, u.email, u.account_status, r.role_code
+                FROM dbo.app_user u
+                LEFT JOIN dbo.user_role ur ON ur.user_id = u.id
+                LEFT JOIN dbo.role r ON r.id = ur.role_id
+                WHERE u.id = ?
+                ORDER BY r.role_code
+                """, (rs, rowNum) -> new CurrentUserRow(
                 rs.getLong("id"),
                 rs.getString("user_code"),
                 rs.getString("full_name"),
                 rs.getString("email"),
+                AccountStatus.valueOf(rs.getString("account_status")),
+                rs.getString("role_code")), id);
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+
+        CurrentUserRow user = rows.get(0);
+        List<RoleCode> roles = rows.stream()
+                .map(CurrentUserRow::roleCode)
+                .filter(role -> role != null)
+                .distinct()
+                .map(RoleCode::valueOf)
+                .toList();
+        return Optional.of(new CurrentUser(
+                user.id(),
+                user.userCode(),
+                user.fullName(),
+                user.email(),
                 roles,
-                AccountStatus.valueOf(rs.getString("account_status"))), id);
-        return users.stream().findFirst();
+                user.accountStatus()));
     }
 
     public List<RoleCode> findRoleCodes(long userId) {
@@ -69,6 +90,15 @@ public class AuthRepository {
                 rs.getString("email"),
                 rs.getString("password_hash"),
                 AccountStatus.valueOf(rs.getString("account_status")));
+    }
+
+    private record CurrentUserRow(
+            long id,
+            String userCode,
+            String fullName,
+            String email,
+            AccountStatus accountStatus,
+            String roleCode) {
     }
 
     public static final class UserAccount {

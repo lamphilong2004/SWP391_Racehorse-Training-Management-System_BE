@@ -43,6 +43,10 @@ public class JsonSecurityHandlers implements AuthenticationEntryPoint, AccessDen
         write(response, ErrorCode.FORBIDDEN, "You do not have permission to perform this action.");
     }
 
+    public void accountDeactivated(HttpServletResponse response) throws IOException {
+        write(response, ErrorCode.FORBIDDEN, "Your account is deactivated.");
+    }
+
     private void write(HttpServletResponse response, ErrorCode code, String message) throws IOException {
         response.setStatus(code.status().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

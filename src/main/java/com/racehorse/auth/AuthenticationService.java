@@ -73,11 +73,6 @@ public class AuthenticationService {
         }
     }
 
-    public CurrentUser currentUser(long userId, List<RoleCode> tokenRoles) {
-        return authRepository.findCurrentUser(userId, tokenRoles)
-                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "Authentication is no longer valid."));
-    }
-
     private BusinessException failed(LoginRateLimiter.Permit permit, ErrorCode code, String message) {
         rateLimiter.recordFailure(permit, clock.instant());
         return new BusinessException(code, message);

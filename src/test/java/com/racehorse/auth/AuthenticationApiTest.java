@@ -47,6 +47,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -84,6 +85,7 @@ class AuthenticationApiTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
+        jdbcTemplate.update("DELETE FROM dbo.audit_log");
         jdbcTemplate.update("DELETE FROM dbo.user_role");
         jdbcTemplate.update("DELETE FROM dbo.app_user");
         jdbcTemplate.update("DELETE FROM dbo.role");
@@ -115,6 +117,24 @@ class AuthenticationApiTest {
         Object lastLogin = jdbcTemplate.queryForObject(
                 "SELECT last_login_at FROM dbo.app_user WHERE id = ?", Object.class, userId);
         org.junit.jupiter.api.Assertions.assertNotNull(lastLogin);
+    }
+
+    @Test
+    void deactivatedAccountCannotUsePreviouslyIssuedToken() throws Exception {
+        long userId = createUser(AccountStatus.ACTIVE, RoleCode.TRAINER, passwordEncoder.encode(PASSWORD));
+        JsonNode login = objectMapper.readTree(login(emailFor(userId), PASSWORD, "192.0.2.31")
+                .andReturn().getResponse().getContentAsString());
+        String token = login.path("data").path("accessToken").stringValue();
+        jdbcTemplate.update("UPDATE dbo.app_user SET account_status = 'INACTIVE' WHERE id = ?", userId);
+
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.error.message").value("Your account is deactivated."));
+        mockMvc.perform(get("/api/test-probe/actor").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.error.message").value("Your account is deactivated."));
     }
 
     @Test
@@ -221,6 +241,107 @@ class AuthenticationApiTest {
     }
 
     @Test
+    void revokingRoleDeniesSameValidJwtAndCurrentRolesDriveMeAndActor() throws Exception {
+        long userId = createUser(
+                AccountStatus.ACTIVE,
+                passwordEncoder.encode(PASSWORD),
+                RoleCode.CLUB_MANAGER,
+                RoleCode.TRAINER);
+        String token = accessTokenFor(userId);
+        jdbcTemplate.update("""
+                DELETE FROM dbo.user_role
+                WHERE user_id = ? AND role_id = ?
+                """, userId, roleId(RoleCode.CLUB_MANAGER));
+
+        mockMvc.perform(get("/api/admin/test-probe").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roles.length()").value(1))
+                .andExpect(jsonPath("$.data.roles[0]").value("TRAINER"));
+        mockMvc.perform(get("/api/test-probe/actor").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value(userId))
+                .andExpect(jsonPath("$.data.roles.length()").value(1))
+                .andExpect(jsonPath("$.data.roles[0]").value("TRAINER"));
+    }
+
+    @Test
+    void revokingOneRoleKeepsAnotherAssignedRoleEffective() throws Exception {
+        long userId = createUser(
+                AccountStatus.ACTIVE,
+                passwordEncoder.encode(PASSWORD),
+                RoleCode.CLUB_MANAGER,
+                RoleCode.TRAINER);
+        String token = accessTokenFor(userId);
+        jdbcTemplate.update("""
+                DELETE FROM dbo.user_role
+                WHERE user_id = ? AND role_id = ?
+                """, userId, roleId(RoleCode.TRAINER));
+
+        mockMvc.perform(get("/api/admin/test-probe").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roles.length()").value(1))
+                .andExpect(jsonPath("$.data.roles[0]").value("CLUB_MANAGER"));
+        mockMvc.perform(get("/api/test-probe/actor").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roles[0]").value("CLUB_MANAGER"));
+    }
+
+    @Test
+    void logoutPersistsApprovedActionAndCurrentActorWithoutSecrets() throws Exception {
+        long userId = createUser(
+                AccountStatus.ACTIVE,
+                RoleCode.VETERINARIAN,
+                passwordEncoder.encode(PASSWORD));
+        String token = accessTokenFor(userId);
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        Map<String, Object> audit = jdbcTemplate.queryForMap("""
+                SELECT actor_user_id, actor_role, action, target_type, target_id, safe_summary, source
+                FROM dbo.audit_log
+                """);
+        assertEquals(userId, ((Number) audit.get("ACTOR_USER_ID")).longValue());
+        assertEquals("VETERINARIAN", audit.get("ACTOR_ROLE"));
+        assertEquals("USER_LOGGED_OUT", audit.get("ACTION"));
+        assertNull(audit.get("TARGET_TYPE"));
+        assertNull(audit.get("TARGET_ID"));
+        assertEquals("User logged out.", audit.get("SAFE_SUMMARY"));
+        assertEquals("WEB", audit.get("SOURCE"));
+        for (Object value : audit.values()) {
+            if (value != null) {
+                assertFalse(value.toString().contains(token));
+                assertFalse(value.toString().contains(PASSWORD));
+            }
+        }
+    }
+
+    @Test
+    void logoutReturnsInternalErrorWhenAuditPersistenceFails() throws Exception {
+        long userId = createUser(
+                AccountStatus.ACTIVE,
+                RoleCode.TRAINER,
+                passwordEncoder.encode(PASSWORD));
+        String token = accessTokenFor(userId);
+        jdbcTemplate.execute("ALTER TABLE dbo.audit_log RENAME TO audit_log_unavailable");
+
+        try {
+            mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                    .andExpect(jsonPath("$.success").value(false));
+        } finally {
+            jdbcTemplate.execute("ALTER TABLE dbo.audit_log_unavailable RENAME TO audit_log");
+        }
+    }
+
+    @Test
     void loginValidatesContractEmailAndPasswordLengths() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                         .with(remoteAddress("192.0.2.30"))
@@ -237,21 +358,37 @@ class AuthenticationApiTest {
                         .content(objectMapper.writeValueAsString(Map.of("email", email, "password", password))));
     }
 
+    private String accessTokenFor(long userId) throws Exception {
+        JsonNode login = objectMapper.readTree(login(emailFor(userId), PASSWORD, "192.0.2.32")
+                .andReturn().getResponse().getContentAsString());
+        return login.path("data").path("accessToken").stringValue();
+    }
+
     private long createUser(AccountStatus status, RoleCode role, String passwordHash) {
+        return createUser(status, passwordHash, role);
+    }
+
+    private long createUser(AccountStatus status, String passwordHash, RoleCode... roles) {
         long id = nextId.getAndIncrement();
-        int roleId = role.ordinal() + 1;
-        Integer existingRole = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dbo.role WHERE id = ?", Integer.class, roleId);
-        if (existingRole == null || existingRole == 0) {
-            jdbcTemplate.update("INSERT INTO dbo.role (id, role_code) VALUES (?, ?)", roleId, role.name());
-        }
         jdbcTemplate.update("""
                 INSERT INTO dbo.app_user (id, user_code, full_name, email, password_hash, account_status)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, id, "U-" + id, "Test User " + id, emailFor(id), passwordHash, status.name());
-        jdbcTemplate.update("INSERT INTO dbo.user_role (id, user_id, role_id) VALUES (?, ?, ?)",
-                id + 10_000, id, roleId);
+        for (int i = 0; i < roles.length; i++) {
+            int roleId = roleId(roles[i]);
+            Integer existingRole = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM dbo.role WHERE id = ?", Integer.class, roleId);
+            if (existingRole == null || existingRole == 0) {
+                jdbcTemplate.update("INSERT INTO dbo.role (id, role_code) VALUES (?, ?)", roleId, roles[i].name());
+            }
+            jdbcTemplate.update("INSERT INTO dbo.user_role (id, user_id, role_id) VALUES (?, ?, ?)",
+                    id + 10_000 + i, id, roleId);
+        }
         return id;
+    }
+
+    private int roleId(RoleCode role) {
+        return role.ordinal() + 1;
     }
 
     private String emailFor(long id) {
