@@ -33,7 +33,7 @@ public class AuthController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Signed in with a JWT."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Request validation failed."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid email or password."),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "The account is deactivated."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "The account is deactivated or valid pending-registration credentials await approval; no JWT is issued."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "Too many attempts.")
     })
     public ApiResponse<LoginResponse> login(
@@ -50,14 +50,18 @@ public class AuthController {
     @Operation(summary = "Return the signed-in user's profile", security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Current user."),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing, invalid or expired JWT.")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing, invalid or expired JWT."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "The authenticated account is deactivated.")
     })
     public ApiResponse<CurrentUser> currentUser(@AuthenticationPrincipal CurrentUser currentUser) {
         return ApiResponse.ok(currentUser);
     }
 
     @PostMapping("/logout")
-    @Operation(summary = "Sign out", security = @SecurityRequirement(name = "bearerAuth"))
+    @Operation(
+            summary = "Sign out",
+            description = "Logout is stateless: this records an audit event, and the client must discard its token.",
+            security = @SecurityRequirement(name = "bearerAuth"))
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Signed out."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing, invalid or expired JWT.")
