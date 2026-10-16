@@ -64,22 +64,25 @@ No role has an activate/approve endpoint: activation is automatic (DEC-009 §1).
 | Adjustment requests: approve / reject | — | ✔ | — | — | — | — | — |
 | Exercises: list, detail | R | R | R | R | R | — | — |
 | Exercises: create, edit | — | ✔ | ✔ | — | — | — | — |
-| Sessions: list, detail, calendar | R | R | A | A | R | A (pre-check list) | — |
+| Sessions: list, detail, calendar | R | R | A (assigned programs only) | A (own sessions) | R | A (assigned/notified pre-check sessions only) | — |
 | Sessions: create, exercises, suitability check, rider recommendations | — | — | A | — | — | — | — |
 | Sessions: start | — | — | A | A | — | — | — |
-| Sessions: pause, resume, stop | — | — | A | — | — | — | — |
+| Sessions: pause, resume, stop | — | — | A (Trainer only) | — | — | — | — |
+| Sessions: reduce intensity | — | — | A (Trainer only; operation signature proposed, needs confirmation) | — | — | — | — |
 | Sessions: complete | — | — | — | A | — | — | — |
 | Sessions: report issue (MF-12 in-session) | — | — | A | A | — | — | — |
 | Groom pre-session check list + submit | — | — | — | — | — | A | — |
 | Work Rider assignments, history, rider feedback | — | — | — | A | — | — | — |
-| Metrics submit (manual) | — | — | — | A | — | — | — |
+| Metrics submit (manual; IN_PROGRESS or PAUSED; `speedKmh` in km/h, `distanceM` in metres; distance semantics OPEN) | — | — | — | A | — | — | — |
 | Simulator start / stop (demo, same pipeline) | — | — | A | — | — | — | — |
 | Monitoring alerts: acknowledge + action | — | — | A | — | ✔ (CRITICAL acknowledge) | — | — |
 | Evaluation submit | — | — | A | — | — | — | — |
 | Session result, horse performance (read) | R | R | A | A (own sessions) | R | — | — |
-| STOMP `/topic/sessions/{id}/metrics|alerts|state` | — | ✔ | A | A | ✔ | — | — |
+| STOMP `/topic/sessions/{id}/metrics` | R | R | A (R) | A (R) | R | — | — |
+| STOMP `/topic/sessions/{id}/alerts` | R | R | A (R) | — | R | — | — |
+| STOMP `/topic/sessions/{id}/state` | R | R | A (R) | A (R) | R | — | — |
 
-Resume = TR, Stop = TR, early start not allowed: **ASSUMPTIONS** pending Q-32 / Q-33 / Q-34. Trainer calendar = own sessions by default (Q-35 open).
+Approved decisions: Q-32 Resume is Trainer-only; Q-33 Work Riders use Report Issue/Incident rather than Trainer Pause/Resume/Stop controls; Q-34 early start is not allowed and the Trainer must reschedule; Q-35 Trainers see sessions belonging to assigned programs, and Head Trainers may filter by `trainerId`. Groom REST access is limited to the assigned/notified Groom; persistence for that assignment is a model gap and does not permit broader access.
 
 ## Flow 3 — Medical & interlock (flow3-medical.openapi.yaml, CORE-006)
 
@@ -107,4 +110,4 @@ Owner health and training data are reached only through `/api/owner/horses/**` (
 
 ## Status
 
-The matrix encodes the CONFIRMED role-feature matrix. The cells marked ASSUMPTION follow the CORE-005 open questions. A change to any cell requires an update to `requirements/role-feature-matrix.md` first.
+The matrix encodes the confirmed role-feature matrix, including the approved CORE-005 decisions listed above. Remaining CORE-005 open questions are not authorization rules. A change to any cell requires an update to `requirements/role-feature-matrix.md` first.

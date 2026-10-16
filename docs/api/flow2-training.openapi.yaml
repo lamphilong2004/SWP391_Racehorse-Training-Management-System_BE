@@ -1,0 +1,2300 @@
+openapi: 3.1.0
+info:
+  title: Racehorse Training & Management System — Flow 2 Training API
+  version: 0.1.0
+  description: |
+    CORE-005 contract. Owner: Tiến. Reviewers: Hoàng, Dũng; Long (interlock).
+    STOMP topics and payloads: flow2-stomp.md.
+
+    Sources: analysis/business-flows.md §FLOW 2 approved detailed flow (M1–M12, Subflow T, AF-1…AF-5, EF-1…EF-6);
+    DEC-004; DEC-005; BR-12…BR-14, BR-19…BR-26, BR-D17…BR-D33; DEC-007 §3.1 (Groom pre-check gate);
+    design/flow-2-ux-architecture-draft.md; database/schema.sql D04/D05.
+
+    Conventions: identical to shared.openapi.yaml (CORE-003): envelope `{ success, data, error }`, ISO-8601 UTC,
+    `x-roles` enforced by Spring Security, zero-based paging, no SYSTEM role.
+    Assignment scope (role-feature-matrix §3a): a TRAINER acts only on programs with their open `trainer_assignment`;
+    a WORK_RIDER only on sessions where `work_rider_user_id` = self. Out-of-scope ids → 403.
+
+    Key rules:
+    - Session status = schema CHECK: SCHEDULED, IN_PROGRESS, PAUSED, COMPLETED, INTERRUPTED. **BLOCKED is a derived flag**
+      (`blocked` + `blockedReasons`), never a stored status.
+    - LOCKED horse → 409 BUSINESS_RULE_VIOLATION with the Veterinarian's reason (BR-13, BR-D20) on program create, session
+      create/edit and start. Availability is re-checked at scheduling time and at start (BR-14, EF-2).
+    - Suitability uses 4 categories: A Medical Hard Block (never overridable, BR-D18), B Operational Hard Block (rider schedule
+      conflict), C Warning (acknowledgement), D Recommendation Mismatch (reason). Under LIMITED a forbidden exercise is
+      removed or replaced, never overridden (BR-D32).
+    - Recommendations return labels + reasons only, **no numeric scores** (BR-D28, BR-D29, BR-D22).
+    - Stop requires a reason; an INTERRUPTED session never becomes COMPLETED (BR-D23).
+    - The Groom pre-session check is the start gate (DEC-007 §3.1, BR-21…23): no ALL_NORMAL check → cannot start;
+      ABNORMAL leaves the session SCHEDULED and blocked. It never creates an incident. Incident reporting belongs to CORE-046
+      and may reference the returned pre-session-check `id` as `preSessionCheckId` via the separate CORE-046
+      IncidentReportModal → POST /api/incidents flow.
+    - No race field is exposed: `horse_training_program.target_race_id` stays NULL and hidden (DEC-007 §3.3).
+    - BR-26 (Head Trainer evaluation completes the session) is superseded by the approved detailed flow (DEC-004): the Work
+      Rider finishes the session (M10) and the Trainer records the evaluation (M11).
+
+    Step → operation mapping:
+    | Step | Operations |
+    |---|---|
+    | M1 | GET /api/horses/{id} (CORE-004), GET /api/horses/{id}/training-availability (CORE-006), GET /api/horses/{id}/performance |
+    | M2 | GET /api/horses/{id}/template-recommendations, GET /api/program-templates/{id} |
+    | M2b, M3 | GET /api/horses/{id}/trainer-recommendations, POST /api/training-programs |
+    | M4 | GET /api/training-programs?assignedToMe=true |
+    | M5 | POST /api/training-sessions/suitability-check, POST /api/training-sessions/work-rider-recommendations, POST /api/training-sessions |
+    | M6 | POST /api/training-sessions (notification SESSION_ASSIGNED to the Work Rider) |
+    | M7 | GET /api/work-rider/assignments, GET /api/training-sessions/{id}, POST /api/training-sessions/{id}/start |
+    | M8 | POST /api/training-sessions/{id}/metrics; STOMP /topic/sessions/{id}/metrics |
+    | M9 | backend threshold evaluation; STOMP /topic/sessions/{id}/alerts |
+    | M10 | POST /api/training-sessions/{id}/complete, POST /api/training-sessions/{id}/rider-feedback |
+    | M11 | GET /api/training-sessions/{id}/result, POST /api/training-sessions/{id}/evaluation |
+    | M12 | GET /api/training-programs/{id}/progress, PATCH …/status, PUT …/trainer-assignment, PUT …/phases, POST /api/adjustment-requests/{id}/approve or reject |
+    | Subflow T | GET/POST /api/program-templates, GET /api/program-templates/{id}, POST …/versions, …/duplicate, …/archive |
+    | AF-1 | PUT /api/training-sessions/{id}/exercises (suitability re-run) |
+    | AF-2 | PUT /api/training-programs/{id}/trainer-assignment; GET /api/training-programs/{id}/history |
+    | AF-3 | STOMP alerts (WARNING, not stored); POST /api/monitoring-alerts/{id}/acknowledge only for stored CRITICAL alerts |
+    | AF-4 | POST /api/training-programs/{id}/adjustment-requests, GET /api/adjustment-requests, approve / reject |
+    | AF-5 | suitability-check returns category A per exercise; PUT …/exercises to remove or replace |
+    | EF-1 | 409 BUSINESS_RULE_VIOLATION on POST /api/training-programs and POST /api/training-sessions |
+    | EF-2 | `blocked` + `blockedReasons` on session reads; 409 on start; notification SESSION_BLOCKED |
+    | EF-3 | POST /api/monitoring-alerts/{id}/acknowledge (ACKNOWLEDGE / REDUCE_INTENSITY / PAUSE / STOP); proposed POST /api/training-sessions/{id}/reduce-intensity (signature needs confirmation); escalation to Vet |
+    | EF-4 | recommendation lists with warnings; `riderWarningAcknowledged` on session create |
+    | EF-5 | replaced by the Groom pre-session check gate (DEC-007): POST /api/training-sessions/{id}/pre-session-check |
+    | EF-6 | POST /api/training-sessions/{id}/report-issue, POST …/stop; rider feedback and evaluation still allowed |
+
+    Approved decisions: Q-32 Resume is Trainer-only; Q-33 Work Riders use Report Issue/Incident instead of Trainer
+    Pause/Resume/Stop controls; Q-34 early start is not allowed and the Trainer must reschedule; Q-35 Trainers see sessions
+    for assigned programs, with `trainerId` filtering available to the Head Trainer.
+    Surface vocabulary, metric units/distance semantics, `currentExerciseOrder` derivation, alert escalation timing and the
+    reduction operation's method/path/request body/session-state signature remain OPEN where not specified below.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Templates
+    description: Program Template Library (Subflow T, DEC-005).
+  - name: Programs
+    description: Horse Training Programs (M2–M4, M12).
+  - name: Adjustments
+    description: Program Adjustment Requests (AF-4).
+  - name: Exercises
+    description: Exercise library.
+  - name: Sessions
+    description: Training sessions, suitability, lifecycle (M5–M10).
+  - name: Groom
+    description: Pre-session check gate (DEC-007 §3.1).
+  - name: Work Rider
+    description: Assignments, history, rider feedback.
+  - name: Realtime
+    description: Metrics, simulator, alerts (M8–M9, EF-3).
+  - name: Evaluation
+    description: Session result, evaluation, performance (M11).
+
+paths:
+  # ===================== Templates =====================
+  /api/program-templates:
+    get:
+      tags: [Templates]
+      operationId: listProgramTemplates
+      summary: Program Template Library (SCR-TRAIN-030)
+      description: A Trainer may list only the source templates of programs assigned to them (read-only, BR-D33).
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/TemplateStatus' } }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of templates (latest version summary).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/TemplateSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Templates]
+      operationId: createProgramTemplate
+      summary: Create a template (version 1, ACTIVE)
+      description: Creates `training_program_template` (generated `templateCode`) and its first immutable `template_version` with phases and required skills. Audit `TEMPLATE_CREATED`.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TemplateVersionRequest' }
+      responses:
+        '201':
+          description: Template created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TemplateDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/program-templates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Templates]
+      operationId: getProgramTemplate
+      summary: Template detail (SCR-TRAIN-031; read-only for a Trainer)
+      parameters:
+        - { name: versionNo, in: query, description: Defaults to the latest version., schema: { type: integer, minimum: 1 } }
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER]
+      responses:
+        '200':
+          description: Template with the requested version and the version list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TemplateDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/program-templates/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Templates]
+      operationId: saveTemplateVersion
+      summary: Edit = save a new version (BR-D27)
+      description: Inserts a new immutable version (`versionNo` + 1). Existing Horse Programs keep their pinned version. ARCHIVED template → 409. Audit `TEMPLATE_VERSION_SAVED`.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TemplateVersionRequest' }
+      responses:
+        '201':
+          description: New version.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TemplateDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/program-templates/{id}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Templates]
+      operationId: duplicateProgramTemplate
+      summary: Duplicate a template (new template, version 1, duplicated_from set)
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 150 }
+                sourceVersionNo: { type: integer, minimum: 1, description: Defaults to the latest version. }
+      responses:
+        '201':
+          description: Duplicate created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TemplateDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/program-templates/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Templates]
+      operationId: archiveProgramTemplate
+      summary: Archive a template (never hard-deleted, BR-D26)
+      description: ARCHIVED templates are not selectable for new programs; existing programs stay valid. Already archived → 409.
+      x-roles: [HEAD_TRAINER]
+      responses:
+        '200':
+          description: Archived.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TemplateSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/horses/{id}/template-recommendations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Templates]
+      operationId: getTemplateRecommendations
+      summary: Recommended templates for a horse (M2, BR-D28)
+      description: ACTIVE templates only, each with a label and reasons. No numeric score is computed or returned.
+      x-roles: [HEAD_TRAINER]
+      responses:
+        '200':
+          description: Recommendations, best label first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/TemplateRecommendation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ===================== Programs =====================
+  /api/training-programs:
+    get:
+      tags: [Programs]
+      operationId: listTrainingPrograms
+      summary: Horse Training Programs (SCR-TRAIN-001; Trainer SCR-TRAIN-016 assigned list)
+      description: A Trainer always gets only programs assigned to them, whatever the filters.
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER, VETERINARIAN, GROOM]
+      parameters:
+        - { name: horseId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ProgramStatus' } }
+        - { name: trainerId, in: query, schema: { type: integer, format: int64 } }
+        - { name: assignedToMe, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of programs.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/ProgramSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Programs]
+      operationId: createTrainingProgram
+      summary: Create and activate a Horse Training Program from a template (M2b–M3, SCR-TRAIN-003 wizard)
+      description: |
+        Checks (BR-12, BR-13, BR-D20): horse ACTIVE; Training Availability not LOCKED (409 with the Vet reason); template
+        version belongs to an ACTIVE template; phases inside the program period and non-overlapping; trainer holds TRAINER.
+        One transaction creates the program (ACTIVE, `activated_at` now, pinned `templateVersionId`), its phases and the open
+        trainer assignment. The template is never modified (BR-D25). Notification PROGRAM_ASSIGNED to the Trainer.
+        Audit `PROGRAM_CREATED`, `TRAINER_ASSIGNED`.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProgramRequest' }
+      responses:
+        '201':
+          description: Program created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ProgramDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Locked' }
+
+  /api/training-programs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Programs]
+      operationId: getTrainingProgram
+      summary: Program detail (SCR-TRAIN-002)
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER, VETERINARIAN, GROOM]
+      responses:
+        '200':
+          description: Program.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ProgramDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/training-programs/{id}/progress:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Programs]
+      operationId: getProgramProgress
+      summary: Program progress aggregated across sessions (M12, SCR-TRAIN-022)
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER]
+      responses:
+        '200':
+          description: Progress.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ProgramProgress' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/training-programs/{id}/history:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Programs]
+      operationId: getProgramHistory
+      summary: Program change history (AF-2, AF-4, M12)
+      description: Read model over trainer assignments, adjustment requests, phase changes and status changes. Completed sessions stay attributed to the Trainer who ran them (AF-2).
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER]
+      responses:
+        '200':
+          description: Entries, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ProgramHistoryEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/training-programs/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Programs]
+      operationId: setProgramStatus
+      summary: Continue / pause / complete a program (M12)
+      description: ACTIVE ⇄ PAUSED; ACTIVE or PAUSED → COMPLETED (terminal). Resuming to ACTIVE re-checks LOCKED (409). Audit `PROGRAM_STATUS_CHANGED`.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ProgramStatus' }
+                reason: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '200':
+          description: Updated program.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ProgramDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-programs/{id}/trainer-assignment:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Programs]
+      operationId: reassignTrainer
+      summary: Change the program's Trainer (AF-2)
+      description: Closes the open assignment and opens a new one in one transaction (ux_trainer_assignment__open_per_program). Notifications to both Trainers. Audit `TRAINER_ASSIGNED`.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainerAssignmentRequest' }
+      responses:
+        '200':
+          description: Updated program.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ProgramDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-programs/{id}/phases:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Programs]
+      operationId: adjustProgramPhases
+      summary: Head Trainer adjusts phases / workload (M12; applies an approved AF-4 request)
+      description: |
+        ADDITION beyond the CORE-005 playbook API list: M12 "adjust (phase, workload)" and AF-4 "approved changes apply to the
+        Horse Training Program" need a write path, and `requested_value` is free text that cannot be applied automatically.
+        Replaces the program's phase list (keeps ids of retained phases; phases with sessions cannot be removed → 409).
+        Never touches the template. Marks changed phases `isCustomized`. Audit `PROGRAM_PHASES_ADJUSTED`.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phases]
+              properties:
+                adjustmentRequestId: { type: [integer, 'null'], format: int64, description: "The APPROVED request being applied, if any." }
+                phases:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/ProgramPhaseInput' }
+      responses:
+        '200':
+          description: Updated program.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ProgramDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/horses/{id}/trainer-recommendations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Programs]
+      operationId: getTrainerRecommendations
+      summary: Trainer candidates for a horse and template version (M3, BR-D29)
+      description: Labels + reasons + warnings; no numeric score. An empty list carries a reason (EF-4). The Head Trainer decides.
+      x-roles: [HEAD_TRAINER]
+      parameters:
+        - { name: templateVersionId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Candidates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/CandidateList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ===================== Adjustments =====================
+  /api/training-programs/{id}/adjustment-requests:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Adjustments]
+      operationId: createAdjustmentRequest
+      summary: Trainer requests a strategic change (AF-4, BR-D31)
+      description: Status PENDING. Trainer reassignment is not requestable (Q-39). No withdraw (Q-40). Notification ADJUSTMENT_REQUEST_SUBMITTED to the Head Trainer.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdjustmentRequestInput' }
+      responses:
+        '201':
+          description: Request created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/AdjustmentRequest' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/adjustment-requests:
+    get:
+      tags: [Adjustments]
+      operationId: listAdjustmentRequests
+      summary: Adjustment requests (SCR-TRAIN-024 review queue; a Trainer sees only their own)
+      x-roles: [HEAD_TRAINER, TRAINER]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AdjustmentStatus' } }
+        - { name: programId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of requests.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/AdjustmentRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/adjustment-requests/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Adjustments]
+      operationId: approveAdjustmentRequest
+      summary: Approve a request
+      description: PENDING only (409 otherwise). Records the decision; the Head Trainer applies the change with PUT /api/training-programs/{id}/phases (or status / trainer endpoints). Notification ADJUSTMENT_REQUEST_DECIDED.
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decisionReason: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '200':
+          description: Approved.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/AdjustmentRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/adjustment-requests/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Adjustments]
+      operationId: rejectAdjustmentRequest
+      summary: Reject a request (reason returned to the Trainer)
+      x-roles: [HEAD_TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decisionReason]
+              properties:
+                decisionReason: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '200':
+          description: Rejected.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/AdjustmentRequest' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  # ===================== Exercises =====================
+  /api/exercises:
+    get:
+      tags: [Exercises]
+      operationId: listExercises
+      summary: Exercise library (SCR-TRAIN-025)
+      x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, VETERINARIAN, CLUB_MANAGER]
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: exerciseType, in: query, schema: { type: string, maxLength: 50 } }
+      responses:
+        '200':
+          description: Exercises.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Exercise' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Exercises]
+      operationId: createExercise
+      summary: Add an exercise definition
+      x-roles: [HEAD_TRAINER, TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExerciseInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Exercise' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/exercises/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Exercises]
+      operationId: getExercise
+      summary: Exercise detail
+      x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, VETERINARIAN, CLUB_MANAGER]
+      responses:
+        '200':
+          description: Exercise.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Exercise' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Exercises]
+      operationId: updateExercise
+      summary: Edit an exercise definition
+      x-roles: [HEAD_TRAINER, TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExerciseInput' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Exercise' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ===================== Sessions =====================
+  /api/training-sessions:
+    get:
+      tags: [Sessions]
+      operationId: listTrainingSessions
+      summary: Session calendar / list (SCR-TRAIN-004, 019)
+      description: |
+        Scope: Trainer = sessions of assigned programs (Q-35 approved); Work Rider = own sessions; Groom = assigned/notified
+        sessions through /api/groom/sessions; Head Trainer, Club Manager, Veterinarian = all (read). `trainerId` filter is
+        available to the Head Trainer.
+      x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, CLUB_MANAGER, VETERINARIAN]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: trainerId, in: query, schema: { type: integer, format: int64 } }
+        - { name: horseId, in: query, schema: { type: integer, format: int64 } }
+        - { name: programId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/SessionStatus' } }
+      responses:
+        '200':
+          description: Sessions in the range.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SessionSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Sessions]
+      operationId: createTrainingSession
+      summary: Create and schedule a session (M5–M6, SCR-TRAIN-006 wizard)
+      description: |
+        Server re-runs every check (never trusts the client): program ACTIVE; phase belongs to the program; scheduled time
+        inside the phase dates; Availability not LOCKED (409 with Vet reason); each exercise not category A (409 with
+        per-exercise details); rider is a WORK_RIDER without a schedule conflict (category B → 409); category C/D exercises
+        need `acknowledgementNote`; rider warnings need `riderWarningAcknowledged` (recorded as an audit event — DB-01 has no
+        column for it); intensity within the phase range (BR-D30). Creates the session SCHEDULED (generated `sessionCode`)
+        and its exercises with `suitabilityCategory`. Notification SESSION_ASSIGNED to the Work Rider.
+        Audit `SESSION_CREATED`.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSessionRequest' }
+      responses:
+        '201':
+          description: Session scheduled.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessionDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/SuitabilityBlocked' }
+
+  /api/training-sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Sessions]
+      operationId: getTrainingSession
+      summary: Session detail (SCR-TRAIN-008 / 020 / 021)
+      description: GROOM access is limited to the assigned/notified Groom for pre-session work; the assignment persistence mapping is a model gap and must not be widened.
+      x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, GROOM, CLUB_MANAGER, VETERINARIAN]
+      responses:
+        '200':
+          description: Session.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessionDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Sessions]
+      operationId: updateSessionBasics
+      summary: Reschedule / change rider, surface, focus, intensity (BR-D30)
+      description: |
+        ADDITION beyond the CORE-005 playbook API list: BR-D30 lets the Trainer change session date/time, surface, focus,
+        intensity (within the phase range) and the Work Rider. SCHEDULED only. Same LOCKED / rider-conflict / intensity
+        checks as create. Notifies the old and new rider when the rider changes.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSessionRequest' }
+      responses:
+        '200':
+          description: Updated session.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessionDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/SuitabilityBlocked' }
+
+  /api/training-sessions/{id}/exercises:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Sessions]
+      operationId: replaceSessionExercises
+      summary: Change exercises after scheduling (AF-1, AF-5 remove/replace)
+      description: SCHEDULED only. Re-runs suitability against the current horse state; category A → 409; C/D need acknowledgement notes.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exercises]
+              properties:
+                exercises:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/SessionExerciseInput' }
+      responses:
+        '200':
+          description: Updated session.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessionDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/SuitabilityBlocked' }
+
+  /api/training-sessions/suitability-check:
+    post:
+      tags: [Sessions]
+      operationId: checkSessionSuitability
+      summary: Run the 4-category suitability check on a draft (M5 wizard, no side effects)
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionDraft' }
+      responses:
+        '200':
+          description: Check result. A LOCKED horse returns `sessionBlocked = true` with the reason (no exercise detail).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SuitabilityResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/training-sessions/work-rider-recommendations:
+    post:
+      tags: [Sessions]
+      operationId: recommendWorkRidersForDraft
+      summary: Work Rider candidates for a draft session (M5 wizard, BR-D22)
+      description: |
+        ADDITION beyond the playbook list: during the wizard the session does not exist yet, so the draft is posted.
+        Schedule conflict = hard block (category B); other mismatches are warnings. Labels + reasons, no scores.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionDraft' }
+      responses:
+        '200':
+          description: Candidates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/CandidateList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/training-sessions/{id}/work-rider-recommendations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Sessions]
+      operationId: recommendWorkRiders
+      summary: Work Rider candidates for an existing session (rider change)
+      x-roles: [TRAINER]
+      responses:
+        '200':
+          description: Candidates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/CandidateList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/training-sessions/{id}/start:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: startSession
+      summary: Start a session (M7)
+      description: |
+        SCHEDULED → IN_PROGRESS, sets `actual_start`. Gate (409 BUSINESS_RULE_VIOLATION with `blockedReasons` in details):
+        pre-session check missing or ABNORMAL (BR-21/22); Availability LOCKED (EF-2, Vet reason); an exercise now category A;
+        program not ACTIVE; before `scheduledStart` (Q-34 approved: no early start; the Trainer must reschedule). Publishes STOMP state.
+      x-roles: [WORK_RIDER, TRAINER]
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/pause:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: pauseSession
+      summary: Pause (EF-3; resumable, no reason needed)
+      description: IN_PROGRESS → PAUSED.
+      x-roles: [TRAINER]
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/reduce-intensity:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: reduceSessionIntensity
+      summary: "PROPOSED — NEEDS CONFIRMATION: reduce session intensity"
+      description: |
+        PROPOSED — NEEDS CONFIRMATION. This candidate uses POST, this path, an `intensity` request body, and applies only
+        to IN_PROGRESS or PAUSED sessions. The proposed value must be lower than the current session intensity according
+        to LOW < MEDIUM < MEDIUM_HIGH < HIGH. The approved requirement is that a Trainer has an operation to reduce
+        intensity; the method, path, request body and applicable session states have not been found in an approved source.
+        This candidate is the REST operation for the REDUCE_INTENSITY response suggested by a monitoring alert.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReduceIntensityRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/resume:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: resumeSession
+      summary: Resume a paused session (Q-32 approved — Trainer only)
+      description: PAUSED → IN_PROGRESS. Re-checks LOCKED (409).
+      x-roles: [TRAINER]
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/stop:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: stopSession
+      summary: Stop a session (EF-3 / EF-6; reason required → INTERRUPTED)
+      description: |
+        IN_PROGRESS or PAUSED → INTERRUPTED with `interruption_reason`, `actual_end`. If `medicallyRelevant`, an incident
+        (REPORTED, linked to the session) is created for Veterinarian review — the Trainer never opens a medical case directly.
+        Trainer only (Q-33 approved). Work Riders report issues through `/report-issue`.
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StopSessionRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: completeSession
+      summary: Finish the session normally (M10)
+      description: IN_PROGRESS → COMPLETED, sets `actual_end`. An INTERRUPTED session can never be completed (409).
+      x-roles: [WORK_RIDER]
+      responses:
+        '200': { $ref: '#/components/responses/SessionOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/report-issue:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Sessions]
+      operationId: reportSessionIssue
+      summary: Report an issue mid-session (EF-6, MF-12 in-session)
+      description: |
+        Creates an incident (REPORTED, `training_session_id` set) and notifies the Veterinarian and the Trainer
+        (INCIDENT_REPORTED). An IN_PROGRESS or PAUSED session becomes INTERRUPTED with the description as reason (EF-6).
+        Rider feedback and Trainer review remain available.
+      x-roles: [WORK_RIDER, TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportIssueRequest' }
+      responses:
+        '201':
+          description: Incident created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        required: [incidentId, incidentCode, sessionStatus]
+                        properties:
+                          incidentId: { type: integer, format: int64 }
+                          incidentCode: { type: string }
+                          sessionStatus: { $ref: '#/components/schemas/SessionStatus' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  # ===================== Groom =====================
+  /api/groom/sessions:
+    get:
+      tags: [Groom]
+      operationId: listGroomSessions
+      summary: Sessions needing a pre-session check (SCR-DASH-004 Groom Today)
+      description: |
+        SCHEDULED sessions on the date assigned/notified to the signed-in Groom, with their pre-check state. Only the
+        assigned/notified Groom may view or check a session. The current contract branch has no approved persistence
+        mapping for Groom assignment; this is a model gap and must not be relaxed to club-wide access.
+      x-roles: [GROOM]
+      parameters:
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Sessions.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SessionSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/training-sessions/{id}/pre-session-check:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Groom]
+      operationId: submitPreSessionCheck
+      summary: Pre-session check (SCR-TRAIN-007; BR-21…23)
+      description: |
+        SCHEDULED sessions only; one check per session (409 if it exists). Only the assigned/notified Groom may submit it;
+        the assignment persistence mapping is a model gap and must not be widened to all Grooms. The backend computes
+        `overallResult` from the five checklist results; clients do not send it. The five checklist items are stored as JSON
+        in `pre_session_check.observations`, and `overallResult` is derived from those item results. ABNORMAL leaves the session SCHEDULED and
+        blocks start. This operation never creates an Incident. Incident reporting is separate under CORE-046 and may reference the returned
+        pre-session-check `id` as `preSessionCheckId` through the separate CORE-046 IncidentReportModal → POST /api/incidents
+        flow.
+      x-roles: [GROOM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreSessionCheckRequest' }
+      responses:
+        '201':
+          description: Check recorded.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/PreSessionCheck' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  # ===================== Work Rider =====================
+  /api/work-rider/assignments:
+    get:
+      tags: [Work Rider]
+      operationId: listMyAssignments
+      summary: My upcoming and active rides (SCR-TRAIN-017, 027)
+      x-roles: [WORK_RIDER]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/SessionStatus' } }
+      responses:
+        '200':
+          description: Own sessions in SCHEDULED, IN_PROGRESS or PAUSED (or the given status).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SessionSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/work-rider/history:
+    get:
+      tags: [Work Rider]
+      operationId: listMyRidingHistory
+      summary: My riding history (SCR-TRAIN-029)
+      x-roles: [WORK_RIDER]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Own COMPLETED and INTERRUPTED sessions, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/SessionSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/training-sessions/{id}/rider-feedback:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Work Rider]
+      operationId: submitRiderFeedback
+      summary: Rider feedback (SCR-TRAIN-018; COMPLETED or INTERRUPTED)
+      description: Once per session (409). Answers are stored as JSON in `rider_feedback.responses`. Submitting never changes the session status (BR-D23).
+      x-roles: [WORK_RIDER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiderFeedbackRequest' }
+      responses:
+        '201':
+          description: Feedback recorded.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/RiderFeedback' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  # ===================== Realtime =====================
+  /api/training-sessions/{id}/metrics:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Realtime]
+      operationId: submitMetricSample
+      summary: Submit a manual metric sample (M8; system of record, DEC-002 D-03)
+      description: |
+        IN_PROGRESS or PAUSED. At least one value. Source MANUAL. The backend evaluates heart rate against the effective
+        global medical threshold configuration combined with any applicable horse override. The exact merge semantics
+        are not defined here. No universal threshold is hard-coded and the warning threshold is not derived from the
+        critical threshold. Each transition from below to at/above the effective
+        critical threshold creates one CRITICAL alert. Further samples above threshold do not create repeated alerts;
+        another alert is eligible only after a sample falls below the threshold and crosses it again. WARNING is transient
+        and is not stored (the schema stores CRITICAL only).
+      x-roles: [WORK_RIDER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MetricSampleInput' }
+      responses:
+        '201':
+          description: Sample stored and evaluated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/MetricSampleResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/simulator/sessions/{id}/start:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Realtime]
+      operationId: startSimulator
+      summary: Start the demo simulator for an IN_PROGRESS or PAUSED session
+      description: Demo only (DEC-002 D-03). Feeds the same pipeline with source SIMULATOR for IN_PROGRESS or PAUSED sessions; resulting notifications have `isSimulated = true`. Disabled outside the dev/demo profile (404).
+      x-roles: [TRAINER]
+      responses:
+        '204': { description: Simulator running. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/simulator/sessions/{id}/stop:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Realtime]
+      operationId: stopSimulator
+      summary: Stop the demo simulator
+      x-roles: [TRAINER]
+      responses:
+        '204': { description: Simulator stopped. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/monitoring-alerts/{id}/acknowledge:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Realtime]
+      operationId: acknowledgeAlert
+      summary: Acknowledge a CRITICAL alert and choose the response (EF-3, SCR-TRAIN-012)
+      description: |
+        Sets `acknowledged_at/by` and `action_taken`. PAUSE also pauses the session; STOP requires `stopReason` and interrupts
+        it (same rules as POST …/stop). REDUCE_INTENSITY records the alert response; the Trainer may use the proposed
+        intensity-reduction operation (PROPOSED — NEEDS CONFIRMATION; see that operation). A Veterinarian may only
+        ACKNOWLEDGE. Already acknowledged → 409.
+        Unacknowledged alerts are escalated to the Veterinarian after a configured time (`escalated_to_vet_at`).
+      x-roles: [TRAINER, VETERINARIAN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcknowledgeAlertRequest' }
+      responses:
+        '200':
+          description: Alert acknowledged.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/MonitoringAlert' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  # ===================== Evaluation =====================
+  /api/training-sessions/{id}/evaluation:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Evaluation]
+      operationId: submitEvaluation
+      summary: Trainer evaluation and recommendation (M11, SCR-TRAIN-009)
+      description: COMPLETED or INTERRUPTED sessions; once per session (409). The status never changes (an INTERRUPTED session stays INTERRUPTED).
+      x-roles: [TRAINER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EvaluationRequest' }
+      responses:
+        '201':
+          description: Evaluation recorded.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessionResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/BusinessRule' }
+
+  /api/training-sessions/{id}/result:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Evaluation]
+      operationId: getSessionResult
+      summary: Planned vs actual, metrics, alerts, rider feedback, evaluation (SCR-TRAIN-010)
+      x-roles: [HEAD_TRAINER, TRAINER, WORK_RIDER, CLUB_MANAGER, VETERINARIAN]
+      responses:
+        '200':
+          description: Result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessionResultView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/horses/{id}/performance:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Evaluation]
+      operationId: getHorsePerformance
+      summary: Performance history of a horse (SCR-TRAIN-023)
+      x-roles: [HEAD_TRAINER, TRAINER, CLUB_MANAGER, VETERINARIAN]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Per-session aggregates, oldest first (chart series).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PerformancePoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    Page:
+      name: page
+      in: query
+      description: Zero-based page index.
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    SessionOk:
+      description: Updated session.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data: { $ref: '#/components/schemas/SessionDetail' }
+    ValidationError:
+      description: Field validation failed (VALIDATION_ERROR).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Missing, invalid or expired JWT.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Role not allowed, or outside the caller's assignment scope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    BusinessRule:
+      description: Not allowed in the current state (BUSINESS_RULE_VIOLATION). `details` names each blocking reason.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Locked:
+      description: Horse not ACTIVE, or Training Availability LOCKED — the Veterinarian's reason is shown (BR-13).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            error:
+              code: BUSINESS_RULE_VIOLATION
+              message: 'Training is locked by the Veterinarian: suspected tendon strain, rest until re-examination.'
+              details: [{ field: horseId, message: LOCKED }]
+    SuitabilityBlocked:
+      description: |
+        LOCKED (whole session), category A exercise (Medical Hard Block, `field` = `exercises[i]`) or category B rider
+        schedule conflict (`field` = `workRiderUserId`). Never overridable from this endpoint.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            error:
+              code: BUSINESS_RULE_VIOLATION
+              message: The session cannot be scheduled.
+              details:
+                - { field: 'exercises[2]', message: 'A · Medical hard block: Gallop is prohibited by the active restriction.' }
+
+  schemas:
+    # ---------- Envelope (mirrors CORE-001 com.racehorse.common.api; identical in every contract file) ----------
+    Envelope:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        data: {}
+        error: { $ref: '#/components/schemas/ApiError' }
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error: { $ref: '#/components/schemas/ApiError' }
+    ApiError:
+      type: object
+      required: [code, message, details]
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message: { type: string }
+        details:
+          type: array
+          items: { $ref: '#/components/schemas/ErrorDetail' }
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        field: { type: [string, 'null'] }
+        message: { type: string }
+    ErrorCode:
+      type: string
+      enum: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, CONFLICT, BUSINESS_RULE_VIOLATION, TOO_MANY_REQUESTS, INTERNAL_ERROR]
+    PageMeta:
+      type: object
+      required: [page, size, totalItems, totalPages]
+      properties:
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalItems: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    UserRef:
+      type: object
+      required: [id, fullName]
+      properties:
+        id: { type: integer, format: int64 }
+        userCode: { type: string }
+        fullName: { type: string }
+    HorseRef:
+      type: object
+      required: [id, horseCode, name]
+      properties:
+        id: { type: integer, format: int64 }
+        horseCode: { type: string }
+        name: { type: string }
+
+    # ---------- Vocabularies ----------
+    TemplateStatus: { type: string, enum: [ACTIVE, ARCHIVED] }
+    ProgramStatus: { type: string, enum: [ACTIVE, PAUSED, COMPLETED] }
+    AdjustmentStatus: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+    AdjustmentRequestType:
+      type: string
+      description: ck_program_adjustment_request__request_type. TARGET_RACE stays in the vocabulary but is not offered while races are deferred (DEC-007 §3.3).
+      enum: [SOURCE_TEMPLATE, PRIMARY_GOAL, TARGET_RACE, PHASE_STRUCTURE, PHASE_OBJECTIVE, PHASE_WORKLOAD_INTENSITY, PHASE_TIMELINE, TOTAL_DURATION, OTHER_STRUCTURAL]
+    SessionStatus:
+      type: string
+      description: Stored status (ck_training_session__status). BLOCKED is not a status — see `blocked`.
+      enum: [SCHEDULED, IN_PROGRESS, PAUSED, COMPLETED, INTERRUPTED]
+    TrainingAvailability: { type: string, enum: [AVAILABLE, LIMITED, LOCKED] }
+    SuitabilityCategory:
+      type: string
+      description: A Medical Hard Block · B Operational Hard Block · C Warning · D Recommendation Mismatch.
+      enum: [A, B, C, D]
+    RecommendationLabel:
+      type: string
+      description: BR-D28 labels. Used for templates, trainers and riders. No numeric score exists.
+      enum: [RECOMMENDED, SUITABLE, SUITABLE_WITH_CAUTION, NOT_RECOMMENDED]
+    RealtimeState: { type: string, enum: [NORMAL, WARNING, CRITICAL] }
+    AlertAction: { type: string, enum: [ACKNOWLEDGE, REDUCE_INTENSITY, PAUSE, STOP] }
+    BlockedReason:
+      type: string
+      enum: [AVAILABILITY_LOCKED, PRE_CHECK_MISSING, PRE_CHECK_ABNORMAL, EXERCISE_MEDICAL_BLOCK, PROGRAM_NOT_ACTIVE]
+    IncidentType: { type: string, enum: [OFF_FEED, COLIC_SIGNS, FEVER, HOOF_OR_LEG_PROBLEM, OTHER] }
+    ObservedSeverity: { type: string, enum: [LOW, MEDIUM, HIGH] }
+    Intensity:
+      type: string
+      description: Ordered values used for phase range checks and session intensity reduction.
+      enum: [LOW, MEDIUM, MEDIUM_HIGH, HIGH]
+
+    # ---------- Templates ----------
+    TemplatePhaseInput:
+      type: object
+      required: [phaseOrder, name]
+      properties:
+        phaseOrder: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        objective: { type: [string, 'null'], maxLength: 1000 }
+        recommendedDuration: { type: [string, 'null'], maxLength: 100 }
+        intensityGuidance: { type: [string, 'null'], maxLength: 500 }
+    TemplatePhase:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: { type: integer, format: int64 }
+        - $ref: '#/components/schemas/TemplatePhaseInput'
+    TemplateVersionRequest:
+      type: object
+      required: [name, phases]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        goals: { type: [string, 'null'], maxLength: 2000 }
+        suitableHorseProfile: { type: [string, 'null'], maxLength: 1000 }
+        recommendedDistanceUseCase: { type: [string, 'null'], maxLength: 500 }
+        recommendedDuration: { type: [string, 'null'], maxLength: 100 }
+        workloadIntensityGuidance: { type: [string, 'null'], maxLength: 1000 }
+        preferredSurfaces: { type: [string, 'null'], maxLength: 500 }
+        recoveryGuidance: { type: [string, 'null'], maxLength: 1000 }
+        requiredSkillIds:
+          type: array
+          description: TRAINER_SPECIALIZATION skills.
+          items: { type: integer, format: int64 }
+        phases:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/TemplatePhaseInput' }
+    TemplateSummary:
+      type: object
+      required: [id, templateCode, status, latestVersionNo, name]
+      properties:
+        id: { type: integer, format: int64 }
+        templateCode: { type: string, maxLength: 20 }
+        status: { $ref: '#/components/schemas/TemplateStatus' }
+        latestVersionNo: { type: integer, minimum: 1 }
+        name: { type: string }
+        goals: { type: [string, 'null'] }
+        duplicatedFromTemplateId: { type: [integer, 'null'], format: int64 }
+        usedByProgramCount: { type: integer, minimum: 0 }
+    TemplateVersion:
+      type: object
+      required: [id, versionNo, name, phases, requiredSkills, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        versionNo: { type: integer, minimum: 1 }
+        name: { type: string }
+        goals: { type: [string, 'null'] }
+        suitableHorseProfile: { type: [string, 'null'] }
+        recommendedDistanceUseCase: { type: [string, 'null'] }
+        recommendedDuration: { type: [string, 'null'] }
+        workloadIntensityGuidance: { type: [string, 'null'] }
+        preferredSurfaces: { type: [string, 'null'] }
+        recoveryGuidance: { type: [string, 'null'] }
+        requiredSkills:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: integer, format: int64 }
+              name: { type: string }
+        phases:
+          type: array
+          items: { $ref: '#/components/schemas/TemplatePhase' }
+        createdBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+    TemplateDetail:
+      type: object
+      required: [template, version, versions]
+      properties:
+        template: { $ref: '#/components/schemas/TemplateSummary' }
+        version: { $ref: '#/components/schemas/TemplateVersion' }
+        versions:
+          type: array
+          items:
+            type: object
+            required: [id, versionNo, createdAt]
+            properties:
+              id: { type: integer, format: int64 }
+              versionNo: { type: integer }
+              createdAt: { type: string, format: date-time }
+    TemplateRecommendation:
+      type: object
+      required: [templateId, templateCode, templateVersionId, versionNo, name, label, reasons]
+      properties:
+        templateId: { type: integer, format: int64 }
+        templateCode: { type: string }
+        templateVersionId: { type: integer, format: int64 }
+        versionNo: { type: integer }
+        name: { type: string }
+        label: { $ref: '#/components/schemas/RecommendationLabel' }
+        reasons:
+          type: array
+          items: { type: string }
+
+    # ---------- Candidates (trainer / work rider) ----------
+    Candidate:
+      type: object
+      required: [user, label, reasons, warnings, hardBlock]
+      properties:
+        user: { $ref: '#/components/schemas/UserRef' }
+        experienceLevel: { type: [string, 'null'] }
+        skills:
+          type: array
+          items: { type: string }
+        label: { $ref: '#/components/schemas/RecommendationLabel' }
+        reasons:
+          type: array
+          items: { type: string }
+        warnings:
+          type: array
+          description: Category C mismatches; selecting this candidate needs an acknowledgement (EF-4).
+          items: { type: string }
+        hardBlock:
+          type: [string, 'null']
+          description: Category B schedule conflict (Work Rider only). A hard-blocked candidate cannot be selected.
+    CandidateList:
+      type: object
+      required: [candidates]
+      properties:
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/Candidate' }
+        emptyReason: { type: [string, 'null'], description: Explains an empty or all-warned list (EF-4). }
+
+    # ---------- Programs ----------
+    ProgramPhaseInput:
+      type: object
+      required: [phaseOrder, name, startDate, endDate]
+      properties:
+        id: { type: [integer, 'null'], format: int64, description: Existing phase id when adjusting. }
+        templateVersionPhaseId: { type: [integer, 'null'], format: int64 }
+        phaseOrder: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        objective: { type: [string, 'null'], maxLength: 1000 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        intensityMin: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+        intensityMax: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+        workload: { type: [string, 'null'], maxLength: 500 }
+    ProgramPhase:
+      allOf:
+        - type: object
+          required: [id, isCustomized]
+          properties:
+            id: { type: integer, format: int64 }
+            isCustomized: { type: boolean }
+        - $ref: '#/components/schemas/ProgramPhaseInput'
+    TrainerAssignmentRequest:
+      type: object
+      required: [trainerUserId, effectiveFrom]
+      properties:
+        trainerUserId: { type: integer, format: int64 }
+        effectiveFrom: { type: string, format: date }
+        reason: { type: [string, 'null'], maxLength: 500 }
+        warningsAcknowledged: { type: boolean, default: false, description: Required when the candidate carries warnings (EF-4). }
+    CreateProgramRequest:
+      type: object
+      description: No target race field (DEC-007 §3.3).
+      required: [horseId, templateVersionId, name, periodStart, periodEnd, phases, trainer]
+      properties:
+        horseId: { type: integer, format: int64 }
+        templateVersionId: { type: integer, format: int64, description: Pinned as source template + version (BR-D27). }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        goals: { type: [string, 'null'], maxLength: 2000 }
+        targetMetrics: { type: [string, 'null'], maxLength: 1000 }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        notes: { type: [string, 'null'], maxLength: 2000 }
+        phases:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/ProgramPhaseInput' }
+        trainer: { $ref: '#/components/schemas/TrainerAssignmentRequest' }
+    ProgramSummary:
+      type: object
+      required: [id, horse, name, status, periodStart, periodEnd, sourceTemplateId, sourceTemplateVersion]
+      properties:
+        id: { type: integer, format: int64 }
+        horse: { $ref: '#/components/schemas/HorseRef' }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/ProgramStatus' }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        sourceTemplateId: { type: integer, format: int64 }
+        sourceTemplateVersion: { type: integer }
+        currentTrainer: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        currentPhaseName: { type: [string, 'null'] }
+        trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
+    ProgramDetail:
+      allOf:
+        - $ref: '#/components/schemas/ProgramSummary'
+        - type: object
+          required: [phases, activatedAt]
+          properties:
+            sourceTemplateCode: { type: string }
+            sourceTemplateName: { type: string }
+            goals: { type: [string, 'null'] }
+            targetMetrics: { type: [string, 'null'] }
+            notes: { type: [string, 'null'] }
+            activatedAt: { type: string, format: date-time }
+            createdBy: { $ref: '#/components/schemas/UserRef' }
+            phases:
+              type: array
+              items: { $ref: '#/components/schemas/ProgramPhase' }
+            pendingAdjustmentRequests: { type: integer, minimum: 0 }
+    ProgramProgress:
+      type: object
+      required: [programId, phases]
+      properties:
+        programId: { type: integer, format: int64 }
+        phases:
+          type: array
+          items:
+            type: object
+            required: [phaseId, phaseOrder, name, scheduled, completed, interrupted]
+            properties:
+              phaseId: { type: integer, format: int64 }
+              phaseOrder: { type: integer }
+              name: { type: string }
+              startDate: { type: string, format: date }
+              endDate: { type: string, format: date }
+              scheduled: { type: integer, minimum: 0 }
+              completed: { type: integer, minimum: 0 }
+              interrupted: { type: integer, minimum: 0 }
+              totalDistanceM: { type: [number, 'null'], description: Field name denotes metres; aggregation semantics remain OPEN pending approval. }
+              lastEvaluationLabel: { type: [string, 'null'] }
+    ProgramHistoryEntry:
+      type: object
+      required: [occurredAt, entryType, summary]
+      properties:
+        occurredAt: { type: string, format: date-time }
+        entryType:
+          type: string
+          enum: [CREATED, TRAINER_ASSIGNED, STATUS_CHANGED, PHASES_ADJUSTED, ADJUSTMENT_REQUESTED, ADJUSTMENT_APPROVED, ADJUSTMENT_REJECTED]
+        actor: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        summary: { type: string }
+
+    # ---------- Adjustments ----------
+    AdjustmentRequestInput:
+      type: object
+      required: [requestType, requestedValue, reason]
+      properties:
+        horseProgramPhaseId: { type: [integer, 'null'], format: int64 }
+        requestType: { $ref: '#/components/schemas/AdjustmentRequestType' }
+        currentValue: { type: [string, 'null'], maxLength: 1000 }
+        requestedValue: { type: string, minLength: 1, maxLength: 1000 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        evidenceNotes: { type: [string, 'null'], maxLength: 2000 }
+    AdjustmentRequest:
+      allOf:
+        - $ref: '#/components/schemas/AdjustmentRequestInput'
+        - type: object
+          required: [id, programId, status, requestedBy, requestedAt]
+          properties:
+            id: { type: integer, format: int64 }
+            programId: { type: integer, format: int64 }
+            horse: { $ref: '#/components/schemas/HorseRef' }
+            status: { $ref: '#/components/schemas/AdjustmentStatus' }
+            requestedBy: { $ref: '#/components/schemas/UserRef' }
+            requestedAt: { type: string, format: date-time }
+            reviewedBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+            reviewedAt: { type: [string, 'null'], format: date-time }
+            decisionReason: { type: [string, 'null'] }
+
+    # ---------- Exercises ----------
+    ExerciseInput:
+      type: object
+      description: No default intensity is stored on an exercise definition.
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        exerciseType: { type: [string, 'null'], maxLength: 50, examples: [Walk, Trot, Canter, Gallop] }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        targetMetric: { type: [string, 'null'], maxLength: 100 }
+    Exercise:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: { type: integer, format: int64 }
+        - $ref: '#/components/schemas/ExerciseInput'
+
+    # ---------- Sessions ----------
+    SessionExerciseInput:
+      type: object
+      required: [exerciseDefinitionId, exerciseOrder]
+      properties:
+        exerciseDefinitionId: { type: integer, format: int64 }
+        exerciseOrder: { type: integer, minimum: 1 }
+        distanceM: { type: [number, 'null'], minimum: 0, description: Field name denotes metres; exact business meaning remains OPEN pending approval. }
+        durationMin: { type: [number, 'null'], minimum: 0, description: ASSUMPTION unit minutes. }
+        repetitions: { type: [integer, 'null'], minimum: 0 }
+        restIntervalMin: { type: [number, 'null'], minimum: 0, description: ASSUMPTION unit minutes. }
+        intensity: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+        surface: { type: [string, 'null'], maxLength: 50 }
+        acknowledgementNote:
+          type: [string, 'null']
+          maxLength: 1000
+          description: Required for category C (acknowledgement) and D (reason). Never accepted for category A (ck_session_exercise__no_ack_for_category_a).
+    SessionDraft:
+      type: object
+      required: [horseProgramPhaseId, scheduledStart, exercises]
+      properties:
+        horseProgramPhaseId: { type: integer, format: int64 }
+        scheduledStart: { type: string, format: date-time }
+        scheduledEnd: { type: [string, 'null'], format: date-time }
+        intensity: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+        workRiderUserId: { type: [integer, 'null'], format: int64 }
+        exercises:
+          type: array
+          items: { $ref: '#/components/schemas/SessionExerciseInput' }
+    CreateSessionRequest:
+      type: object
+      required: [horseProgramPhaseId, scheduledStart, workRiderUserId, exercises]
+      properties:
+        horseProgramPhaseId: { type: integer, format: int64 }
+        scheduledStart: { type: string, format: date-time }
+        scheduledEnd: { type: [string, 'null'], format: date-time }
+        surface: { type: [string, 'null'], maxLength: 50 }
+        focus: { type: [string, 'null'], maxLength: 200 }
+        intensity: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+        workRiderUserId: { type: integer, format: int64 }
+        riderWarningAcknowledged: { type: boolean, default: false }
+        exercises:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SessionExerciseInput' }
+    UpdateSessionRequest:
+      type: object
+      properties:
+        scheduledStart: { type: string, format: date-time }
+        scheduledEnd: { type: [string, 'null'], format: date-time }
+        surface: { type: [string, 'null'], maxLength: 50 }
+        focus: { type: [string, 'null'], maxLength: 200 }
+        intensity: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+        workRiderUserId: { type: integer, format: int64 }
+        riderWarningAcknowledged: { type: boolean, default: false }
+    SessionSummary:
+      type: object
+      required: [id, sessionCode, horse, programId, phaseName, scheduledStart, status, workRider, blocked, blockedReasons]
+      properties:
+        id: { type: integer, format: int64 }
+        sessionCode: { type: string, maxLength: 20 }
+        horse: { $ref: '#/components/schemas/HorseRef' }
+        programId: { type: integer, format: int64 }
+        phaseName: { type: string }
+        scheduledStart: { type: string, format: date-time }
+        scheduledEnd: { type: [string, 'null'], format: date-time }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        workRider: { $ref: '#/components/schemas/UserRef' }
+        trainer: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        preCheckResult:
+          type: [string, 'null']
+          enum: [ALL_NORMAL, ABNORMAL, null]
+          description: NULL until the Groom has checked.
+        blocked: { type: boolean, description: Derived; true when the session cannot start now. }
+        blockedReasons:
+          type: array
+          items: { $ref: '#/components/schemas/BlockedReason' }
+        blockedMessage: { type: [string, 'null'], description: Human-readable reason (Vet reason for LOCKED). }
+    SessionExercise:
+      allOf:
+        - type: object
+          required: [id, exerciseName]
+          properties:
+            id: { type: integer, format: int64 }
+            exerciseName: { type: string }
+            exerciseType: { type: [string, 'null'] }
+            suitabilityCategory: { oneOf: [{ $ref: '#/components/schemas/SuitabilityCategory' }, { type: 'null' }] }
+        - $ref: '#/components/schemas/SessionExerciseInput'
+    SessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/SessionSummary'
+        - type: object
+          required: [exercises, trainingAvailability]
+          properties:
+            horseProgramPhaseId: { type: integer, format: int64 }
+            surface: { type: [string, 'null'] }
+            focus: { type: [string, 'null'] }
+            intensity: { oneOf: [{ $ref: '#/components/schemas/Intensity' }, { type: 'null' }] }
+            actualStart: { type: [string, 'null'], format: date-time }
+            actualEnd: { type: [string, 'null'], format: date-time }
+            interruptionReason: { type: [string, 'null'] }
+            trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
+            exercises:
+              type: array
+              items: { $ref: '#/components/schemas/SessionExercise' }
+            preSessionCheck: { oneOf: [{ $ref: '#/components/schemas/PreSessionCheck' }, { type: 'null' }] }
+            linkedIncidentIds:
+              type: array
+              items: { type: integer, format: int64 }
+            hasRiderFeedback: { type: boolean }
+            hasEvaluation: { type: boolean }
+            createdBy: { $ref: '#/components/schemas/UserRef' }
+    SuitabilityResult:
+      type: object
+      required: [trainingAvailability, sessionBlocked, exercises, sessionIssues]
+      properties:
+        trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
+        sessionBlocked: { type: boolean, description: True when LOCKED (BR-D20); no exercise detail is evaluated. }
+        blockedMessage: { type: [string, 'null'], description: The Veterinarian's reason. }
+        exercises:
+          type: array
+          items:
+            type: object
+            required: [exerciseOrder, exerciseDefinitionId, messages]
+            properties:
+              exerciseOrder: { type: integer }
+              exerciseDefinitionId: { type: integer, format: int64 }
+              category: { oneOf: [{ $ref: '#/components/schemas/SuitabilityCategory' }, { type: 'null' }], description: NULL = no issue. }
+              messages:
+                type: array
+                items: { type: string }
+              allowedActions:
+                type: array
+                description: For category A only REMOVE and REPLACE (BR-D32).
+                items: { type: string, enum: [REMOVE, REPLACE, ACKNOWLEDGE, GIVE_REASON] }
+        sessionIssues:
+          type: array
+          description: Session-level findings, e.g. category B rider schedule conflict, intensity outside the phase range.
+          items:
+            type: object
+            required: [category, message]
+            properties:
+              category: { $ref: '#/components/schemas/SuitabilityCategory' }
+              field: { type: [string, 'null'] }
+              message: { type: string }
+    StopSessionRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        medicallyRelevant: { type: boolean, default: false }
+        incidentType: { $ref: '#/components/schemas/IncidentType' }
+        observedSeverity: { $ref: '#/components/schemas/ObservedSeverity' }
+    ReportIssueRequest:
+      type: object
+      required: [incidentType, observedSeverity, description]
+      properties:
+        incidentType: { $ref: '#/components/schemas/IncidentType' }
+        observedSeverity: { $ref: '#/components/schemas/ObservedSeverity' }
+        description: { type: string, minLength: 1, maxLength: 1000 }
+        observedAt: { type: string, format: date-time, description: Defaults to now. }
+
+    # ---------- Groom pre-session check ----------
+    PreSessionCheckRequest:
+      type: object
+      additionalProperties: false
+      required: [checks]
+      properties:
+        checks:
+          $ref: '#/components/schemas/PreSessionCheckChecklist'
+    PreSessionCheckChecklist:
+      type: object
+      description: Exactly one item for each key; overallResult is computed by the backend.
+      additionalProperties: false
+      required: [GENERAL_CONDITION, APPETITE_BEHAVIOUR, LEGS_HOOVES, MOVEMENT, TEMPERATURE]
+      properties:
+        GENERAL_CONDITION: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        APPETITE_BEHAVIOUR: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        LEGS_HOOVES: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        MOVEMENT: { $ref: '#/components/schemas/PreSessionCheckItem' }
+        TEMPERATURE: { $ref: '#/components/schemas/PreSessionCheckItem' }
+    PreSessionCheckItem:
+      type: object
+      required: [result]
+      additionalProperties: false
+      properties:
+        result: { type: string, enum: [NORMAL, ABNORMAL] }
+        observation: { type: string, maxLength: 1000 }
+    PreSessionCheck:
+      type: object
+      required: [id, sessionId, checks, overallResult, performedBy, performedAt]
+      properties:
+        id: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
+        checks: { $ref: '#/components/schemas/PreSessionCheckChecklist' }
+        overallResult: { type: string, enum: [ALL_NORMAL, ABNORMAL] }
+        performedBy: { $ref: '#/components/schemas/UserRef' }
+        performedAt: { type: string, format: date-time }
+    ReduceIntensityRequest:
+      type: object
+      required: [intensity]
+      properties:
+        intensity: { $ref: '#/components/schemas/Intensity' }
+
+    # ---------- Work Rider feedback ----------
+    RiderFeedbackRequest:
+      type: object
+      description: Prompts adapt to the outcome (BR-D23). `preInterruptionDescription` applies to INTERRUPTED sessions.
+      required: [responses]
+      properties:
+        responses:
+          type: object
+          properties:
+            horseResponse: { type: [string, 'null'], maxLength: 500 }
+            balance: { type: [string, 'null'], maxLength: 500 }
+            breathing: { type: [string, 'null'], maxLength: 500 }
+            strideFeeling: { type: [string, 'null'], maxLength: 500 }
+            abnormalBehavior: { type: [string, 'null'], maxLength: 500 }
+            preInterruptionDescription: { type: [string, 'null'], maxLength: 1000 }
+            notes: { type: [string, 'null'], maxLength: 1000 }
+    RiderFeedback:
+      allOf:
+        - $ref: '#/components/schemas/RiderFeedbackRequest'
+        - type: object
+          required: [id, sessionId, submittedBy, submittedAt]
+          properties:
+            id: { type: integer, format: int64 }
+            sessionId: { type: integer, format: int64 }
+            submittedBy: { $ref: '#/components/schemas/UserRef' }
+            submittedAt: { type: string, format: date-time }
+
+    # ---------- Realtime ----------
+    MetricSampleInput:
+      type: object
+      description: At least one of heartRate, speed, distance (ck_training_metric_sample__has_value). Accepted while IN_PROGRESS or PAUSED.
+      required: [recordedAt]
+      properties:
+        recordedAt: { type: string, format: date-time }
+        heartRate: { type: [integer, 'null'], minimum: 0, description: Beats per minute. }
+        speedKmh: { type: [number, 'null'], minimum: 0, description: Field name denotes km/h. }
+        distanceM: { type: [number, 'null'], minimum: 0, description: Field name denotes metres; distance semantics remain OPEN pending approval. }
+    MetricSampleResult:
+      type: object
+      required: [sampleId, realtimeState]
+      properties:
+        sampleId: { type: integer, format: int64 }
+        realtimeState: { $ref: '#/components/schemas/RealtimeState' }
+        alertId: { type: [integer, 'null'], format: int64, description: Set when a CRITICAL alert was stored. }
+    MonitoringAlert:
+      type: object
+      required: [id, sessionId, metric, metricValue, thresholdApplied, severity, raisedAt]
+      properties:
+        id: { type: integer, format: int64 }
+        sessionId: { type: integer, format: int64 }
+        metric: { type: string, const: HEART_RATE }
+        metricValue: { type: number }
+        thresholdApplied: { type: number }
+        severity: { type: string, const: CRITICAL }
+        raisedAt: { type: string, format: date-time }
+        acknowledgedAt: { type: [string, 'null'], format: date-time }
+        acknowledgedBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        actionTaken: { oneOf: [{ $ref: '#/components/schemas/AlertAction' }, { type: 'null' }] }
+        escalatedToVetAt: { type: [string, 'null'], format: date-time }
+    AcknowledgeAlertRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { $ref: '#/components/schemas/AlertAction' }
+        stopReason: { type: [string, 'null'], maxLength: 1000, description: Required when action = STOP. }
+        medicallyRelevant: { type: boolean, default: false, description: "With STOP, creates an incident for Vet review." }
+
+    # ---------- Evaluation ----------
+    EvaluationRequest:
+      type: object
+      required: [result]
+      properties:
+        result: { type: string, enum: [MET, PARTIALLY_MET, NOT_MET] }
+        evaluatedSummary: { type: [string, 'null'], maxLength: 2000 }
+        evaluationNotes: { type: [string, 'null'], maxLength: 2000 }
+        recommendation: { type: [string, 'null'], maxLength: 2000, description: Forward recommendation (M11). }
+    SessionResult:
+      allOf:
+        - $ref: '#/components/schemas/EvaluationRequest'
+        - type: object
+          required: [id, sessionId, evaluatedBy, evaluatedAt]
+          properties:
+            id: { type: integer, format: int64 }
+            sessionId: { type: integer, format: int64 }
+            evaluatedBy: { $ref: '#/components/schemas/UserRef' }
+            evaluatedAt: { type: string, format: date-time }
+    SessionResultView:
+      type: object
+      required: [session, actual, alerts]
+      properties:
+        session: { $ref: '#/components/schemas/SessionDetail' }
+        actual:
+          type: object
+          properties:
+            durationMin: { type: [number, 'null'] }
+            totalDistanceM: { type: [number, 'null'], description: Field name denotes metres; aggregation semantics remain OPEN pending approval. }
+            maxHeartRate: { type: [integer, 'null'] }
+            avgHeartRate: { type: [number, 'null'] }
+            maxSpeedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+            avgSpeedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+            sampleCount: { type: integer, minimum: 0 }
+            simulated: { type: boolean, description: True when any sample came from the simulator. }
+        samples:
+          type: array
+          description: Time series for charts.
+          items:
+            type: object
+            required: [recordedAt, source]
+            properties:
+              recordedAt: { type: string, format: date-time }
+              heartRate: { type: [integer, 'null'] }
+              speedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+              distanceM: { type: [number, 'null'], description: Field name denotes metres; distance semantics remain OPEN pending approval. }
+              source: { type: string, enum: [MANUAL, SIMULATOR] }
+        alerts:
+          type: array
+          items: { $ref: '#/components/schemas/MonitoringAlert' }
+        riderFeedback: { oneOf: [{ $ref: '#/components/schemas/RiderFeedback' }, { type: 'null' }] }
+        evaluation: { oneOf: [{ $ref: '#/components/schemas/SessionResult' }, { type: 'null' }] }
+    PerformancePoint:
+      type: object
+      required: [sessionId, sessionCode, date, status]
+      properties:
+        sessionId: { type: integer, format: int64 }
+        sessionCode: { type: string }
+        date: { type: string, format: date }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        totalDistanceM: { type: [number, 'null'], description: Field name denotes metres; aggregation semantics remain OPEN pending approval. }
+        durationMin: { type: [number, 'null'] }
+        maxHeartRate: { type: [integer, 'null'] }
+        avgSpeedKmh: { type: [number, 'null'], description: Field name denotes km/h. }
+        result:
+          description: Null when no Trainer evaluation has been recorded; when present, this is the required evaluation result.
+          oneOf:
+            - type: string
+              enum: [MET, PARTIALLY_MET, NOT_MET]
+            - type: 'null'
