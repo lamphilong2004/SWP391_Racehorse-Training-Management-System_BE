@@ -1,0 +1,14 @@
+# Test profile: in-memory H2 (SQL Server compatibility mode) so context tests run without a SQL Server instance.
+# Schema validation against the real approved schema is done on the dev profile (see README).
+spring:
+  datasource:
+    url: jdbc:h2:mem:racehorse_test;MODE=MSSQLServer;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+app:
+  cors:
+    allowed-origins: http://localhost:5173
