@@ -78,7 +78,9 @@ No role has an activate/approve endpoint: activation is automatic (DEC-009 §1).
 | Monitoring alerts: acknowledge + action | — | — | A | — | ✔ (CRITICAL acknowledge) | — | — |
 | Evaluation submit | — | — | A | — | — | — | — |
 | Session result, horse performance (read) | R | R | A | A (own sessions) | R | — | — |
-| STOMP `/topic/sessions/{id}/metrics|alerts|state` | — | ✔ | A | A | ✔ | — | — |
+| STOMP `/topic/sessions/{id}/metrics` | R | R | A (R) | A (R) | R | — | — |
+| STOMP `/topic/sessions/{id}/alerts` | R | R | A (R) | — | R | — | — |
+| STOMP `/topic/sessions/{id}/state` | R | R | A (R) | A (R) | R | — | — |
 
 Approved decisions: Q-32 Resume is Trainer-only; Q-33 Work Riders use Report Issue/Incident rather than Trainer Pause/Resume/Stop controls; Q-34 early start is not allowed and the Trainer must reschedule; Q-35 Trainers see sessions belonging to assigned programs, and Head Trainers may filter by `trainerId`. Groom REST access is limited to the assigned/notified Groom; persistence for that assignment is a model gap and does not permit broader access.
 

@@ -12,12 +12,12 @@ Checked on every `SUBSCRIBE` (a `ChannelInterceptor` in CORE-007 / CORE-030), no
 
 | Topic | Allowed subscribers |
 |---|---|
-| `/topic/sessions/{id}/metrics` | HEAD_TRAINER, VETERINARIAN (all sessions); TRAINER (sessions of assigned programs); WORK_RIDER (own session) |
-| `/topic/sessions/{id}/alerts` | same as metrics |
-| `/topic/sessions/{id}/state` | same as metrics |
+| `/topic/sessions/{id}/metrics` | CLUB_MANAGER (read-only), HEAD_TRAINER, VETERINARIAN (all sessions); TRAINER (sessions of assigned programs); WORK_RIDER (own session) |
+| `/topic/sessions/{id}/alerts` | CLUB_MANAGER (read-only), HEAD_TRAINER, VETERINARIAN (all sessions); TRAINER (sessions of assigned programs) |
+| `/topic/sessions/{id}/state` | CLUB_MANAGER (read-only), HEAD_TRAINER, VETERINARIAN (all sessions); TRAINER (sessions of assigned programs); WORK_RIDER (own session) |
 | `/user/queue/notifications` | the signed-in user only (shared contract) |
 
-CLUB_MANAGER, GROOM and HORSE_OWNER have no session topic access (role-feature-matrix MF-07). Groom REST access to pre-session checks is limited to the assigned/notified Groom; the current contract branch has a persistence model gap for that assignment and must not widen access. A refused subscription receives a STOMP `ERROR` frame. The connection is not trusted for other topics.
+The confirmed role-feature-matrix MF-07 grants CLUB_MANAGER read-only access to all three session topics. WORK_RIDER may subscribe only to `metrics` and `state` for their own session; alerts go to the Trainer and Veterinarian (BR-25), and the WR-D3/WR-D9 Figma frames have no alert panel. GROOM and HORSE_OWNER have no session topic access. Groom REST access to pre-session checks is limited to the assigned/notified Groom; the current contract branch has a persistence model gap for that assignment and must not widen access. A refused subscription receives a STOMP `ERROR` frame. The connection is not trusted for other topics.
 
 ## `/topic/sessions/{id}/metrics`
 

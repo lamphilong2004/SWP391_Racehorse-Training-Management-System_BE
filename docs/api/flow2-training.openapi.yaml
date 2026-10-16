@@ -1198,7 +1198,8 @@ paths:
       description: |
         SCHEDULED sessions only; one check per session (409 if it exists). Only the assigned/notified Groom may submit it;
         the assignment persistence mapping is a model gap and must not be widened to all Grooms. The backend computes
-        `overallResult` from the five checklist results; clients do not send it. ABNORMAL leaves the session SCHEDULED and
+        `overallResult` from the five checklist results; clients do not send it. The five checklist items are stored as JSON
+        in `pre_session_check.observations`, and `overallResult` is derived from those item results. ABNORMAL leaves the session SCHEDULED and
         blocks start. This operation never creates an Incident. Incident reporting is separate under CORE-046 and may reference the returned
         pre-session-check `id` as `preSessionCheckId` through the separate CORE-046 IncidentReportModal → POST /api/incidents
         flow.
