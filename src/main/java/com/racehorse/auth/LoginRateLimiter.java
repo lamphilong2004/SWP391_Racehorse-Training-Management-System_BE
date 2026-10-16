@@ -6,10 +6,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.text.Normalizer;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
@@ -69,7 +67,7 @@ public class LoginRateLimiter {
     }
 
     private String normalizeEmail(String email) {
-        return Normalizer.normalize(email.trim(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return EmailAddressNormalizer.normalize(email);
     }
 
     static final class Permit {

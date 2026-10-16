@@ -2,19 +2,27 @@ package com.racehorse.auth;
 
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AuthenticationService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AuthenticationService.class);
     private static final String INVALID_CREDENTIALS = "Invalid email or password.";
+    private static final String PENDING_REGISTRATION =
+            "Your account is waiting for Club Manager approval.";
 
     private final AuthRepository authRepository;
+    private final Optional<PendingRegistrationRepository> pendingRegistrationRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
     private final LoginRateLimiter rateLimiter;
@@ -23,11 +31,17 @@ public class AuthenticationService {
 
     public AuthenticationService(
             AuthRepository authRepository,
+            ObjectProvider<PendingRegistrationRepository> pendingRegistrationRepositoryProvider,
             PasswordEncoder passwordEncoder,
             JwtTokenService jwtTokenService,
             LoginRateLimiter rateLimiter,
             DummyPasswordHash dummyPasswordHash) {
         this.authRepository = authRepository;
+        this.pendingRegistrationRepository = Optional.ofNullable(
+                pendingRegistrationRepositoryProvider.getIfAvailable());
+        if (this.pendingRegistrationRepository.isEmpty()) {
+            LOGGER.warn("Pending-registration login is unavailable until the schema-approved repository adapter is configured.");
+        }
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenService = jwtTokenService;
         this.rateLimiter = rateLimiter;
@@ -36,13 +50,24 @@ public class AuthenticationService {
 
     @Transactional
     public LoginResponse login(LoginRequest request, String remoteAddress) {
-        LoginRateLimiter.Permit permit = rateLimiter.reserve(remoteAddress, request.getEmail(), clock.instant());
+        String normalizedEmail = EmailAddressNormalizer.normalize(request.getEmail());
+        LoginRateLimiter.Permit permit = rateLimiter.reserve(remoteAddress, normalizedEmail, clock.instant());
         if (permit == null) {
             throw new BusinessException(ErrorCode.TOO_MANY_REQUESTS, "Too many attempts. Try again later.");
         }
         try {
-            AuthRepository.UserAccount account = authRepository.findByEmail(request.getEmail()).orElse(null);
+            AuthRepository.UserAccount account = authRepository.findByEmail(normalizedEmail).orElse(null);
             if (account == null) {
+                Optional<PendingRegistrationRepository.PendingCredentials> pendingRegistration =
+                        pendingRegistrationRepository.flatMap(
+                                repository -> repository.findPendingByNormalizedEmail(normalizedEmail));
+                if (pendingRegistration.isPresent()) {
+                    if (passwordEncoder.matches(
+                            request.getPassword(), pendingRegistration.orElseThrow().passwordHash())) {
+                        throw failed(permit, ErrorCode.FORBIDDEN, PENDING_REGISTRATION);
+                    }
+                    throw failed(permit, ErrorCode.UNAUTHORIZED, INVALID_CREDENTIALS);
+                }
                 passwordEncoder.matches(request.getPassword(), dummyPasswordHash);
                 throw failed(permit, ErrorCode.UNAUTHORIZED, INVALID_CREDENTIALS);
             }

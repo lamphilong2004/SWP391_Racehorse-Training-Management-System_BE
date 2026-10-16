@@ -20,6 +20,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -36,6 +38,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -43,6 +46,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,6 +71,12 @@ class AuthenticationApiTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @MockitoSpyBean
+    private AuthRepository authRepository;
+
+    @MockitoBean
+    private PendingRegistrationRepository pendingRegistrationRepository;
 
     @Autowired
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
@@ -85,6 +99,8 @@ class AuthenticationApiTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
+        when(pendingRegistrationRepository.findPendingByNormalizedEmail(anyString()))
+                .thenReturn(Optional.empty());
         jdbcTemplate.update("DELETE FROM dbo.audit_log");
         jdbcTemplate.update("DELETE FROM dbo.user_role");
         jdbcTemplate.update("DELETE FROM dbo.app_user");
@@ -142,11 +158,88 @@ class AuthenticationApiTest {
         long userId = createUser(AccountStatus.ACTIVE, RoleCode.HEAD_TRAINER, passwordEncoder.encode(PASSWORD));
         String wrongPasswordBody = login(emailFor(userId), "wrong-password", "192.0.2.2")
                 .andReturn().getResponse().getContentAsString();
-        String unknownEmailBody = login("missing+" + UUID.randomUUID() + "@example.test", PASSWORD, "192.0.2.2")
+        verify(pendingRegistrationRepository, never()).findPendingByNormalizedEmail(anyString());
+
+        String unknownEmail = "missing+" + UUID.randomUUID() + "@example.test";
+        String unknownEmailBody = login(unknownEmail, PASSWORD, "192.0.2.2")
                 .andReturn().getResponse().getContentAsString();
 
         assertEquals(wrongPasswordBody, unknownEmailBody);
         org.junit.jupiter.api.Assertions.assertTrue(wrongPasswordBody.contains("Invalid email or password."));
+        assertFalse(objectMapper.readTree(wrongPasswordBody).path("data").has("accessToken"));
+        assertFalse(objectMapper.readTree(unknownEmailBody).path("data").has("accessToken"));
+        verify(pendingRegistrationRepository).findPendingByNormalizedEmail(unknownEmail);
+    }
+
+    @Test
+    void pendingRegistrationWithMatchingPasswordGetsForbiddenWithoutJwt() throws Exception {
+        String email = "Pending+" + UUID.randomUUID() + "@EXAMPLE.TEST";
+        String normalizedEmail = EmailAddressNormalizer.normalize(email);
+        when(pendingRegistrationRepository.findPendingByNormalizedEmail(normalizedEmail))
+                .thenReturn(Optional.of(new PendingRegistrationRepository.PendingCredentials(
+                        passwordEncoder.encode(PASSWORD))));
+
+        login(email, PASSWORD, "192.0.2.40")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.error.message")
+                        .value("Your account is waiting for Club Manager approval."))
+                .andExpect(jsonPath("$.data.accessToken").doesNotExist());
+
+        var lookupOrder = inOrder(authRepository, pendingRegistrationRepository);
+        lookupOrder.verify(authRepository).findByEmail(normalizedEmail);
+        lookupOrder.verify(pendingRegistrationRepository).findPendingByNormalizedEmail(normalizedEmail);
+    }
+
+    @Test
+    void pendingRegistrationWithWrongPasswordGetsNeutralUnauthorizedWithoutJwt() throws Exception {
+        String email = "pending+" + UUID.randomUUID() + "@example.test";
+        when(pendingRegistrationRepository.findPendingByNormalizedEmail(email))
+                .thenReturn(Optional.of(new PendingRegistrationRepository.PendingCredentials(
+                        passwordEncoder.encode("Different-Password-456"))));
+
+        login(email, PASSWORD, "192.0.2.41")
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.error.message").value("Invalid email or password."))
+                .andExpect(jsonPath("$.data.accessToken").doesNotExist());
+    }
+
+    @Test
+    void rejectedRegistrationIsIndistinguishableFromUnknownEmailAndGetsNoJwt() throws Exception {
+        String email = "rejected+" + UUID.randomUUID() + "@example.test";
+        when(pendingRegistrationRepository.findPendingByNormalizedEmail(email))
+                .thenReturn(Optional.empty());
+
+        String rejectedResponse = login(email, PASSWORD, "192.0.2.42")
+                .andReturn().getResponse().getContentAsString();
+        String unknownResponse = login(
+                "unknown+" + UUID.randomUUID() + "@example.test", PASSWORD, "192.0.2.42")
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(rejectedResponse, unknownResponse);
+        assertEquals("UNAUTHORIZED", objectMapper.readTree(rejectedResponse).path("error").path("code").stringValue());
+        assertEquals("Invalid email or password.",
+                objectMapper.readTree(rejectedResponse).path("error").path("message").stringValue());
+        assertFalse(objectMapper.readTree(rejectedResponse).path("data").has("accessToken"));
+        assertFalse(objectMapper.readTree(unknownResponse).path("data").has("accessToken"));
+    }
+
+    @Test
+    void existingAppUserTakesPrecedenceOverPendingRegistrationWithSameEmail() throws Exception {
+        long userId = createUser(AccountStatus.ACTIVE, RoleCode.TRAINER, passwordEncoder.encode(PASSWORD));
+        String email = emailFor(userId);
+        when(pendingRegistrationRepository.findPendingByNormalizedEmail(email))
+                .thenReturn(Optional.of(new PendingRegistrationRepository.PendingCredentials(
+                        passwordEncoder.encode(PASSWORD))));
+
+        login(email.toUpperCase(java.util.Locale.ROOT), PASSWORD, "192.0.2.43")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.id").value(userId))
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+
+        verify(authRepository).findByEmail(email);
+        verify(pendingRegistrationRepository, never()).findPendingByNormalizedEmail(anyString());
     }
 
     @Test
@@ -162,11 +255,15 @@ class AuthenticationApiTest {
     @Test
     void inactiveAccountWithCorrectPasswordGetsApprovedForbiddenMessage() throws Exception {
         long userId = createUser(AccountStatus.INACTIVE, RoleCode.VETERINARIAN, passwordEncoder.encode(PASSWORD));
+        when(pendingRegistrationRepository.findPendingByNormalizedEmail(emailFor(userId)))
+                .thenReturn(Optional.of(new PendingRegistrationRepository.PendingCredentials(
+                        passwordEncoder.encode(PASSWORD))));
 
         login(emailFor(userId), PASSWORD, "192.0.2.4")
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
                 .andExpect(jsonPath("$.error.message").value("Your account is deactivated."));
+        verify(pendingRegistrationRepository, never()).findPendingByNormalizedEmail(anyString());
     }
 
     @Test
@@ -349,6 +446,13 @@ class AuthenticationApiTest {
                         .content("{\"email\":\"not-an-email\",\"password\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void emailNormalizationUsesTrimNfcAndLocaleIndependentLowercase() {
+        assertEquals("\u00e9xample@example.test",
+                EmailAddressNormalizer.normalize("  E\u0301xample@EXAMPLE.TEST  "));
+        assertEquals("i@example.test", EmailAddressNormalizer.normalize("I@EXAMPLE.TEST"));
     }
 
     private ResultActions login(String email, String password, String remoteAddress) throws Exception {
