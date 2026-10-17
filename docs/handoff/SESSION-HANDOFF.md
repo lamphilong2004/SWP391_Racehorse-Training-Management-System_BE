@@ -228,4 +228,9 @@ Codex's GitHub connector got HTTP 403 on writes, so its reviews and PRs were nev
   `docs/session-handoff` → `docs/handoff/SESSION-HANDOFF.md` (no PR, never merge). `project-context/` and `project-docs/`
   are NOT under Git; this branch is the shareable copy.
 - 2026-10-17: CORE-004 gate on `ac4e3a0` = FAIL, Request Changes review posted (§7).
+- 2026-10-17: Presentation mode (`6a7b6f4`, pushed).
+  - `npm run dev:present` runs on :5190 with the official Login, 7 local `.test` accounts (any non-empty password), no dev bar and no technical banner. The hidden `/presenter-tools` page resets data. `dev:harness` moved to :5192.
+  - Guide: `docs/PRESENTATION-GUIDE.md`.
+  - Re-verified all 3 flows in presentation mode with real sign-out/sign-in between 6 roles. A fresh tab has 0 console errors.
+  - 249/249 tests, lint, typecheck and build pass. Dist is free of harness code.
 - 2026-10-17: UI-first pivot. `feat/dev-ui-harness` created and pushed; 3-flow sample walkthrough done; CORE-029 Figma fixes; coverage matrix and prompts for Hoàng/Đức (§8b).
