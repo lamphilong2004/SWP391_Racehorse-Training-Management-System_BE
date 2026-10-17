@@ -70,10 +70,7 @@ public class MedicalRestrictionService {
     @Transactional
     public MedicalRestrictionResponse replaceExerciseRules(long restrictionId, ReplaceExerciseRulesRequest request) {
         requireRole(RoleCode.VETERINARIAN);
-        RestrictionRecord restriction = requireRestriction(restrictionId);
-        if (restriction.liftedAt() != null) {
-            throw conflict("Exercise rules cannot be changed after the restriction is lifted.");
-        }
+        RestrictionRecord restriction = requireActiveRestrictionForUpdate(restrictionId);
         if (request == null || request.rules() == null) {
             throw validation("rules is required.");
         }
@@ -109,10 +106,7 @@ public class MedicalRestrictionService {
     @Transactional
     public TrainingAvailabilityResponse lift(long restrictionId) {
         ActorContext actor = requireRole(RoleCode.VETERINARIAN);
-        RestrictionRecord restriction = requireRestriction(restrictionId);
-        if (restriction.liftedAt() != null) {
-            throw conflict("The medical restriction has already been lifted.");
-        }
+        RestrictionRecord restriction = requireActiveRestrictionForUpdate(restrictionId);
         Instant liftedAt = Instant.now();
         if (liftedAt.isBefore(restriction.effectiveAt())) {
             liftedAt = restriction.effectiveAt();
@@ -236,6 +230,16 @@ public class MedicalRestrictionService {
         }
         return repository.findRestriction(restrictionId)
                 .orElseThrow(() -> notFound("Medical restriction was not found."));
+    }
+
+    private RestrictionRecord requireActiveRestrictionForUpdate(long restrictionId) {
+        if (restrictionId <= 0) {
+            throw validation("restrictionId must be a positive integer.");
+        }
+        return repository.findActiveRestrictionForUpdate(restrictionId)
+                .orElseThrow(() -> repository.findRestriction(restrictionId).isPresent()
+                        ? conflict("The medical restriction is no longer active.")
+                        : notFound("Medical restriction was not found."));
     }
 
     private ActorContext requireRole(RoleCode requiredRole) {

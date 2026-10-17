@@ -5,25 +5,32 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JdbcMedicalRestrictionRepositoryTest {
 
     private JdbcTemplate jdbcTemplate;
     private JdbcMedicalRestrictionRepository repository;
+    private TransactionTemplate transactionTemplate;
 
     @BeforeEach
     void setUp() {
@@ -31,6 +38,7 @@ class JdbcMedicalRestrictionRepositoryTest {
         dataSource.setURL("jdbc:h2:mem:restriction_" + UUID.randomUUID().toString().replace("-", "")
                 + ";MODE=MSSQLServer;DB_CLOSE_DELAY=-1");
         jdbcTemplate = new JdbcTemplate(dataSource);
+        transactionTemplate = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         jdbcTemplate.execute("CREATE SCHEMA dbo");
         jdbcTemplate.execute("CREATE TABLE dbo.horse (id BIGINT PRIMARY KEY)");
         jdbcTemplate.execute("CREATE TABLE dbo.medical_case (id BIGINT PRIMARY KEY, horse_id BIGINT NOT NULL)");
@@ -118,6 +126,58 @@ class JdbcMedicalRestrictionRepositoryTest {
                     "SELECT COUNT(*) FROM dbo.medical_restriction WHERE horse_id = 1 AND lifted_at IS NULL", Integer.class));
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void replacementAndLiftSerializeOnTheSameActiveRestrictionRow() throws Exception {
+        long restrictionId = repository.insertRestriction(1, null, 44, RestrictionLevel.LIMITED,
+                "Operational rest", Instant.parse("2026-10-15T10:00:00Z"), null);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch replacementLocked = new CountDownLatch(1);
+        CountDownLatch allowReplacementCommit = new CountDownLatch(1);
+        CountDownLatch liftAttempting = new CountDownLatch(1);
+        try {
+            Future<?> replacement = executor.submit(() -> transactionTemplate.execute(status -> {
+                assertTrue(repository.findActiveRestrictionForUpdate(restrictionId).isPresent());
+                replacementLocked.countDown();
+                await(allowReplacementCommit);
+                repository.replaceRules(restrictionId,
+                        List.of(new ExerciseRule(5L, ExerciseRuleType.ALLOW, null)));
+                return null;
+            }));
+            replacementLocked.await();
+
+            Future<Integer> lift = executor.submit(() -> {
+                Integer result = transactionTemplate.execute(status -> {
+                    liftAttempting.countDown();
+                    Optional<RestrictionRecord> active = repository.findActiveRestrictionForUpdate(restrictionId);
+                    return active.isPresent()
+                            ? repository.liftRestriction(restrictionId, Instant.parse("2026-10-16T10:00:00Z"))
+                            : 0;
+                });
+                return result;
+            });
+            liftAttempting.await();
+            assertThrows(TimeoutException.class, () -> lift.get(100, TimeUnit.MILLISECONDS));
+
+            allowReplacementCommit.countDown();
+            replacement.get();
+            assertEquals(1, lift.get());
+            assertEquals(1, repository.findRules(restrictionId).size());
+            assertTrue(repository.findActiveRestriction(1).isEmpty());
+        } finally {
+            allowReplacementCommit.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Concurrent database test was interrupted.", exception);
         }
     }
 

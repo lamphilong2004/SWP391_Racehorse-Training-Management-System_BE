@@ -88,6 +88,13 @@ public class JdbcMedicalRestrictionRepository {
         return queryOne("SELECT * FROM dbo.medical_restriction WHERE horse_id = ? AND lifted_at IS NULL", horseId);
     }
 
+    public Optional<RestrictionRecord> findActiveRestrictionForUpdate(long restrictionId) {
+        String sql = isSqlServer()
+                ? "SELECT * FROM dbo.medical_restriction WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND lifted_at IS NULL"
+                : "SELECT * FROM dbo.medical_restriction WHERE id = ? AND lifted_at IS NULL FOR UPDATE";
+        return queryOne(sql, restrictionId);
+    }
+
     public Optional<RestrictionRecord> findRestriction(long restrictionId) {
         return queryOne("SELECT * FROM dbo.medical_restriction WHERE id = ?", restrictionId);
     }
@@ -109,6 +116,22 @@ public class JdbcMedicalRestrictionRepository {
 
     public long insertRestriction(long horseId, Long medicalCaseId, long actorId, RestrictionLevel level,
                                   String reason, Instant effectiveAt, LocalDate reviewDate) {
+        if (isSqlServer()) {
+            Long id = jdbcTemplate.query("""
+                    INSERT INTO dbo.medical_restriction
+                        (horse_id, medical_case_id, set_by_user_id, restriction_level, reason,
+                         effective_from, review_date, created_at)
+                    OUTPUT INSERTED.id
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, statement -> bindRestrictionInsert(statement, horseId, medicalCaseId, actorId,
+                    level, reason, effectiveAt, reviewDate), resultSet ->
+                    resultSet.next() ? resultSet.getLong(1) : null);
+            if (id == null) {
+                throw new IllegalStateException("The database did not return the created restriction id.");
+            }
+            return id;
+        }
+
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
@@ -117,22 +140,7 @@ public class JdbcMedicalRestrictionRepository {
                          effective_from, review_date, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, Statement.RETURN_GENERATED_KEYS);
-            statement.setLong(1, horseId);
-            if (medicalCaseId == null) {
-                statement.setNull(2, java.sql.Types.BIGINT);
-            } else {
-                statement.setLong(2, medicalCaseId);
-            }
-            statement.setLong(3, actorId);
-            statement.setString(4, level.name());
-            statement.setString(5, reason);
-            statement.setTimestamp(6, Timestamp.from(effectiveAt));
-            if (reviewDate == null) {
-                statement.setNull(7, java.sql.Types.DATE);
-            } else {
-                statement.setDate(7, java.sql.Date.valueOf(reviewDate));
-            }
-            statement.setTimestamp(8, Timestamp.from(Instant.now()));
+            bindRestrictionInsert(statement, horseId, medicalCaseId, actorId, level, reason, effectiveAt, reviewDate);
             return statement;
         }, keyHolder);
 
@@ -217,6 +225,34 @@ public class JdbcMedicalRestrictionRepository {
     private Optional<RestrictionRecord> queryOne(String sql, long id) {
         List<RestrictionRecord> results = jdbcTemplate.query(sql, RESTRICTION_ROW_MAPPER, id);
         return results.stream().findFirst();
+    }
+
+    private boolean isSqlServer() {
+        String productName = jdbcTemplate.execute(
+            (org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
+                connection.getMetaData().getDatabaseProductName());
+        return productName != null && productName.toLowerCase(java.util.Locale.ROOT).contains("sql server");
+    }
+
+    private void bindRestrictionInsert(PreparedStatement statement, long horseId, Long medicalCaseId, long actorId,
+                                       RestrictionLevel level, String reason, Instant effectiveAt,
+                                       LocalDate reviewDate) throws java.sql.SQLException {
+        statement.setLong(1, horseId);
+        if (medicalCaseId == null) {
+            statement.setNull(2, java.sql.Types.BIGINT);
+        } else {
+            statement.setLong(2, medicalCaseId);
+        }
+        statement.setLong(3, actorId);
+        statement.setString(4, level.name());
+        statement.setString(5, reason);
+        statement.setTimestamp(6, Timestamp.from(effectiveAt));
+        if (reviewDate == null) {
+            statement.setNull(7, java.sql.Types.DATE);
+        } else {
+            statement.setDate(7, java.sql.Date.valueOf(reviewDate));
+        }
+        statement.setTimestamp(8, Timestamp.from(Instant.now()));
     }
 
     private long count(String sql, Object... arguments) {
