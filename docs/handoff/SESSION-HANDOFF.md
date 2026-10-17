@@ -96,7 +96,39 @@ Proposal: Hoàng fixes these as a CORE-008 follow-up (they are CORE-008 scope). 
 
 ## 7. CORE-004 (PR #9) — leader gate
 
-_Section is updated by the CORE-004 task below._
+| Field | Value |
+|---|---|
+| Owner | Cao Thanh Dũng |
+| Reviewed HEAD | `ac4e3a0` (base dev `8b2e22a`; 6 commits behind dev, test merge clean) |
+| Gate | **FAIL — CHANGES REQUESTED** (2026-10-17, independent; no earlier result reused) |
+| Review | https://github.com/lamphilong2004/SWP391_Racehorse-Training-Management-System_BE/pull/9#pullrequestreview-5555422802 |
+| Status | In Progress (owner fixes). **Not Done.** |
+| Prompt for owner | `project-context/handoffs/prompts-2026-10-17/DUNG-CORE-004-fix.md` (+ `.txt`) |
+
+Findings, all P1, sourced from DEC-009 §1 and BR-05 (`business-rules.md` L20, CONFIRMED):
+1. L18-21: activation conditions and the `activatedAt` timeline start are marked NEEDS CLARIFICATION. L19-20 also says "recording the baseline does not activate the horse", which contradicts DEC-009.
+2. L338-341 (timeline) and L788 (`HorseDetail.activatedAt`) keep the decided timeline-start question.
+3. Pedigree L181, ownership L232-233 and box L420 leave the lifecycle effect as NEEDS CLARIFICATION and are inconsistent with L19-20.
+4. Activation checklist L488-489 and L911-914: contents marked unspecified, items untyped (`items: {}`).
+
+Valid open questions (not findings):
+- audit action names
+- timeline `eventType` vocabulary
+- readiness review on INACTIVE horses
+- `sex` value list
+- Q-18 photo storage, Q-7 distance, Q-28 multiple owners
+- ownership shares not enforced to 100 %
+
+Passed:
+- Redocly lint 0/0
+- dereferenced bundle, 0 `$ref`
+- 20 operations' `x-roles` match `permission-matrix.md`
+- status codes
+- Flow 3 baseline path exists on dev
+- `horse.lifecycle` / `activated_at` mappings
+
+Blocks: CORE-012 (BE Flow 1), CORE-013 (Long FE), CORE-017 (Đức FE).
+Next: Dũng pushes fixes and comments the new head; the leader re-gates that exact head.
 
 ## 8. CORE-033 — leader gate
 
@@ -163,4 +195,7 @@ Codex's GitHub connector got HTTP 403 on writes, so its reviews and PRs were nev
 
 ## 13. Session log
 
-- 2026-10-17: context recovered from live repos; this file created.
+- 2026-10-17: context recovered from live repos; this file created. Shared copy pushed to BE branch
+  `docs/session-handoff` → `docs/handoff/SESSION-HANDOFF.md` (no PR, never merge). `project-context/` and `project-docs/`
+  are NOT under Git; this branch is the shareable copy.
+- 2026-10-17: CORE-004 gate on `ac4e3a0` = FAIL, Request Changes review posted (§7).
