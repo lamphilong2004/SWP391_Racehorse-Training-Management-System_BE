@@ -228,6 +228,21 @@ Codex's GitHub connector got HTTP 403 on writes, so its reviews and PRs were nev
   `docs/session-handoff` → `docs/handoff/SESSION-HANDOFF.md` (no PR, never merge). `project-context/` and `project-docs/`
   are NOT under Git; this branch is the shareable copy.
 - 2026-10-17: CORE-004 gate on `ac4e3a0` = FAIL, Request Changes review posted (§7).
+- 2026-10-17: BE independent gate. Prompts and merge order in `project-context/handoffs/prompts-2026-10-17/BE-GATE-PROMPTS.md`.
+  - PR #10 CORE-007 `00de7ec`: **BLOCKED**.
+    - `mvn -B verify` exit 0: 39 run, 0 fail, 10 skipped (the SQL suite, gated by `-Dcore007.sqlserver.it=true`).
+    - No SQL Server evidence; stale PR body; still Draft.
+    - COMMENT review: pullrequestreview-5555948797.
+  - PR #11 CORE-019 `d8ec5bf`: **BLOCKED**.
+    - H2: 44 run, 0 fail.
+    - add/add conflict on `auth/{ActorContext,RoleCode,CurrentActorProvider}` with #10 (class vs interface). Fix: delete #11's copies after #10 merges.
+    - Unapproved Flow 3 contract additions (availability alias + batch).
+    - SQL paths not run.
+    - Interlock not yet called at schedule/start (CORE-024/028).
+    - COMMENT review: pullrequestreview-5555949150.
+  - PR #9 CORE-004: head `1b84b59` **not re-gated**. The only review is CHANGES_REQUESTED on `ac4e3a0`, so it stays pending.
+  - G1: `care_task.assigned_groom_user_id` is approved (dev `CORE-006-review.md` §G1). No migration exists on any branch. Proposed owner: CORE-045 (Tiến), reviewed by Dũng.
+  - CORE-021, CORE-026 and CORE-035 are not Ready (CORE-007, 019 and 024 are not merged).
 - 2026-10-17: Presentation mode (`6a7b6f4`, pushed).
   - `npm run dev:present` runs on :5190 with the official Login, 7 local `.test` accounts (any non-empty password), no dev bar and no technical banner. The hidden `/presenter-tools` page resets data. `dev:harness` moved to :5192.
   - Guide: `docs/PRESENTATION-GUIDE.md`.
