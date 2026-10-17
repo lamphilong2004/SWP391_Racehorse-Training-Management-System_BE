@@ -217,6 +217,10 @@ paths:
       tags: [Horses]
       operationId: listOwnerships
       summary: Ownership history (current and past)
+      description: |
+        Club Managers and Head Trainers may read the full current and past ownership history. Other MF-01 roles do not
+        receive access to this history endpoint: Trainer, Veterinarian and Groom may view current ownership only through
+        Horse Profile within their approved scopes; Horse Owners use `/api/owner/horses/**` for owned-horse data.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER]
       responses:
         '200':
