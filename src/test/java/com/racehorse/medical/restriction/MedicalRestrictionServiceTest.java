@@ -254,7 +254,7 @@ class MedicalRestrictionServiceTest {
     void liftStoresHistoryAndReturnsAvailable() {
         authenticate(RoleCode.VETERINARIAN);
         RestrictionRecord active = record(12, 1, RestrictionLevel.LOCKED, null);
-        when(repository.findRestriction(12)).thenReturn(Optional.of(active));
+        when(repository.findActiveRestrictionForUpdate(12)).thenReturn(Optional.of(active));
         when(repository.liftRestriction(eq(12L), any(Instant.class))).thenReturn(1);
         when(repository.horseExists(1)).thenReturn(true);
         when(repository.findActiveRestriction(1)).thenReturn(Optional.empty());
@@ -281,7 +281,8 @@ class MedicalRestrictionServiceTest {
     @Test
     void exerciseRuleTargetMustBeExactlyOne() {
         authenticate(RoleCode.VETERINARIAN);
-        when(repository.findRestriction(12)).thenReturn(Optional.of(record(12, 1, RestrictionLevel.LIMITED, null)));
+        when(repository.findActiveRestrictionForUpdate(12))
+            .thenReturn(Optional.of(record(12, 1, RestrictionLevel.LIMITED, null)));
         var invalidRule = new ExerciseRuleRequest(5L, ExerciseRuleType.ALLOW, "TROT");
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -294,7 +295,8 @@ class MedicalRestrictionServiceTest {
     @Test
     void exerciseRuleMustReferenceExistingExercise() {
         authenticate(RoleCode.VETERINARIAN);
-        when(repository.findRestriction(12)).thenReturn(Optional.of(record(12, 1, RestrictionLevel.LIMITED, null)));
+        when(repository.findActiveRestrictionForUpdate(12))
+            .thenReturn(Optional.of(record(12, 1, RestrictionLevel.LIMITED, null)));
         when(repository.exerciseExists(5)).thenReturn(false);
         var validRule = new ExerciseRuleRequest(5L, ExerciseRuleType.ALLOW, null);
 
