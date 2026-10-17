@@ -15,12 +15,17 @@ info:
 
     Key rules:
     - Create returns lifecycle DRAFT (BR-02). Duplicate `horseCode` → 409 CONFLICT (BR-01).
-    - **Activation is automatic** (DEC-009 §1). DRAFT → ACTIVE; no role has an approve or activate endpoint. CORE-016 owns
-      the lifecycle transition. Flow 1 references the Flow 3 operation `POST /api/horses/{horseId}/baseline-examinations`,
-      defined in `flow3-medical.openapi.yaml`; recording the baseline does not activate the horse. Exact activation conditions and
-      whether `activatedAt` starts the timeline are **NEEDS CLARIFICATION** because their approved source text is unavailable.
-    - The Head Trainer readiness review (1.4) is non-blocking, has no persisted assessment or separate readiness state, and
-      does not decide activation. Each successful review records a new `HEAD_TRAINER_READINESS_REVIEWED` audit event.
+    - **Automatic activation** (DEC-009 §1, approved 2026-10-10; BR-05, business-rules.md line 20, confirmed by the Leader):
+      the System changes `horse.lifecycle` from DRAFT to ACTIVE only when all five mandatory conditions are satisfied:
+      valid identity (Flow 1 §1.1); valid pedigree, valid owner, and an assigned free stable box (Flow 1 §1.2); and a valid
+      Veterinarian baseline (Flow 1 §1.3). When all conditions are met, the System sets `horse.activated_at`; this timestamp
+      starts the horse timeline. No role has a manual approve or activate endpoint. CORE-016 owns implementation of the
+      lifecycle transition. Flow 1 references the Flow 3 operation `POST /api/horses/{horseId}/baseline-examinations`,
+      defined in `flow3-medical.openapi.yaml`. A successful baseline write is followed by activation-condition
+      re-evaluation; the horse transitions only if it is DRAFT and all mandatory conditions are then satisfied. The baseline
+      operation does not itself unconditionally activate the horse.
+    - The Head Trainer readiness review (1.4) is recommended and non-blocking, has no persisted assessment or separate
+      readiness state, and does not decide activation. Each successful review records a new `HEAD_TRAINER_READINESS_REVIEWED` audit event.
       Behavior for INACTIVE horses is **NEEDS CLARIFICATION**.
     - A box holds at most one horse and a horse at most one box (filtered unique indexes); an occupied box → 409 (BR-03).
     - Owner endpoints are row-scoped in the backend: the query joins `horse_ownership.owner_user_id` = current user
@@ -178,7 +183,11 @@ paths:
       description: |
         For sire and dam, give either a registered horse id or a free-text name, never both
         (ck_horse__sire_ref_xor_name / ck_horse__dam_ref_xor_name). A horse cannot be its own parent and sire ≠ dam.
-        Whether completing pedigree triggers the automatic lifecycle transition is NEEDS CLARIFICATION. Audit event behavior is NEEDS CLARIFICATION.
+        After a successful write, the System re-evaluates the activation conditions. If the horse is DRAFT and all mandatory
+        conditions are satisfied, the System transitions it to ACTIVE and sets `horse.activated_at`; CORE-016 owns this
+        transition. A pedigree write does not necessarily activate the horse. The write response does not guarantee the
+        updated activation checklist; clients can GET `/api/horses/{id}/activation-status` after success to read the current
+        lifecycle and checklist. Audit event behavior and event name are NEEDS CLARIFICATION.
       x-roles: [CLUB_MANAGER]
       requestBody:
         required: true
@@ -229,8 +238,12 @@ paths:
       summary: Link an owner to the horse (Flow 1.2, BR-04)
       description: |
         The owner must be an ACTIVE user holding HORSE_OWNER (400 otherwise). Shares total 100 % is NOT enforced
-        (UNRESOLVED BUSINESS RULE, physical-schema §11 #1). Whether completing ownership triggers the automatic lifecycle
-        transition is NEEDS CLARIFICATION. Audit event behavior is NEEDS CLARIFICATION.
+        (UNRESOLVED BUSINESS RULE, physical-schema §11 #1). After a successful write, the System re-evaluates the activation
+        conditions. If the horse is DRAFT and all mandatory conditions are satisfied, the System transitions it to ACTIVE
+        and sets `horse.activated_at`; CORE-016 owns this transition. An ownership write does not necessarily activate the
+        horse. The write response does not guarantee the updated activation checklist; clients can GET
+        `/api/horses/{id}/activation-status` after success to read the current lifecycle and checklist. Audit event behavior
+        and event name are NEEDS CLARIFICATION.
       x-roles: [CLUB_MANAGER]
       requestBody:
         required: true
@@ -335,8 +348,9 @@ paths:
       summary: Horse history / timeline (SCR-HORSE-006)
       description: |
         Read model assembled from existing tables (activation, box assignments, ownership changes, examinations,
-        restrictions, programs, sessions, incidents). Whether the timeline starts at `activatedAt` for ACTIVE horses is NEEDS
-        CLARIFICATION. Events carry titles only;
+        restrictions, programs, sessions, incidents). The horse timeline starts at `horse.activated_at`, the timestamp set
+        when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). Approved `TimelineEvent.eventType`
+        values and source mappings beyond this activation start remain NEEDS CLARIFICATION. Events carry titles only;
         clinical detail is never included for non-Veterinarian callers.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
       parameters:
@@ -416,8 +430,12 @@ paths:
       summary: Assign or move the horse to a box (Flow 1.2, BR-03)
       description: |
         One transaction: close the horse's open assignment (if any) and open the new one. The target box must be free
-        (ux_horse_stable_assignment__open_per_box) → otherwise 409. Whether this operation triggers the automatic lifecycle
-        transition is NEEDS CLARIFICATION. Audit event behavior is NEEDS CLARIFICATION.
+        (ux_horse_stable_assignment__open_per_box) → otherwise 409. After a successful write, the System re-evaluates the
+        activation conditions. If the horse is DRAFT and all mandatory conditions are satisfied, the System transitions it
+        to ACTIVE and sets `horse.activated_at`; CORE-016 owns this transition. A stable assignment does not necessarily
+        activate the horse. The write response does not guarantee the updated activation checklist; clients can GET
+        `/api/horses/{id}/activation-status` after success to read the current lifecycle and checklist. Audit event behavior
+        and event name are NEEDS CLARIFICATION.
       x-roles: [CLUB_MANAGER]
       requestBody:
         required: true
@@ -452,7 +470,7 @@ paths:
       tags: [Activation]
       operationId: listPendingActivation
       summary: DRAFT horses and what each still needs (SCR-HORSE-005, Figma 285:2786)
-      description: A Club Manager status screen. It has no approve action; activation happens automatically.
+      description: A Club Manager status screen showing the mandatory activation conditions and recommended readiness review. It has no approve action; activation happens automatically.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, VETERINARIAN]
       parameters:
         - $ref: '#/components/parameters/Page'
@@ -485,8 +503,9 @@ paths:
       operationId: getActivationStatus
       summary: Activation checklist of one horse
       description: |
-        Automatic activation is not gated on the Head Trainer readiness review. The exact mandatory checklist items and
-        their definitions are NEEDS CLARIFICATION because their approved source text is unavailable.
+        Returns the five mandatory activation conditions and the recommended, non-blocking Head Trainer readiness review.
+        The readiness review does not gate automatic activation. Clients can read this endpoint after a successful
+        pedigree, ownership, stable assignment, or baseline write to obtain the current lifecycle and checklist.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, VETERINARIAN]
       responses:
         '200':
@@ -498,6 +517,45 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - properties:
                       data: { $ref: '#/components/schemas/ActivationStatus' }
+              example:
+                success: true
+                data:
+                  horseId: 42
+                  horseCode: RH-0042
+                  name: Example Horse
+                  lifecycle: DRAFT
+                  activatedAt: null
+                  checklist:
+                    - id: IDENTITY
+                      label: Horse identity
+                      description: Horse identity is valid.
+                      requirement: MANDATORY
+                      state: SATISFIED
+                    - id: PEDIGREE
+                      label: Pedigree
+                      description: Pedigree is valid.
+                      requirement: MANDATORY
+                      state: SATISFIED
+                    - id: OWNER
+                      label: Owner
+                      description: A valid owner is linked to the horse.
+                      requirement: MANDATORY
+                      state: SATISFIED
+                    - id: FREE_STABLE_BOX
+                      label: Free stable box
+                      description: A free stable box is assigned to the horse.
+                      requirement: MANDATORY
+                      state: PENDING
+                    - id: VETERINARIAN_BASELINE
+                      label: Veterinarian baseline
+                      description: A valid Veterinarian baseline is recorded.
+                      requirement: MANDATORY
+                      state: PENDING
+                    - id: HEAD_TRAINER_READINESS_REVIEW
+                      label: Head Trainer readiness review
+                      description: Recommended review; this item is non-blocking and does not gate activation.
+                      requirement: RECOMMENDED
+                      state: NOT_REVIEWED
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -785,7 +843,7 @@ components:
           properties:
             countryOfOrigin: { type: [string, 'null'] }
             registrationNo: { type: [string, 'null'] }
-            activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at. Whether it defines the timeline start is NEEDS CLARIFICATION.' }
+            activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
             pedigree: { $ref: '#/components/schemas/Pedigree' }
             currentOwnerships:
               type: array
@@ -849,7 +907,7 @@ components:
         recordedAt: { type: string, format: date-time, description: UTC timestamp; maps to dbo.weight_record.measured_at DATETIME2(3). Aligned with flow3-medical WeightRecord.recordedAt (CORE-006). }
     TimelineEvent:
       type: object
-      description: 'NEEDS CLARIFICATION: approved timeline event types and source mappings, including activation events, were not available for verification.'
+      description: 'The timeline starts at horse.activated_at, when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). Approved event types and source mappings beyond this activation start remain NEEDS CLARIFICATION.'
       required: [occurredAt, eventType, title]
       properties:
         occurredAt: { type: string, format: date-time }
@@ -907,11 +965,59 @@ components:
         horseCode: { type: string }
         name: { type: string }
         lifecycle: { $ref: '#/components/schemas/HorseLifecycle' }
-        activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at.' }
+        activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
         checklist:
           type: array
-          items: {}
-          description: 'NEEDS CLARIFICATION: checklist contents and item shape are not established by an available approved source.'
+          minItems: 6
+          maxItems: 6
+          description: Exactly five mandatory activation conditions and one recommended, non-blocking Head Trainer readiness review.
+          prefixItems:
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: IDENTITY }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: PEDIGREE }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: OWNER }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: FREE_STABLE_BOX }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: VETERINARIAN_BASELINE }
+            - $ref: '#/components/schemas/RecommendedReadinessChecklistItem'
+          items: false
+    MandatoryActivationChecklistItem:
+      type: object
+      required: [id, label, description, requirement, state]
+      properties:
+        id:
+          type: string
+          enum: [IDENTITY, PEDIGREE, OWNER, FREE_STABLE_BOX, VETERINARIAN_BASELINE]
+        label: { type: string }
+        description: { type: string }
+        requirement: { type: string, const: MANDATORY }
+        state: { type: string, enum: [SATISFIED, PENDING] }
+      additionalProperties: false
+    RecommendedReadinessChecklistItem:
+      type: object
+      required: [id, label, description, requirement, state]
+      properties:
+        id: { type: string, const: HEAD_TRAINER_READINESS_REVIEW }
+        label: { type: string }
+        description:
+          type: string
+          description: Must explain that the recommended readiness review is non-blocking and does not gate activation.
+        requirement: { type: string, const: RECOMMENDED }
+        state: { type: string, enum: [REVIEWED, NOT_REVIEWED] }
+      additionalProperties: false
 
     # ---------- Owner (non-clinical, row-scoped) ----------
     OwnerHorseCard:
@@ -934,7 +1040,7 @@ components:
         horse: { $ref: '#/components/schemas/OwnerHorseCard' }
         countryOfOrigin: { type: [string, 'null'] }
         registrationNo: { type: [string, 'null'] }
-        activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at.' }
+        activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
         pedigree: { $ref: '#/components/schemas/Pedigree' }
         myOwnership:
           type: object
