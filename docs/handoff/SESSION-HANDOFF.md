@@ -130,9 +130,38 @@ Passed:
 Blocks: CORE-012 (BE Flow 1), CORE-013 (Long FE), CORE-017 (Đức FE).
 Next: Dũng pushes fixes and comments the new head; the leader re-gates that exact head.
 
-## 8. CORE-033 — leader gate
+## 8. CORE-033 — leader gate (investigation started, interrupted by the UI-first pivot)
 
-_Section is updated by the CORE-033 task below._
+- Branch `feat/CORE-033-evaluation-fe` `324d511`: 1 commit (Long), 11 files, scope clean, deps (002, 005) Done. **No PR yet.**
+- Timeout investigation (clean worktree `scratchpad/w33`):
+  - Calm run: 118/118.
+  - Under artificial load (3 suites + `tsc -b` in parallel): failures spread across tests that already exist on dev — router, CORE-008 AuthProvider, CORE-046 IncidentReportModal — plus one CORE-033 test (anonymous redirect, 1 s `findBy`).
+  - The two originally reported timeouts are "submits … COMPLETED" (normally ~0.5 s) and IncidentReportModal "requires horse…", which is CORE-046 code on dev.
+  - Conclusion so far: load-sensitive suite, not a CORE-033 logic defect.
+  - The dev-baseline stress comparison was **not completed** (the session ended). Re-run it before claiming a root cause.
+- Fixed in `feat/dev-ui-harness` (`4721604`): duplicate chart x-labels for a single sample (React duplicate-key error).
+- Next: finish the dev-baseline comparison, open a Draft PR from a clean CORE-033 branch, independent gate.
+
+## 8b. UI-first / API-later (Leader decision 2026-10-17)
+
+- Branch **`feat/dev-ui-harness`** (FE, pushed, HEAD `d06bf5b`), worktree `ui-demo/`.
+  - Stacked on the integration branch `8c19ac0`. **Never PR the whole branch into dev**: split it per task once the dependencies merge.
+- Commits:
+  - `23937a0` chore(dev-harness): development-only harness. `npm run dev:harness` runs on :5190, simulated identity (no JWT), all `/api` calls go to the sample adapter, plus the DEV HARNESS bar (role switch, reset). Default off; verified absent from the production build.
+  - `3257280` feat(CORE-029): Figma WR-D4 (426:10287) assignments and WR-D5 (427:10371) history tables.
+  - `4721604` fix(CORE-033): chart label dedupe.
+  - `d06bf5b` docs: `docs/UI-COVERAGE-MATRIX.md`, with the coverage matrix and the 3-flow click script.
+- Verification on `4721604`: 249/249 tests (65 files, `--maxWorkers=1`), lint PASS, typecheck PASS, build PASS, diff-check PASS, dist contains no harness code.
+- Browser walkthrough (sample adapter, NOT integration): Flow 1 CORE-013 register → pedigree/owner → box → pending activation; Flow 2 HT wizard → Groom normal + abnormal precheck + incident → WR start/sample/finish/feedback + interrupted → Trainer evaluation; Flow 3 Vet incident → case → exam → injury → treatment plan → Groom task complete → re-exam RECOVERED → resolve → close.
+- Ownership:
+  - Long: 013, 027, 029, 033.
+  - Hoàng: 015, 020, 025, 031, 041, 044 (all missing).
+  - Đức: 017 (`HorsePages.tsx` list/profile is CORE-017 code, handed over, not merged into 017).
+- Prompts:
+  - `project-context/handoffs/prompts-2026-10-17/HOANG-UI-FIRST.md` (+ CORE-008 follow-up and design-system segmented-tabs note)
+  - `project-context/handoffs/prompts-2026-10-17/DUC-UI-FIRST.md` (CORE-017 + HorsePages handover + CORE-036/046 UX notes)
+- A sample-aggregate attempt (max/avg HR, speed, duration) was **reverted**: an existing test asserts the adapter must not invent aggregates.
+- Restart after reboot: `cd ui-demo && npm run dev:harness`, or `preview_start fe-harness` from `.claude/launch.json`. Then open http://localhost:5190/login.
 
 ## 9. CORE-007 (PR #10) — gate checklist for HEAD `00de7ec` (prepared, not executed)
 
@@ -199,3 +228,4 @@ Codex's GitHub connector got HTTP 403 on writes, so its reviews and PRs were nev
   `docs/session-handoff` → `docs/handoff/SESSION-HANDOFF.md` (no PR, never merge). `project-context/` and `project-docs/`
   are NOT under Git; this branch is the shareable copy.
 - 2026-10-17: CORE-004 gate on `ac4e3a0` = FAIL, Request Changes review posted (§7).
+- 2026-10-17: UI-first pivot. `feat/dev-ui-harness` created and pushed; 3-flow sample walkthrough done; CORE-029 Figma fixes; coverage matrix and prompts for Hoàng/Đức (§8b).
