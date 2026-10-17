@@ -102,10 +102,10 @@ Proposal: Hoàng fixes these as a CORE-008 follow-up (they are CORE-008 scope). 
 | Prior reviewed HEAD | `ac4e3a0` (base dev `8b2e22a`) |
 | Prior gate | **FAIL — CHANGES REQUESTED** (2026-10-17) |
 | Prior review | https://github.com/lamphilong2004/SWP391_Racehorse-Training-Management-System_BE/pull/9#pullrequestreview-5555422802 |
-| Current re-gate HEAD | `1b84b591ceaf25276cc574018c783b1673e05221` (base dev `8b2e22a`) |
-| Current gate | **BLOCKED** — official source documents are unavailable; see current re-gate evidence below. |
-| Current review | Not posted; re-gate is BLOCKED. |
-| Status | Waiting for Leader source/contract clarifications. **Not Merge Ready; not Done.** |
+| Current author-verified HEAD | `076a9af2b3e711cfdb0be4ebfbc18a9969b49761` (base dev `8b2e22a`) |
+| Author verification | Source-backed contract checks and technical validation passed; Independent Re-gate still required. |
+| Current review | No review posted on the current HEAD. The prior review applies only to `ac4e3a0`. |
+| Status | Permission-matrix proposal awaits CORE-003 owner/reviewer confirmation before integration. **Not Merge Ready; not Done.** |
 
 ### Prior findings on `ac4e3a0` (historical review)
 
@@ -134,18 +134,18 @@ Prior technical checks at the old gate (historical; not reused as current eviden
 Blocks: CORE-012 (BE Flow 1), CORE-013 (Long FE), CORE-017 (Đức FE).
 Prior next step (completed): Dũng pushed the correction commit; this re-gate checked the exact new HEAD above.
 
-### Current independent re-gate on `1b84b591ceaf25276cc574018c783b1673e05221` (2026-10-17)
+### Author verification on `076a9af2b3e711cfdb0be4ebfbc18a9969b49761` (2026-10-17)
 
-- **Gate: BLOCKED.** PR #9 remains open and unmerged. The PR head and `origin/feat/CORE-004-contract-flow1-owner` both resolve to the required SHA; `origin/dev` is `8b2e22a2aee710cc2ac9b3d1c372cb444ac9e21a`.
-- **Official sources missing:** `project-docs/decisions/DEC-009-core-execution-scope-resolutions.md` and `project-docs/analysis/business-rules.md` were not found in the mounted workspace, project-control directory, backend repo, local refs/tags/history, or the corresponding GitHub paths on `dev` and the feature branch. Workspace copies of the master context and handoff are summaries, not replacements for these source documents.
-- **P1 contract text:** the five activation conditions, conditional DRAFT → ACTIVE wording, CORE-016 ownership, timeline start, conditional re-evaluation descriptions, read-back guidance, and typed six-item checklist are present in the contract. Source-backed verification of those business rules remains blocked.
-- **Baseline wording needs Leader clarification:** Flow 3 says “Does not activate the horse; CORE-016 owns activation.” Flow 1 says a successful baseline write is followed by condition re-evaluation and the horse transitions if all conditions are satisfied. Clarify whether Flow 3 means the endpoint does not own/perform the transition, or that a baseline write must never lead to activation as the final satisfied condition.
-- **Technical checks rerun in a clean detached worktree at the required SHA:** Redocly lint passed (0 errors, 0 warnings); dereferenced bundle succeeded (0 remaining `$ref`); `git diff --check` passed; 20 operations and 20 unique `operationId`s; response-code inventory 401 (20), 403 (20), 404 (15), 409 (3); no manual activation/approve endpoint; checklist schema/example assertions passed; activation-related database columns and baseline constraints are present.
-- **Scope:** base-to-head diff contains only `docs/api/flow1-horse.openapi.yaml`. Merge commit `037cc292198dcc4fc36552272e045d6a73713d25` has `8b2e22a2aee710cc2ac9b3d1c372cb444ac9e21a` as its second parent; no additional base-branch files appear in the PR diff.
-- **Permission matrix gap:** 19 of 20 operation role sets match explicit matrix groups. `GET /api/horses/{id}/ownerships` is assigned `CLUB_MANAGER, HEAD_TRAINER`, but the matrix only lists ownerships in a write group and has no explicit read/history row; role mapping for this operation is unverified.
-- **FE:** the contract describes reading `/activation-status` after mutation, but a search of the FE workspace found no matching activation-status/readiness/baseline API reference. FE integration is not verified.
-- **Leader decisions needed:** provide the official DEC-009 §1 and BR-05 documents; resolve the Flow 1/Flow 3 baseline wording; specify or confirm the permission-matrix row for ownership-history GET. Until resolved, do not mark Merge Ready or unlock CORE-013.
-- No current-head GitHub review was posted because the gate is BLOCKED. The linked review above applies only to the prior `ac4e3a0` HEAD.
+- **PR #9:** open and unmerged; current head `076a9af2b3e711cfdb0be4ebfbc18a9969b49761`; base `dev` at `8b2e22a2aee710cc2ac9b3d1c372cb444ac9e21a`. Base-to-head PR diff contains only `docs/api/flow1-horse.openapi.yaml`.
+- **Approved source copies were supplied as attachments:** `DEC-009-core-execution-scope-resolutions.md` (§1, APPROVED 2026-10-10), `business-rules.md` (BR-05, CONFIRMED; sourced to `5_Business_Process!C9,D9`), and `role-feature-matrix.md` (§3, MF-01, CONFIRMED). They are not checked into this repo.
+- **Activation and timeline:** DEC-009 §1 and BR-05 confirm automatic DRAFT → ACTIVE after identity, pedigree, owner, free stable box, and Veterinarian baseline are valid; `activated_at` begins the timeline. Head Trainer readiness review is non-blocking. CORE-016 owns the transition; no manual approve/activate operation is defined. Operation text, DTOs, `TimelineEvent`, and typed checklist align. Unapproved event vocabulary/source mappings remain marked NEEDS CLARIFICATION.
+- **Baseline ownership:** Leader clarified that Flow 3 records the baseline and CORE-016 re-evaluates conditions and performs any transition; baseline may be the final mutation satisfying all conditions. Flow 1 now states this explicitly. Flow 3 was not modified.
+- **Ownership history:** Leader confirmed full `GET /api/horses/{id}/ownerships` history is readable only by Club Manager and Head Trainer; other MF-01 roles retain only their approved current-ownership/profile or Owner-API scope. Flow 1 documents that distinction and keeps `x-roles: [CLUB_MANAGER, HEAD_TRAINER]`.
+- **CORE-003-owned Permission Matrix proposal:** BE `dev` matrix identifies Long as owner and Tiến/Hoàng as reviewers and had no explicit history-read row. Proposed synchronization is committed on `review/CORE-004-ownership-history-permission` at `9e62981d307e3aa82cee9c8eef382c74d648d257` and pushed for review, not integrated. Await CORE-003 owner/reviewer confirmation before integration.
+- **Technical checks at the exact author-verified content:** Redocly CLI 2.64.1 lint exit 0; dereferenced bundle exit 0 with zero `$ref` (81,382 bytes); 20 operations, 20 unique `operationId`s, roles on all operations; five activation conditions, non-blocking readiness, ownership-history role mapping, and no manual activation endpoint verified; `git diff --check origin/dev...HEAD` exit 0.
+- **FE:** contract read-back endpoint is specified; FE integration remains unverified.
+- **PR evidence update:** branch push updated the PR head. The available GitHub page was signed out (`Sign in to comment`); no PR comment/description edit was made. The PR body still needs its stale “activation criteria” and `activatedAt` open-question text updated through an authorized writer.
+- **Next:** CORE-003 owner/reviewer approves the matrix proposal, then integrate the row without merging PR #9; refresh PR evidence and request Independent Re-gate on the exact updated head. Until Independent Re-gate passes, do not mark Merge Ready or unlock CORE-013.
 
 ## 8. CORE-033 — leader gate (investigation started, interrupted by the UI-first pivot)
 
