@@ -41,12 +41,15 @@ The scope rules A/O/S are checked server-side on **every** read and write path. 
 
 | Endpoint group | CM | HT | TR | WR | VET | GR | OW |
 |---|---|---|---|---|---|---|---|
-| `GET /api/horses`, `GET /api/horses/{id}`, timeline, photos (read) | R | R | A (R) | — | R | R | — |
+| `GET /api/horses`, `GET /api/horses/{id}`, timeline, photos, current ownership details (read) | R | R | A (R) | — | R | R | — |
+| `GET /api/horses/{id}/ownerships` (full current and past ownership history) | R | R | — | — | — | — | — |
 | `POST /api/horses`, `PUT /api/horses/{id}`, pedigree, ownerships, photos (write) | ✔ | — | — | — | — | — | — |
 | `GET /api/stable-boxes`, stable assignments | ✔ | R | — | — | — | — | — |
 | `GET /api/horses/pending-activation`, `/activation-status` | R | R | — | — | R | — | — |
 | `POST /api/horses/{id}/readiness-review` (acknowledgement, 204) | — | ✔ | — | — | — | — | — |
 | `/api/owner/horses/**` | — | — | — | — | — | — | O (R) |
+
+The full ownership-history endpoint is an endpoint-specific MF-01 permission clarification for Club Manager and Head Trainer. MF-01 view access for other authorized profile readers covers current ownership details within their existing scopes; it does not grant access to full ownership history. Horse Owners continue to use `/api/owner/horses/**` for owned-horse data, and Work Riders have no Horse Profile access.
 
 No role has an activate/approve endpoint: activation is automatic (DEC-009 §1).
 
