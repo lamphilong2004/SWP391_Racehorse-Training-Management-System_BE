@@ -99,13 +99,17 @@ Proposal: Hoàng fixes these as a CORE-008 follow-up (they are CORE-008 scope). 
 | Field | Value |
 |---|---|
 | Owner | Cao Thanh Dũng |
-| Reviewed HEAD | `ac4e3a0` (base dev `8b2e22a`; 6 commits behind dev, test merge clean) |
-| Gate | **FAIL — CHANGES REQUESTED** (2026-10-17, independent; no earlier result reused) |
-| Review | https://github.com/lamphilong2004/SWP391_Racehorse-Training-Management-System_BE/pull/9#pullrequestreview-5555422802 |
-| Status | In Progress (owner fixes). **Not Done.** |
-| Prompt for owner | `project-context/handoffs/prompts-2026-10-17/DUNG-CORE-004-fix.md` (+ `.txt`) |
+| Prior reviewed HEAD | `ac4e3a0` (base dev `8b2e22a`) |
+| Prior gate | **FAIL — CHANGES REQUESTED** (2026-10-17) |
+| Prior review | https://github.com/lamphilong2004/SWP391_Racehorse-Training-Management-System_BE/pull/9#pullrequestreview-5555422802 |
+| Current re-gate HEAD | `1b84b591ceaf25276cc574018c783b1673e05221` (base dev `8b2e22a`) |
+| Current gate | **BLOCKED** — official source documents are unavailable; see current re-gate evidence below. |
+| Current review | Not posted; re-gate is BLOCKED. |
+| Status | Waiting for Leader source/contract clarifications. **Not Merge Ready; not Done.** |
 
-Findings, all P1, sourced from DEC-009 §1 and BR-05 (`business-rules.md` L20, CONFIRMED):
+### Prior findings on `ac4e3a0` (historical review)
+
+The prior review cited DEC-009 §1 and BR-05 (`business-rules.md` L20); the original source files were not available in the independent re-gate workspace.
 1. L18-21: activation conditions and the `activatedAt` timeline start are marked NEEDS CLARIFICATION. L19-20 also says "recording the baseline does not activate the horse", which contradicts DEC-009.
 2. L338-341 (timeline) and L788 (`HorseDetail.activatedAt`) keep the decided timeline-start question.
 3. Pedigree L181, ownership L232-233 and box L420 leave the lifecycle effect as NEEDS CLARIFICATION and are inconsistent with L19-20.
@@ -119,7 +123,7 @@ Valid open questions (not findings):
 - Q-18 photo storage, Q-7 distance, Q-28 multiple owners
 - ownership shares not enforced to 100 %
 
-Passed:
+Prior technical checks at the old gate (historical; not reused as current evidence):
 - Redocly lint 0/0
 - dereferenced bundle, 0 `$ref`
 - 20 operations' `x-roles` match `permission-matrix.md`
@@ -128,7 +132,20 @@ Passed:
 - `horse.lifecycle` / `activated_at` mappings
 
 Blocks: CORE-012 (BE Flow 1), CORE-013 (Long FE), CORE-017 (Đức FE).
-Next: Dũng pushes fixes and comments the new head; the leader re-gates that exact head.
+Prior next step (completed): Dũng pushed the correction commit; this re-gate checked the exact new HEAD above.
+
+### Current independent re-gate on `1b84b591ceaf25276cc574018c783b1673e05221` (2026-10-17)
+
+- **Gate: BLOCKED.** PR #9 remains open and unmerged. The PR head and `origin/feat/CORE-004-contract-flow1-owner` both resolve to the required SHA; `origin/dev` is `8b2e22a2aee710cc2ac9b3d1c372cb444ac9e21a`.
+- **Official sources missing:** `project-docs/decisions/DEC-009-core-execution-scope-resolutions.md` and `project-docs/analysis/business-rules.md` were not found in the mounted workspace, project-control directory, backend repo, local refs/tags/history, or the corresponding GitHub paths on `dev` and the feature branch. Workspace copies of the master context and handoff are summaries, not replacements for these source documents.
+- **P1 contract text:** the five activation conditions, conditional DRAFT → ACTIVE wording, CORE-016 ownership, timeline start, conditional re-evaluation descriptions, read-back guidance, and typed six-item checklist are present in the contract. Source-backed verification of those business rules remains blocked.
+- **Baseline wording needs Leader clarification:** Flow 3 says “Does not activate the horse; CORE-016 owns activation.” Flow 1 says a successful baseline write is followed by condition re-evaluation and the horse transitions if all conditions are satisfied. Clarify whether Flow 3 means the endpoint does not own/perform the transition, or that a baseline write must never lead to activation as the final satisfied condition.
+- **Technical checks rerun in a clean detached worktree at the required SHA:** Redocly lint passed (0 errors, 0 warnings); dereferenced bundle succeeded (0 remaining `$ref`); `git diff --check` passed; 20 operations and 20 unique `operationId`s; response-code inventory 401 (20), 403 (20), 404 (15), 409 (3); no manual activation/approve endpoint; checklist schema/example assertions passed; activation-related database columns and baseline constraints are present.
+- **Scope:** base-to-head diff contains only `docs/api/flow1-horse.openapi.yaml`. Merge commit `037cc292198dcc4fc36552272e045d6a73713d25` has `8b2e22a2aee710cc2ac9b3d1c372cb444ac9e21a` as its second parent; no additional base-branch files appear in the PR diff.
+- **Permission matrix gap:** 19 of 20 operation role sets match explicit matrix groups. `GET /api/horses/{id}/ownerships` is assigned `CLUB_MANAGER, HEAD_TRAINER`, but the matrix only lists ownerships in a write group and has no explicit read/history row; role mapping for this operation is unverified.
+- **FE:** the contract describes reading `/activation-status` after mutation, but a search of the FE workspace found no matching activation-status/readiness/baseline API reference. FE integration is not verified.
+- **Leader decisions needed:** provide the official DEC-009 §1 and BR-05 documents; resolve the Flow 1/Flow 3 baseline wording; specify or confirm the permission-matrix row for ownership-history GET. Until resolved, do not mark Merge Ready or unlock CORE-013.
+- No current-head GitHub review was posted because the gate is BLOCKED. The linked review above applies only to the prior `ac4e3a0` HEAD.
 
 ## 8. CORE-033 — leader gate (investigation started, interrupted by the UI-first pivot)
 
