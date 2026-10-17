@@ -8,6 +8,15 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
+  sql:
+    init:
+      mode: always
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
 
 app:
   cors:

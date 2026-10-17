@@ -27,6 +27,12 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
    | `DB_USERNAME` | (empty) |
    | `DB_PASSWORD` | (empty) |
    | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
+   | `JWT_SIGNING_KEY` | Required; Base64-encoded random key of at least 256 bits |
+   | `JWT_ACCESS_TOKEN_TTL_SECONDS` | Required; positive token lifetime in seconds |
+
+   Set JWT values through the environment or the deployment secret manager. The application has no
+   signing-key or token-lifetime default and fails startup if either value is missing or invalid.
+   Do not commit the signing key. Swagger UI and API docs are enabled only in `dev` and `test`.
 
 4. Run: `mvn spring-boot:run` (profile `dev` by default).
 5. Check: `GET http://localhost:8080/api/health` → `{"success":true,"data":{"status":"UP"}}`.
