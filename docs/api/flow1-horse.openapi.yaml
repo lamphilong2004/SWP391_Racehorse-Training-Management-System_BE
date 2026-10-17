@@ -21,9 +21,10 @@ info:
       Veterinarian baseline (Flow 1 §1.3). When all conditions are met, the System sets `horse.activated_at`; this timestamp
       starts the horse timeline. No role has a manual approve or activate endpoint. CORE-016 owns implementation of the
       lifecycle transition. Flow 1 references the Flow 3 operation `POST /api/horses/{horseId}/baseline-examinations`,
-      defined in `flow3-medical.openapi.yaml`. A successful baseline write is followed by activation-condition
-      re-evaluation; the horse transitions only if it is DRAFT and all mandatory conditions are then satisfied. The baseline
-      operation does not itself unconditionally activate the horse.
+      defined in `flow3-medical.openapi.yaml`. After a successful baseline write, CORE-016 re-evaluates the mandatory
+      activation conditions. If the horse is DRAFT and all five conditions are satisfied, CORE-016 performs the DRAFT →
+      ACTIVE transition and sets `horse.activated_at`; if it is DRAFT but any condition remains unmet, it remains DRAFT.
+      The Flow 3 endpoint records the baseline but does not itself own the lifecycle evaluation or transition.
     - The Head Trainer readiness review (1.4) is recommended and non-blocking, has no persisted assessment or separate
       readiness state, and does not decide activation. Each successful review records a new `HEAD_TRAINER_READINESS_REVIEWED` audit event.
       Behavior for INACTIVE horses is **NEEDS CLARIFICATION**.
