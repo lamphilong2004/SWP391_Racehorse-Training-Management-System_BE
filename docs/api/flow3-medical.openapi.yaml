@@ -1314,7 +1314,7 @@ paths:
       tags:
         - Restrictions
       summary: Read derived training availability
-      description: Derive AVAILABLE when no restriction has lifted_at IS NULL; otherwise return its immediately effective LIMITED/LOCKED level and safe operational reason/rules. At most one unlifted row per horse. Creation rejects effectiveAt later than server now, so future scheduled restrictions do not exist. LOCKED blocks all training scheduling and Start. LIMITED denies a matching PROHIBITED rule first; when ALLOWED rules exist, the exercise must match an ALLOWED rule and no PROHIBITED rule; without ALLOWED rules, it is allowed unless PROHIBITED matches. TRAINER uses assigned horses; WORK_RIDER uses assigned sessions. No availability column and no persisted AVAILABLE restriction.
+      description: Derive AVAILABLE when no restriction has lifted_at IS NULL; otherwise return its immediately effective LIMITED/LOCKED level and safe operational reason/rules. At most one unlifted row per horse. Creation rejects effectiveAt later than server now, so future scheduled restrictions do not exist. LOCKED blocks all training scheduling and Start. LIMITED denies a matching PROHIBIT rule first; when ALLOW rules exist, the exercise must match an ALLOW rule and no PROHIBIT rule; without ALLOW rules, it is allowed unless PROHIBIT matches. API rule values map to persisted ALLOWED/PROHIBITED. TRAINER uses assigned horses; WORK_RIDER uses assigned sessions. No availability column and no persisted AVAILABLE restriction.
       x-roles:
         - CLUB_MANAGER
         - HEAD_TRAINER
@@ -1371,6 +1371,134 @@ paths:
       parameters:
         - $ref: '#/components/parameters/horseId'
       x-data-scope: Trainer/Work Rider only related assigned horse/session
+      x-implementation-task: CORE-019
+  /api/horses/{horseId}/availability:
+    get:
+      operationId: getHorseAvailability
+      tags:
+        - Restrictions
+      summary: Read derived horse training availability
+      description: Alias for GET /api/horses/{horseId}/training-availability. No active restriction derives AVAILABLE; otherwise the persisted LIMITED/LOCKED level applies. Read roles and assignment scope are identical to the canonical operation.
+      x-roles:
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - WORK_RIDER
+        - VETERINARIAN
+        - GROOM
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/TrainingAvailabilityRead'
+                additionalProperties: false
+                required: [success, data]
+        '400':
+          description: Invalid horse identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid or expired authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Role or row scope denied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Horse not found or not visible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: A restriction state or concurrent update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - $ref: '#/components/parameters/horseId'
+      x-data-scope: Trainer assignment and Work Rider session assignment are checked server-side. Groom receives only the operational availability projection, never clinical case data.
+      x-implementation-task: CORE-019
+  /api/horses/availability/batch:
+    post:
+      operationId: getHorseAvailabilityBatch
+      tags:
+        - Restrictions
+      summary: Read derived training availability for multiple horses
+      description: Returns all requested availability records atomically. horseIds must contain 1 to 100 positive IDs. If any horse is missing, return 404; if any row is outside the caller's scope, return 403 and no partial data.
+      x-roles:
+        - CLUB_MANAGER
+        - HEAD_TRAINER
+        - TRAINER
+        - WORK_RIDER
+        - VETERINARIAN
+        - GROOM
+      responses:
+        '200':
+          description: Availability for each requested horse in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    const: true
+                  data:
+                    $ref: '#/components/schemas/AvailabilityBatchRead'
+                additionalProperties: false
+                required: [success, data]
+        '400':
+          description: Invalid or empty horseIds list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid or expired authentication.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: A requested horse is outside the caller's row scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: At least one requested horse does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: A restriction state or concurrent update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityBatchRequest'
+      x-data-scope: Every horse is authorized before any response data is returned. Trainer and Work Rider use assignment scope; Groom receives only the operational availability projection.
       x-implementation-task: CORE-019
   /api/medical/restrictions:
     get:
@@ -1809,7 +1937,7 @@ paths:
       tags:
         - Restrictions
       summary: Replace restriction exercise rules
-      description: VETERINARIAN only. Replace restriction_exercise_rule rows for an unlifted restriction atomically. Each rule is ALLOWED or PROHIBITED and targets exactly one exerciseId or exerciseTypeNote pattern; both targets together return 400 despite the broader SQL check. LOCKED blocks all exercises. LIMITED evaluates matching PROHIBITED first; with any ALLOWED rules it then requires an ALLOWED match, otherwise it allows unless PROHIBITED matched. Missing target returns 404; lifted restriction returns 409 CONFLICT. Never modify another horse restriction.
+      description: VETERINARIAN only. Replace restriction_exercise_rule rows for an unlifted restriction atomically. API ruleType is ALLOW or PROHIBIT and maps to persisted ALLOWED or PROHIBITED. Each rule targets exactly one exerciseId or exerciseTypeNote; both targets together return 400 despite the broader SQL check. exerciseTypeNote matches exercise_definition.exercise_type by trimmed case-insensitive equality. LOCKED blocks all exercises. LIMITED evaluates matching PROHIBIT first; with any ALLOW rules it then requires an ALLOW match, otherwise it allows unless PROHIBIT matched. Missing target returns 404; lifted restriction returns 409 CONFLICT. Never modify another horse restriction.
       x-roles:
         - VETERINARIAN
       responses:
@@ -2814,6 +2942,28 @@ components:
         - horseId
         - availability
       description: Derived solely from the unlifted restriction. No unlifted row = AVAILABLE; unlifted LIMITED = LIMITED; unlifted LOCKED = LOCKED. LOCKED blocks all scheduling and Start. LIMITED first denies a matching PROHIBITED rule; if ALLOWED rules exist the exercise must match one, otherwise it is permitted unless PROHIBITED. Never persist AVAILABLE or a horse availability column.
+    AvailabilityBatchRequest:
+      type: object
+      properties:
+        horseIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+      additionalProperties: false
+      required: [horseIds]
+    AvailabilityBatchRead:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingAvailabilityRead'
+      additionalProperties: false
+      required: [items]
     MedicalRestriction:
       type: object
       properties:
@@ -3215,8 +3365,8 @@ components:
         ruleType:
           type: string
           enum:
-            - ALLOWED
-            - PROHIBITED
+            - ALLOW
+            - PROHIBIT
         exerciseTypeNote:
           type: string
           minLength: 1
@@ -3225,7 +3375,7 @@ components:
       additionalProperties: false
       required:
         - ruleType
-      description: Maps to restriction_exercise_rule. Exactly one target is required; both exerciseId and exerciseTypeNote together fail business validation even though the existing SQL CHECK permits both. LOCKED denies all. LIMITED evaluates PROHIBITED before ALLOWED; with ALLOWED rules a match is required, and without ALLOWED rules default is allow unless prohibited.
+      description: API values ALLOW and PROHIBIT map explicitly to persisted ALLOWED and PROHIBITED. Exactly one target is required; both exerciseId and exerciseTypeNote together fail business validation even though the existing SQL CHECK permits both. exerciseTypeNote matches exercise_definition.exercise_type by trimmed case-insensitive equality. LOCKED denies all. LIMITED evaluates PROHIBIT before ALLOW; with ALLOW rules a match is required, and without ALLOW rules default is allow unless prohibited.
       oneOf:
         - required:
             - exerciseId

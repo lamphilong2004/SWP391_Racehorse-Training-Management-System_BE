@@ -36,6 +36,8 @@ const required={
  '/api/groom/treatment-tasks':['get'],
  '/api/groom/treatment-tasks/{taskId}/complete':['post'],
  '/api/horses/{horseId}/training-availability':['get'],
+ '/api/horses/{horseId}/availability':['get'],
+ '/api/horses/availability/batch':['post'],
  '/api/horses/{horseId}/medical-restrictions':['post'],
  '/api/medical/restrictions':['get'],
  '/api/medical/restrictions/{restrictionId}/lift':['post'],
@@ -55,7 +57,7 @@ for(const [p,pi]of Object.entries(d.paths))for(const [m,o]of Object.entries(pi))
  for(const code of ['400','401','403','404','409'])check(o.responses[code]?.content?.['application/json']?.schema?.$ref==='#/components/schemas/ErrorEnvelope',`Error ${code} ${p}`);
  check(!o.responses['422'],`Unsupported 422 ${p}`);
  check(o.description?.length>50,`Missing behavior ${p}`);
- if(m!=='get'&&!p.startsWith('/api/groom/')&&p!=='/api/incidents')check(JSON.stringify(o['x-roles'])==='["VETERINARIAN"]',`Clinical writer ${p}`);
+ if(m!=='get'&&o.operationId!=='getHorseAvailabilityBatch'&&!p.startsWith('/api/groom/')&&p!=='/api/incidents')check(JSON.stringify(o['x-roles'])==='["VETERINARIAN"]',`Clinical writer ${p}`);
  if(p.startsWith('/api/groom/'))check(JSON.stringify(o['x-roles'])==='["GROOM"]',`Groom roles ${p}`);
 }
 const expectedReadRoles={
@@ -65,6 +67,7 @@ const expectedReadRoles={
  '/api/medical/cases':['CLUB_MANAGER','HEAD_TRAINER','TRAINER','VETERINARIAN'],
  '/api/medical/cases/{caseId}':['CLUB_MANAGER','HEAD_TRAINER','TRAINER','VETERINARIAN'],
  '/api/horses/{horseId}/training-availability':['CLUB_MANAGER','HEAD_TRAINER','TRAINER','WORK_RIDER','VETERINARIAN','GROOM'],
+ '/api/horses/{horseId}/availability':['CLUB_MANAGER','HEAD_TRAINER','TRAINER','WORK_RIDER','VETERINARIAN','GROOM'],
  '/api/medical/restrictions':['CLUB_MANAGER','HEAD_TRAINER','TRAINER','VETERINARIAN'],
  '/api/medical/thresholds':['HEAD_TRAINER','TRAINER','VETERINARIAN'],
  '/api/horses/{horseId}/medical-thresholds':['HEAD_TRAINER','TRAINER','VETERINARIAN'],
@@ -72,6 +75,8 @@ const expectedReadRoles={
 };
 for(const [p,rs]of Object.entries(expectedReadRoles))check(JSON.stringify(get(p,'get')['x-roles'])===JSON.stringify(rs),`Matrix drift ${p}`);
 check(JSON.stringify(get('/api/incidents','post')['x-roles'])==='["HEAD_TRAINER","TRAINER","WORK_RIDER","GROOM"]','Incident creation roles');
+check(JSON.stringify(get('/api/horses/availability/batch','post')['x-roles'])==='["CLUB_MANAGER","HEAD_TRAINER","TRAINER","WORK_RIDER","VETERINARIAN","GROOM"]','Batch availability read roles');
+check(s.AvailabilityBatchRequest.properties.horseIds.minItems===1&&s.AvailabilityBatchRequest.properties.horseIds.maxItems===100,'Batch availability bounds');
 for(const n of ['ApiError','ErrorEnvelope','ErrorDetail','ErrorCode'])check(JSON.stringify(s[n])===JSON.stringify(shared.components.schemas[n]),`Shared drift ${n}`);
 const enums={HealthStatus:'FIT MONITORING INJURED QUARANTINED',ClinicalSeverity:'MILD MODERATE SEVERE',IncidentStatus:'REPORTED UNDER_REVIEW RESOLVED',MedicalCaseStatus:'OPEN CLOSED',TreatmentTaskStatus:'PENDING COMPLETED',MonitoringMetric:'HEART_RATE',RestrictionLevel:'LIMITED LOCKED',TrainingAvailability:'AVAILABLE LIMITED LOCKED'};
 for(const [n,values]of Object.entries(enums))check(JSON.stringify(s[n].enum)===JSON.stringify(values.split(' ')),`Enum ${n}`);
@@ -150,7 +155,8 @@ check(/only by OPEN_CASE or LINK_CASE through POST \/api\/incidents\/\{incidentI
 check(!/incidentId|link.*Incident/i.test(caseCreateSchema.properties.reason.description),'Case reason does not imply Incident linkage');
 check(/unsupported incidentId/.test(caseCreateOperation.responses['400'].description),'Case POST rejects bypass field with validation error');
 check(!Object.hasOwn(s.IncidentCreateRequest.properties,'medicalCaseId'),'Incident reporting cannot bypass review by setting medicalCaseId');
-check(ids.size===29,'No additional operation may bypass Incident Review');
+check(ids.size===31&&ids.has('getHorseAvailability')&&ids.has('getHorseAvailabilityBatch'),
+ 'Only approved operations, including availability reads, are present');
 for(const [path,pathItem]of Object.entries(d.paths))for(const [method,operation]of Object.entries(pathItem)){
  if(!operation.operationId||method==='get'||path==='/api/incidents/{incidentId}/review')continue;
  const inlineRequestSchema=operation.requestBody?.content?.['application/json']?.schema;
@@ -225,7 +231,8 @@ const rule=s.RestrictionExerciseRule;
 check(rule.properties.exerciseId?.type==='integer'&&rule.properties.exerciseId?.format==='int64','Exercise ID request type');
 check(!rule.properties.exerciseDefinitionId,'Old exerciseDefinitionId request removed');
 check(rule.properties.exerciseTypeNote?.minLength===1,'Nonempty note/pattern target');
-check(JSON.stringify(rule.properties.ruleType.enum)==='["ALLOWED","PROHIBITED"]','Rule type values');
+check(JSON.stringify(rule.properties.ruleType.enum)==='["ALLOW","PROHIBIT"]','API rule type values');
+check(/API values ALLOW and PROHIBIT map explicitly to persisted ALLOWED and PROHIBITED/.test(rule.description),'API-to-database enum mapping');
 check(JSON.stringify(rule.oneOf?.map(x=>x.required))==='[["exerciseId"],["exerciseTypeNote"]]','Exactly one exercise target schema');
 for(const exerciseId of [false,true])for(const exerciseTypeNote of [false,true]){
  const present=new Set([exerciseId&&'exerciseId',exerciseTypeNote&&'exerciseTypeNote'].filter(Boolean));
@@ -233,8 +240,8 @@ for(const exerciseId of [false,true])for(const exerciseTypeNote of [false,true])
  check((matches===1)===(exerciseId!==exerciseTypeNote),`Exercise target XOR ${exerciseId}/${exerciseTypeNote}`);
 }
 check(/LOCKED blocks all/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability LOCKED behavior');
-check(/PROHIBITED rule first/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability PROHIBITED precedence');
-check(/when ALLOWED rules exist/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability ALLOWED semantics');
+check(/PROHIBIT rule first/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability PROHIBIT precedence');
+check(/when ALLOW rules exist/.test(get('/api/horses/{horseId}/training-availability','get').description),'Availability ALLOW semantics');
 const effective=decision.restrictionEffectiveAt;
 const restrictionCreate=get('/api/horses/{horseId}/medical-restrictions','post');
 check(restrictionCreate['x-effective-at-validation']?.$ref==='#/x-approved-flow3-decisions/restrictionEffectiveAt','Restriction create binds approved time validation');
