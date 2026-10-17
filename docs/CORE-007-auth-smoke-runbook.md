@@ -97,7 +97,7 @@ To load a password for one local login without printing it, in the same Windows 
 
 ```powershell
 $credentialFile = Join-Path $env:LOCALAPPDATA "Racehorse\Core007\AuthSmokeCredentials-$db.dpapi.json"
-$accounts = Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json
+$accounts = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $credentialFile -Raw)
 $account = $accounts | Where-Object role -eq 'TRAINER'
 $securePassword = ConvertTo-SecureString $account.encryptedPassword
 $password = [Net.NetworkCredential]::new('', $securePassword).Password
@@ -235,9 +235,40 @@ Use a second PowerShell window with the same local DB, `CORS_ALLOWED_ORIGINS`, a
 ## RBAC and CORS boundaries
 
 - `/api/admin/**` is protected to `CLUB_MANAGER`; application routes require a valid JWT except explicitly public health/login and development-only API docs. The seed gives each test user exactly one current role. `GET /api/auth/me` verifies role resolution.
+- `CurrentAccountStatusFilter` reloads `app_user` and the current `user_role` rows for every authenticated request, then replaces JWT-claim authorities with those current DB roles. A role change therefore affects an already-issued JWT on its next request; it does not require token re-issuance.
 - This backend currently exposes `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`, and `/api/health`. The shared OpenAPI file also describes registration, forgot-password, and reset-password flows; those operations are **not implemented by this backend increment**. Do not treat those paths as ready for FE calls.
 - CORS allows only the exact origins in `CORS_ALLOWED_ORIGINS`, methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, and headers `Authorization, Content-Type, Accept`. For browser testing, send an `OPTIONS` preflight with the exact FE `Origin`; check `Access-Control-Allow-Origin` matches that origin. If blocked, confirm scheme/host/port exactly and that the env variable was set before starting the app; do not use `*` as a workaround.
 - The `/api/admin/**` authorization rule is active, but the current backend has no admin business controller. There is not yet a real protected business operation to prove a successful CLUB_MANAGER action versus a non-manager `403`; only login and `/me` can presently confirm which role the account has.
+
+### Existing-token role revoke / exact restore check
+
+Use the live SQL Server test script only against the isolated local database and a loopback API started against that same database. It verifies `DB_NAME()`, `SERVERPROPERTY('ComputerNamePhysicalNetBIOS')`, the active account, and the approved schema/migration checksums before changing data. Every user/role value is passed through typed `System.Data.SqlClient.SqlParameter` bindings; the script does not build a DELETE/INSERT statement by interpolating user input.
+
+The test snapshots **all** `user_role` memberships for the selected account, including `id`, `user_id`, `role_id`, `assigned_by_user_id`, `assigned_at`, `created_at`, and `updated_at`. If the account lacks the selected remaining role, the script adds that one temporary membership before login and removes it during cleanup. It deletes only the selected `CLUB_MANAGER` membership, then restores its original identity and all original metadata with `IDENTITY_INSERT`. A `finally` cleanup restores the snapshot after an assertion failure; restoration errors are surfaced and are not swallowed.
+
+The only implemented role-specific matcher is `/api/admin/**` → `CLUB_MANAGER`; there is no mapped admin business controller. Therefore the script uses the deliberately **unmapped** `/api/admin/__core007-role-revocation-probe` only as a Spring Security boundary check, not as a real endpoint or successful business action. Expected responses are:
+
+| Step | Admin matcher probe | `/api/auth/me` | Meaning |
+|---|---:|---:|---|
+| Before revoke, existing JWT | `404` | `200` | CLUB_MANAGER passes authorization; no handler is mapped |
+| After revoke, same JWT | `403` | `200` | Current DB roles removed CLUB_MANAGER; the retained role remains in `/me` |
+| After exact restore, same JWT | `404` | `200` | Restored CLUB_MANAGER again passes the matcher |
+
+`/me` is available to any authenticated role and **does not prove a role-exclusive business permission**. A real retained-role business operation remains unverified until the corresponding controller exists. The SQL snapshot comparison proves that the original membership rows and metadata are restored, and that no other original roles were deleted or rewritten.
+
+From the backend root, keep the API running against the test DB on a local port. The script reads the selected account's password from that Windows user's DPAPI-protected file; it never prints or writes the password or JWT:
+
+```powershell
+$db = 'racehorse_core007_test_20261017_0041'
+$api = 'http://localhost:18081/'
+$report = "docs\evidence\CORE-007-role-revocation-$(Get-Date -Format yyyyMMdd-HHmmss).json"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\db\Test-Core007RoleRevocation.ps1 `
+  -Server localhost -Database $db -ApiBaseUri $api `
+  -Email 'core007.club.manager@example.test' `
+  -RoleToRevoke CLUB_MANAGER -RemainingRole TRAINER -ReportPath $report
+```
+
+Expected output is `ROLE_REVOCATION_OUTCOME=PASS`. The sanitized JSON evidence records UTC timestamps, exact branch/HEAD, SQL Server and DB identity, account ID, HTTP statuses, migration/schema hashes, snapshot/delete/restore counts, and exact-snapshot comparison. It contains no email, password, JWT, or signing key. Do not rerun concurrently for the same account; the membership changes are intentionally temporary.
 
 ## Pending-registration adapter
 
