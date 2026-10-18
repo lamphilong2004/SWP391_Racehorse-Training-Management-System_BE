@@ -23,7 +23,6 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,6 +58,9 @@ class PendingRegistrationSqlServerIntegrationTest {
 
     @DynamicPropertySource
     static void sqlServerProperties(DynamicPropertyRegistry registry) {
+        // Reject a wrong database name or a TLS-bypassing URL before the Spring context opens any connection.
+        Core007TestDatabaseGuard.checkConfiguration(
+                requiredEnvironment("CORE007_SQLSERVER_DATABASE"), requiredEnvironment("CORE007_SQLSERVER_URL"));
         registry.add("spring.datasource.url", () -> requiredEnvironment("CORE007_SQLSERVER_URL"));
         registry.add("spring.datasource.username", () -> environmentOrEmpty("CORE007_SQLSERVER_USERNAME"));
         registry.add("spring.datasource.password", () -> environmentOrEmpty("CORE007_SQLSERVER_PASSWORD"));
@@ -68,31 +70,13 @@ class PendingRegistrationSqlServerIntegrationTest {
 
     @BeforeEach
     void verifyDedicatedLocalTestDatabase() {
+        // Fail closed before any write: dedicated disposable CORE-007 database, local instance, strict TLS.
         String expectedDatabase = requiredEnvironment("CORE007_SQLSERVER_DATABASE");
-        // Dedicated database only: a legacy CORE-007 test database or a new local database created by the
-        // strict-TLS installer (scripts/db/Install-LocalDatabase.ps1). Never a shared, staging or demo database.
-        if (!expectedDatabase.matches("racehorse_core007_test_[0-9]{8}_[0-9]{4}|racehorse_local_[a-z0-9_]{1,70}")) {
-            throw new IllegalStateException(
-                    "CORE007_SQLSERVER_DATABASE must be a dedicated racehorse_core007_test_YYYYMMDD_HHMM or racehorse_local_* database.");
-        }
-        String url = requiredEnvironment("CORE007_SQLSERVER_URL");
-        if (!url.matches("(?i)^jdbc:sqlserver://(localhost|127\\.0\\.0\\.1)(:\\d+)?;.*$")
-                || Pattern.compile("(?i)(?:^|;)(?:failoverPartner|serverName)\\s*=").matcher(url).find()
-                || !Pattern.compile("(?i)(?:^|;)databaseName=" + Pattern.quote(expectedDatabase) + "(?:;|$)")
-                        .matcher(url).find()) {
-            throw new IllegalStateException(
-                    "SQL Server integration tests are restricted to the explicitly named local test database.");
-        }
-        String actualDatabase = jdbcTemplate.queryForObject("SELECT DB_NAME()", String.class);
-        if (!expectedDatabase.equals(actualDatabase)) {
-            throw new IllegalStateException("Connected database does not match CORE007_SQLSERVER_DATABASE.");
-        }
         String localMachine = System.getenv("COMPUTERNAME");
-        String connectedMachine = jdbcTemplate.queryForObject(
-                "SELECT CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128))", String.class);
-        if (localMachine == null || !localMachine.equalsIgnoreCase(connectedMachine)) {
-            throw new IllegalStateException("Connected SQL Server instance is not on the local test machine.");
-        }
+        Core007TestDatabaseGuard.checkConfiguration(expectedDatabase, requiredEnvironment("CORE007_SQLSERVER_URL"));
+        Core007TestDatabaseGuard.checkDisposableInstall(
+                java.nio.file.Path.of(requiredEnvironment("LOCALAPPDATA")), expectedDatabase, localMachine);
+        Core007TestDatabaseGuard.checkConnection(jdbcTemplate, expectedDatabase, localMachine);
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();

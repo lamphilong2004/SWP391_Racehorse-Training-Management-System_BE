@@ -94,3 +94,23 @@ If installation or stack startup fails, stop only this task's newly started proc
 preserve the new DB and sanitized diagnostics, and restore private launcher variables.
 Do not drop/reset it or touch HSF302,racehorse_demo or other existing databases.
 Running the installer a second time against the same target must refuse without writes.
+
+## CORE-007 SQL Server integration suite (gate only)
+
+`PendingRegistrationSqlServerIntegrationTest` writes rows, so it runs only against a **dedicated, disposable**
+database named `racehorse_local_core007_test_YYYYMMDD_HHMMSS`. Create that database with this installer and do
+**not** seed it. `Core007TestDatabaseGuard` rejects anything else before the Spring context connects:
+
+- any other name, including local development, staging, demo and other members' databases
+- a non-localhost URL, `failoverPartner` / `serverName`, or a `databaseName` that differs from the declared name
+- a URL without explicit `encrypt=true;trustServerCertificate=false` (no TLS bypass)
+- a missing, mismatched or seeded installer receipt
+- a live session that is not the declared database on this machine over encrypted TCP
+
+Run it with `-Dcore007.sqlserver.it=true` and these variables:
+- `CORE007_SQLSERVER_DATABASE`
+- `CORE007_SQLSERVER_URL` (strict TLS, integrated security)
+- the truststore through `SPRING_DATASOURCE_HIKARI_DATASOURCEPROPERTIES_TRUSTSTORE` / `...TRUSTSTOREPASSWORD`. Never put the truststore on the command line.
+
+The tests never delete, truncate or reset anything. They use unique `@example.test` identities. After the gate,
+the whole test database is retired instead of being cleaned in place, and it is never reused for development.
