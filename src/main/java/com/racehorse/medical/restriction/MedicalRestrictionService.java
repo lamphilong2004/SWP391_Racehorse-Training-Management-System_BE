@@ -5,8 +5,6 @@ import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
-import com.racehorse.medical.restriction.api.AvailabilityBatchRequest;
-import com.racehorse.medical.restriction.api.AvailabilityBatchResponse;
 import com.racehorse.medical.restriction.api.ExerciseRuleRequest;
 import com.racehorse.medical.restriction.api.ExerciseRuleResponse;
 import com.racehorse.medical.restriction.api.MedicalRestrictionCreateRequest;
@@ -123,18 +121,6 @@ public class MedicalRestrictionService {
         return availabilityForActor(actor, horseId);
     }
 
-    @Transactional(readOnly = true)
-    public AvailabilityBatchResponse availabilityBatch(AvailabilityBatchRequest request) {
-        ActorContext actor = requireActor();
-        if (request == null || request.horseIds() == null || request.horseIds().isEmpty()
-                || request.horseIds().size() > 100 || request.horseIds().stream().anyMatch(id -> id == null || id <= 0)) {
-            throw validation("horseIds must contain between 1 and 100 positive horse ids.");
-        }
-        List<TrainingAvailabilityResponse> items = request.horseIds().stream()
-                .map(horseId -> availabilityForActor(actor, horseId))
-                .toList();
-        return new AvailabilityBatchResponse(items);
-    }
 
     @Transactional(readOnly = true)
     public RestrictionsPageResponse list(int page, int size) {

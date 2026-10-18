@@ -103,11 +103,11 @@ class MedicalRestrictionSecurityIntegrationTest {
 
     @Test
     void missingInvalidAndExpiredTokensAreRejectedByCanonicalSecurityChain() throws Exception {
-        mockMvc.perform(get("/api/horses/1/availability"))
+        mockMvc.perform(get("/api/horses/1/training-availability"))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer not-a-jwt"))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer not-a-jwt"))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer " + expiredToken()))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + expiredToken()))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -128,7 +128,7 @@ class MedicalRestrictionSecurityIntegrationTest {
 
         assertEquals(veterinarianId, jdbcTemplate.queryForObject(
                 "SELECT set_by_user_id FROM dbo.medical_restriction WHERE horse_id = 1", Long.class));
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer " + token))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.availability").value("LOCKED"))
                 .andExpect(jsonPath("$.data.reason").value("Operational rest"))
@@ -151,9 +151,9 @@ class MedicalRestrictionSecurityIntegrationTest {
                                 {"level":"LOCKED","reason":"Operational rest","effectiveAt":"2026-10-16T10:00:00Z"}
                                 """))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer " + trainerToken))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + trainerToken))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/api/horses/2/availability").header("Authorization", "Bearer " + trainerToken))
+        mockMvc.perform(get("/api/horses/2/training-availability").header("Authorization", "Bearer " + trainerToken))
                 .andExpect(status().isForbidden());
     }
 
@@ -166,13 +166,13 @@ class MedicalRestrictionSecurityIntegrationTest {
                 VALUES (1, 1, ?, 'SCHEDULED')
                 """, workRiderId);
 
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer " + workRiderToken))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + workRiderToken))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/api/horses/2/availability").header("Authorization", "Bearer " + workRiderToken))
+        mockMvc.perform(get("/api/horses/2/training-availability").header("Authorization", "Bearer " + workRiderToken))
                 .andExpect(status().isForbidden());
 
         long ownerId = createUser(RoleCode.HORSE_OWNER);
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer " + login(ownerId)))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + login(ownerId)))
                 .andExpect(status().isForbidden());
     }
 
@@ -189,7 +189,7 @@ class MedicalRestrictionSecurityIntegrationTest {
                 .andExpect(status().isCreated());
 
         long groomId = createUser(RoleCode.GROOM);
-        mockMvc.perform(get("/api/horses/1/availability").header("Authorization", "Bearer " + login(groomId)))
+        mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + login(groomId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.availability").value("LIMITED"))
                 .andExpect(jsonPath("$.data.reason").value("Avoid fast work"))

@@ -47,16 +47,11 @@ public class MedicalRestrictionController {
         return ApiResponse.ok(service.lift(restrictionId));
     }
 
-    @GetMapping({"/horses/{horseId}/training-availability", "/horses/{horseId}/availability"})
+    @GetMapping("/horses/{horseId}/training-availability")
     public ApiResponse<TrainingAvailabilityResponse> availability(@PathVariable long horseId) {
         return ApiResponse.ok(service.availability(horseId));
     }
 
-    @PostMapping("/horses/availability/batch")
-    public ApiResponse<AvailabilityBatchResponse> availabilityBatch(
-            @Valid @RequestBody AvailabilityBatchRequest request) {
-        return ApiResponse.ok(service.availabilityBatch(request));
-    }
 
     @GetMapping("/medical/restrictions")
     public ApiResponse<RestrictionsPageResponse> list(

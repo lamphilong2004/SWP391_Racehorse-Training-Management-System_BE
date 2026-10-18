@@ -3,8 +3,6 @@ package com.racehorse.medical.restriction;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
 import com.racehorse.common.error.GlobalExceptionHandler;
-import com.racehorse.medical.restriction.api.AvailabilityBatchRequest;
-import com.racehorse.medical.restriction.api.AvailabilityBatchResponse;
 import com.racehorse.medical.restriction.api.MedicalRestrictionCreateRequest;
 import com.racehorse.medical.restriction.api.MedicalRestrictionController;
 import com.racehorse.medical.restriction.api.MedicalRestrictionResponse;
@@ -65,30 +63,17 @@ class MedicalRestrictionControllerTest {
     }
 
     @Test
-    void availabilityRoutesShareTheSameReadOperation() throws Exception {
+    void contractedAvailabilityRouteReadsDerivedAvailability() throws Exception {
         when(service.availability(1)).thenReturn(
                 new TrainingAvailabilityResponse(1, TrainingAvailability.AVAILABLE, null, null, List.of()));
 
-        mvc.perform(get("/api/horses/1/availability"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.availability").value("AVAILABLE"));
         mvc.perform(get("/api/horses/1/training-availability"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.availability").value("AVAILABLE"));
 
-        verify(service, org.mockito.Mockito.times(2)).availability(1);
+        verify(service).availability(1);
     }
 
-    @Test
-    void batchValidationRejectsEmptyIdsBeforeCallingService() throws Exception {
-        mvc.perform(post("/api/horses/availability/batch")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"horseIds\":[]}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
-
-        verify(service, never()).availabilityBatch(any(AvailabilityBatchRequest.class));
-    }
 
     @Test
     void liftAcceptsOnlyTheContractedEmptyRequestBody() throws Exception {
@@ -106,7 +91,7 @@ class MedicalRestrictionControllerTest {
     void serviceAuthorizationErrorsUseCommonForbiddenEnvelope() throws Exception {
         when(service.availability(1)).thenThrow(new BusinessException(ErrorCode.FORBIDDEN, "Outside read scope."));
 
-        mvc.perform(get("/api/horses/1/availability"))
+        mvc.perform(get("/api/horses/1/training-availability"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));

@@ -5,7 +5,6 @@ import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
-import com.racehorse.medical.restriction.api.AvailabilityBatchRequest;
 import com.racehorse.medical.restriction.api.ExerciseRuleRequest;
 import com.racehorse.medical.restriction.api.MedicalRestrictionCreateRequest;
 import com.racehorse.medical.restriction.api.ReplaceExerciseRulesRequest;
@@ -223,21 +222,6 @@ class MedicalRestrictionServiceTest {
         verify(repository, never()).findActiveRestriction(1);
     }
 
-    @Test
-    void batchReadReturnsNoPartialDataWhenAnyHorseIsOutOfScope() {
-        authenticate(RoleCode.TRAINER);
-        when(repository.horseExists(1)).thenReturn(true);
-        when(repository.horseExists(2)).thenReturn(true);
-        when(repository.trainerAssignedToHorse(eq(1L), eq(44L), any())).thenReturn(true);
-        when(repository.trainerAssignedToHorse(eq(2L), eq(44L), any())).thenReturn(false);
-        when(repository.findActiveRestriction(1)).thenReturn(Optional.empty());
-
-        BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.availabilityBatch(new AvailabilityBatchRequest(List.of(1L, 2L))));
-
-        assertEquals(ErrorCode.FORBIDDEN, exception.code());
-        verify(repository, never()).findActiveRestriction(2);
-    }
 
     @Test
     void groomCanReadOperationalAvailability() {
