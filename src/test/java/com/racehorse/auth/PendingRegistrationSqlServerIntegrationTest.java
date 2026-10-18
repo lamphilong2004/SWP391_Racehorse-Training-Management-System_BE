@@ -69,9 +69,11 @@ class PendingRegistrationSqlServerIntegrationTest {
     @BeforeEach
     void verifyDedicatedLocalTestDatabase() {
         String expectedDatabase = requiredEnvironment("CORE007_SQLSERVER_DATABASE");
-        if (!expectedDatabase.matches("racehorse_core007_test_[0-9]{8}_[0-9]{4}")) {
+        // Dedicated database only: a legacy CORE-007 test database or a new local database created by the
+        // strict-TLS installer (scripts/db/Install-LocalDatabase.ps1). Never a shared, staging or demo database.
+        if (!expectedDatabase.matches("racehorse_core007_test_[0-9]{8}_[0-9]{4}|racehorse_local_[a-z0-9_]{1,70}")) {
             throw new IllegalStateException(
-                    "CORE007_SQLSERVER_DATABASE must be a new racehorse_core007_test_YYYYMMDD_HHMM database.");
+                    "CORE007_SQLSERVER_DATABASE must be a dedicated racehorse_core007_test_YYYYMMDD_HHMM or racehorse_local_* database.");
         }
         String url = requiredEnvironment("CORE007_SQLSERVER_URL");
         if (!url.matches("(?i)^jdbc:sqlserver://(localhost|127\\.0\\.0\\.1)(:\\d+)?;.*$")

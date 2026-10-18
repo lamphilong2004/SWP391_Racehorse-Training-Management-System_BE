@@ -9,6 +9,10 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 - Microsoft SQL Server (approved schema DB-01, 51 tables)
 - springdoc-openapi 3.1.1 (Swagger UI)
 
+## Approved local-first installation
+
+Use [LOCAL-FIRST-DATABASE](docs/LOCAL-FIRST-DATABASE.md). Existing database setup commands below are legacy; the wrappers now require a new `racehorse_local_*` target and dedicated JDBC truststore environment. No existing database is migrated automatically.
+
 ## Run locally
 
 1. Start SQL Server (service `MSSQLSERVER`) and enable TCP/IP on port 1433.
@@ -23,7 +27,7 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 
    | Variable | Default |
    |---|---|
-   | `DB_URL` | `jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=true` |
+   | `DB_URL` | `jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=false` |
    | `DB_USERNAME` | (empty) |
    | `DB_PASSWORD` | (empty) |
    | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |

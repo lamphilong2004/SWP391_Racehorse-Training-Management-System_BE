@@ -26,7 +26,7 @@ This runbook prepares a **new local SQL Server database** for Long/Hoàng to int
   Confirm the selected local instance is `Running`, then verify the connection and physical host. Use Windows authentication for these local provisioning commands:
 
   ```powershell
-  sqlcmd -S localhost -E -C -b -Q "SET NOCOUNT ON; SELECT @@SERVERNAME, CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128)), CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128));"
+  sqlcmd -S localhost -E -N -b -Q "SET NOCOUNT ON; SELECT @@SERVERNAME, CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128)), CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128));"
   ```
 
   The physical machine name must match `$env:COMPUTERNAME`. If it does not, stop; do not proceed to create or modify a database. For a named local instance, substitute `localhost\INSTANCE` consistently.
@@ -46,7 +46,7 @@ Choose a fresh suffix. The scripts require `racehorse_core007_test_YYYYMMDD_HHMM
 
 ```powershell
 $db = "racehorse_core007_test_$(Get-Date -Format yyyyMMdd_HHmm)"
-sqlcmd -S localhost -E -C -b -h -1 -W -Q "SET NOCOUNT ON; SELECT DB_ID('$db');"
+sqlcmd -S localhost -E -N -b -h -1 -W -Q "SET NOCOUNT ON; SELECT DB_ID('$db');"
 ```
 
 The query must return `NULL`. If it returns a database ID, choose a different suffix. Do not delete or reuse that DB.
@@ -60,15 +60,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\db\create-core007-lo
 Confirm the exact database and host, then apply the approved migration:
 
 ```powershell
-sqlcmd -S localhost -E -C -b -d $db -Q "SET NOCOUNT ON; SELECT DB_NAME(), CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128));"
+sqlcmd -S localhost -E -N -b -d $db -Q "SET NOCOUNT ON; SELECT DB_NAME(), CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128));"
 Get-FileHash -Algorithm SHA256 database\migrations\V20261016_01__create_registration_request.sql
-sqlcmd -S localhost -E -C -b -d $db -i database\migrations\V20261016_01__create_registration_request.sql
+sqlcmd -S localhost -E -N -b -d $db -i database\migrations\V20261016_01__create_registration_request.sql
 ```
 
 Check the migration table and column:
 
 ```powershell
-sqlcmd -S localhost -E -C -b -d $db -Q "SET NOCOUNT ON; SELECT COUNT(*) AS registration_request_table_count FROM sys.tables WHERE name = 'registration_request' AND schema_id = SCHEMA_ID('dbo'); SELECT name, collation_name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.registration_request') AND name = 'email_normalized';"
+sqlcmd -S localhost -E -N -b -d $db -Q "SET NOCOUNT ON; SELECT COUNT(*) AS registration_request_table_count FROM sys.tables WHERE name = 'registration_request' AND schema_id = SCHEMA_ID('dbo'); SELECT name, collation_name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.registration_request') AND name = 'email_normalized';"
 ```
 
 The first result must be `1`, and `email_normalized` must use `Latin1_General_100_BIN2`.
@@ -121,7 +121,7 @@ The names below are bound in `src/main/resources/application.yml`, `JwtSettings`
 Set local-only values in the current PowerShell process; do not write values into Git, command transcripts, screenshots, or shared logs. Example for Windows integrated authentication:
 
 ```powershell
-$env:DB_URL = "jdbc:sqlserver://localhost:1433;databaseName=$db;encrypt=true;trustServerCertificate=true;integratedSecurity=true"
+$env:DB_URL = "jdbc:sqlserver://localhost:1433;databaseName=$db;encrypt=true;trustServerCertificate=false;integratedSecurity=true"
 $env:DB_USERNAME = ''
 $env:DB_PASSWORD = ''
 $env:JWT_ACCESS_TOKEN_TTL_SECONDS = '3600'
@@ -208,7 +208,7 @@ Use a second PowerShell window with the same local DB, `CORS_ALLOWED_ORIGINS`, a
    Expected HTTP status is `204`. Confirm audit in this isolated DB:
 
    ```powershell
-   sqlcmd -S localhost -E -C -b -d $db -Q "SET NOCOUNT ON; SELECT TOP (1) actor_user_id, actor_role, action, safe_summary, source FROM dbo.audit_log WHERE actor_user_id = $actorId AND action = 'USER_LOGGED_OUT' ORDER BY id DESC;"
+   sqlcmd -S localhost -E -N -b -d $db -Q "SET NOCOUNT ON; SELECT TOP (1) actor_user_id, actor_role, action, safe_summary, source FROM dbo.audit_log WHERE actor_user_id = $actorId AND action = 'USER_LOGGED_OUT' ORDER BY id DESC;"
    ```
 
    Expected action is `USER_LOGGED_OUT`, correct actor ID, and source `WEB`. The schema has no token/password fields in this audit record; the safe summary is fixed by the backend. Do not query or print request headers, JWTs, or passwords.
@@ -216,13 +216,13 @@ Use a second PowerShell window with the same local DB, `CORS_ALLOWED_ORIGINS`, a
 6. Verify deactivation only in this disposable local database. Before the update, record the selected account ID from `/me`; then:
 
    ```powershell
-   sqlcmd -S localhost -E -C -b -d $db -Q "SET NOCOUNT ON; UPDATE dbo.app_user SET account_status = 'INACTIVE', updated_at = SYSUTCDATETIME() WHERE id = $actorId AND email = N'$email'; SELECT @@ROWCOUNT AS changed_rows;"
+   sqlcmd -S localhost -E -N -b -d $db -Q "SET NOCOUNT ON; UPDATE dbo.app_user SET account_status = 'INACTIVE', updated_at = SYSUTCDATETIME() WHERE id = $actorId AND email = N'$email'; SELECT @@ROWCOUNT AS changed_rows;"
    ```
 
    Confirm `changed_rows = 1`. Reuse the still-valid bearer token against `"$api/api/auth/me"`; expected result is HTTP 403 with `Your account is deactivated.` Then restore this one local test account so another tester can log in:
 
    ```powershell
-   sqlcmd -S localhost -E -C -b -d $db -Q "SET NOCOUNT ON; UPDATE dbo.app_user SET account_status = 'ACTIVE', updated_at = SYSUTCDATETIME() WHERE id = $actorId AND email = N'$email'; SELECT @@ROWCOUNT AS restored_rows;"
+   sqlcmd -S localhost -E -N -b -d $db -Q "SET NOCOUNT ON; UPDATE dbo.app_user SET account_status = 'ACTIVE', updated_at = SYSUTCDATETIME() WHERE id = $actorId AND email = N'$email'; SELECT @@ROWCOUNT AS restored_rows;"
    ```
 
    Confirm `restored_rows = 1`. Do not perform either SQL update outside the newly created local DB.
@@ -278,7 +278,7 @@ The SQL Server integration tests require the same isolated schema and migration:
 
 ```powershell
 $env:CORE007_SQLSERVER_DATABASE = $db
-$env:CORE007_SQLSERVER_URL = "jdbc:sqlserver://localhost:1433;databaseName=$db;encrypt=true;trustServerCertificate=true;integratedSecurity=true"
+$env:CORE007_SQLSERVER_URL = "jdbc:sqlserver://localhost:1433;databaseName=$db;encrypt=true;trustServerCertificate=false;integratedSecurity=true"
 $env:CORE007_SQLSERVER_USERNAME = ''
 $env:CORE007_SQLSERVER_PASSWORD = ''
 $env:JAVA_TOOL_OPTIONS = '-Djava.library.path=<directory-containing-mssql-jdbc_auth-13.4.0.x64.dll>'
