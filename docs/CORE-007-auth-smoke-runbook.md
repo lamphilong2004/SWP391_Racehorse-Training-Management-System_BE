@@ -29,6 +29,8 @@ This runbook prepares a **new local SQL Server database** for Long/Hoàng to int
   sqlcmd -S localhost -E -N -b -Q "SET NOCOUNT ON; SELECT @@SERVERNAME, CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128)), CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128));"
   ```
 
+  `-N` encrypts the connection and leaves certificate and host-name validation enabled. The certificate chain must be trusted by the client; do not use `-C` or `TrustServerCertificate=true`.
+
   The physical machine name must match `$env:COMPUTERNAME`. If it does not, stop; do not proceed to create or modify a database. For a named local instance, substitute `localhost\INSTANCE` consistently.
 - Verify the checkout before provisioning:
 
