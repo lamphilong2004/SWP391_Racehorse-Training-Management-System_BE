@@ -63,6 +63,10 @@ class Core007TestDatabaseGuardTest {
         assertThrows(IllegalStateException.class,
                 () -> Core007TestDatabaseGuard.checkDisposableInstall(appData, DB, "OTHERHOST"));
 
+        // Windows PowerShell 5.1 writes UTF-8 with a byte-order mark.
+        Files.writeString(receipt, "\uFEFF{\"status\":\"INSTALLED_AND_VERIFIED\",\"database\":\"" + DB + "\",\"machine\":\"TESTHOST\",\"seeded\":false}");
+        assertDoesNotThrow(() -> Core007TestDatabaseGuard.checkDisposableInstall(appData, DB, "TESTHOST"));
+
         Files.writeString(receipt, "{\"status\":\"INSTALLED_AND_VERIFIED\",\"database\":\"" + DB + "\",\"machine\":\"TESTHOST\",\"seeded\":true}");
         assertThrows(IllegalStateException.class,
                 () -> Core007TestDatabaseGuard.checkDisposableInstall(appData, DB, "TESTHOST"));

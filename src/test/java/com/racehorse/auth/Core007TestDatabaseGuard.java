@@ -85,7 +85,9 @@ final class Core007TestDatabaseGuard {
         }
         JsonNode root;
         try {
-            root = JsonMapper.builder().build().readTree(Files.readString(receipt));
+            // The installer runs on Windows PowerShell 5.1, whose UTF-8 output starts with a byte-order mark.
+            String text = Files.readString(receipt);
+            root = JsonMapper.builder().build().readTree(text.startsWith("\uFEFF") ? text.substring(1) : text);
         } catch (Exception exception) {
             throw new IllegalStateException("The CORE-007 test database installer receipt is unreadable.");
         }
