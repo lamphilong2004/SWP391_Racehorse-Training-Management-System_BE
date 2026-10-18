@@ -9,6 +9,10 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 - Microsoft SQL Server (approved schema DB-01, 51 tables)
 - springdoc-openapi 3.1.1 (Swagger UI)
 
+## Approved local-first installation
+
+Use [LOCAL-FIRST-DATABASE](docs/LOCAL-FIRST-DATABASE.md). Existing database setup commands below are legacy; the wrappers now require a new `racehorse_local_*` target and dedicated JDBC truststore environment. No existing database is migrated automatically.
+
 ## Run locally
 
 1. Start SQL Server (service `MSSQLSERVER`) and enable TCP/IP on port 1433.
@@ -23,10 +27,16 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 
    | Variable | Default |
    |---|---|
-   | `DB_URL` | `jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=true` |
+   | `DB_URL` | `jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=false` |
    | `DB_USERNAME` | (empty) |
    | `DB_PASSWORD` | (empty) |
    | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
+   | `JWT_SIGNING_KEY` | Required; Base64-encoded random key of at least 256 bits |
+   | `JWT_ACCESS_TOKEN_TTL_SECONDS` | Required; positive token lifetime in seconds |
+
+   Set JWT values through the environment or the deployment secret manager. The application has no
+   signing-key or token-lifetime default and fails startup if either value is missing or invalid.
+   Do not commit the signing key. Swagger UI and API docs are enabled only in `dev` and `test`.
 
 4. Run: `mvn spring-boot:run` (profile `dev` by default).
 5. Check: `GET http://localhost:8080/api/health` → `{"success":true,"data":{"status":"UP"}}`.
