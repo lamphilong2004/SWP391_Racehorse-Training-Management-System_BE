@@ -17,12 +17,12 @@ if (-not $env:COMPUTERNAME -or $env:COMPUTERNAME -notmatch '^[A-Za-z0-9-]+$') {
     throw 'Cannot establish a safe local SQL Server machine name.'
 }
 
-$serverMachine = & sqlcmd -S $Server -E -C -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128));"
+$serverMachine = & sqlcmd -S $Server -E -N -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128));"
 if ($LASTEXITCODE -ne 0 -or ($serverMachine | Select-Object -First 1).Trim() -ine $env:COMPUTERNAME) {
     throw 'The selected SQL Server is not confirmed to be on this local machine.'
 }
 
-$databaseExists = & sqlcmd -S $Server -E -C -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CASE WHEN DB_ID('$Database') IS NULL THEN 0 ELSE 1 END;"
+$databaseExists = & sqlcmd -S $Server -E -N -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CASE WHEN DB_ID('$Database') IS NULL THEN 0 ELSE 1 END;"
 if ($LASTEXITCODE -ne 0) {
     throw "Could not check whether database '$Database' already exists."
 }
@@ -36,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "The approved schema setup failed for '$Database'."
 }
 
-$tableCount = & sqlcmd -S $Server -E -C -b -d $Database -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.tables;"
+$tableCount = & sqlcmd -S $Server -E -N -b -d $Database -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.tables;"
 if ($LASTEXITCODE -ne 0 -or [int]($tableCount | Select-Object -First 1) -ne 51) {
     throw "Expected 51 canonical schema tables in '$Database'."
 }

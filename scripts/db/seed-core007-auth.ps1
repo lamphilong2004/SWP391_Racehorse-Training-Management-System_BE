@@ -27,12 +27,12 @@ if (Test-Path -LiteralPath $credentialFile) {
 }
 New-Item -ItemType Directory -Path $credentialDirectory -Force | Out-Null
 
-$databaseExists = & sqlcmd -S $Server -E -C -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CASE WHEN DB_ID('$Database') IS NULL THEN 0 ELSE 1 END;"
+$databaseExists = & sqlcmd -S $Server -E -N -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CASE WHEN DB_ID('$Database') IS NULL THEN 0 ELSE 1 END;"
 if ($LASTEXITCODE -ne 0 -or [int]($databaseExists | Select-Object -First 1) -ne 1) {
     throw "Database '$Database' does not exist on the local SQL Server."
 }
 
-$identity = & sqlcmd -S $Server -E -C -b -d $Database -h -1 -W -s '|' -Q "SET NOCOUNT ON; SELECT DB_NAME(), CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128));"
+$identity = & sqlcmd -S $Server -E -N -b -d $Database -h -1 -W -s '|' -Q "SET NOCOUNT ON; SELECT DB_NAME(), CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS nvarchar(128));"
 if ($LASTEXITCODE -ne 0) {
     throw "Could not verify local SQL Server identity for '$Database'."
 }
@@ -96,7 +96,7 @@ try {
 
     $renderedSeed = Join-Path $temporaryDirectory 'core007-auth-smoke.sql'
     Set-Content -LiteralPath $renderedSeed -Value $seedContent -Encoding utf8
-    & sqlcmd -S $Server -E -C -b -d $Database -i $renderedSeed
+    & sqlcmd -S $Server -E -N -b -d $Database -i $renderedSeed
     if ($LASTEXITCODE -ne 0) {
         throw "The CORE-007 seed failed for '$Database'."
     }

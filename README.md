@@ -23,7 +23,7 @@ Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3
 
    | Variable | Default |
    |---|---|
-   | `DB_URL` | `jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=true` |
+   | `DB_URL` | `jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=false` |
    | `DB_USERNAME` | (empty) |
    | `DB_PASSWORD` | (empty) |
    | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |

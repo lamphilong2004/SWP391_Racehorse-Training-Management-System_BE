@@ -334,7 +334,7 @@ try {
     $report.schemaSha256 = $schemaHash
     $report.migrationSha256 = $migrationHash
 
-    $connectionString = "Data Source=$Server;Initial Catalog=$Database;Integrated Security=SSPI;Encrypt=True;TrustServerCertificate=True;Application Name=CORE007-Role-Revocation"
+    $connectionString = "Data Source=$Server;Initial Catalog=$Database;Integrated Security=SSPI;Encrypt=True;TrustServerCertificate=False;Application Name=CORE007-Role-Revocation"
     $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
     $connection.Open()
     $identityCommand = $connection.CreateCommand()
