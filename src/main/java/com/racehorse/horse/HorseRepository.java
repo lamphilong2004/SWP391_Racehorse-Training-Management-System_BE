@@ -3,6 +3,8 @@ package com.racehorse.horse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
@@ -31,11 +33,81 @@ public class HorseRepository {
         """+FROM;
 
     public long insert(HorseIdentityRequest v) {
-        Long id=jdbc.queryForObject("""
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
             INSERT INTO dbo.horse(horse_code,name,breed,sex,foaled_date,country_of_origin,registration_no,lifecycle)
-            OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,'DRAFT')
-            """,Long.class,v.horseCode(),v.name(),v.breed(),v.sex(),v.foaledDate(),v.countryOfOrigin(),v.registrationNo());
-        return Objects.requireNonNull(id);
+            VALUES(?,?,?,?,?,?,?,'DRAFT')
+            """, Statement.RETURN_GENERATED_KEYS);
+            statement.setString(1, v.horseCode());
+            statement.setString(2, v.name());
+            statement.setString(3, v.breed());
+            statement.setString(4, v.sex());
+            statement.setObject(5, v.foaledDate());
+            statement.setString(6, v.countryOfOrigin());
+            statement.setString(7, v.registrationNo());
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder);
+    }
+    public void updatePedigree(long horseId, PedigreeRequest request) {
+        jdbc.update("""
+            UPDATE dbo.horse
+            SET sire_horse_id=?, sire_name=?, dam_horse_id=?, dam_name=?, updated_at=?
+            WHERE id=?
+            """, request.sire().horseId(), normalized(request.sire().name()),
+                request.dam().horseId(), normalized(request.dam().name()),
+                LocalDateTime.now(Clock.systemUTC()), horseId);
+    }
+    private static String normalized(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+    public boolean ownerIsActiveHorseOwner(long userId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.app_user u
+                JOIN dbo.user_role ur ON ur.user_id=u.id
+                JOIN dbo.role r ON r.id=ur.role_id
+                WHERE u.id=? AND u.account_status='ACTIVE' AND r.role_code='HORSE_OWNER'
+            ) THEN 1 ELSE 0 END
+            """, Boolean.class, userId));
+    }
+    public long insertOwnership(long horseId, OwnershipRequest request) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+            INSERT INTO dbo.horse_ownership
+                (horse_id, owner_user_id, share_percentage, effective_from, is_managing_owner)
+            VALUES (?, ?, ?, ?, ?)
+            """, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, horseId);
+            statement.setLong(2, request.ownerUserId());
+            statement.setBigDecimal(3, request.sharePercentage());
+            statement.setObject(4, request.effectiveFrom());
+            statement.setBoolean(5, Boolean.TRUE.equals(request.isManagingOwner()));
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder);
+    }
+    private static long generatedId(KeyHolder keyHolder) {
+        Map<String, Object> keys = keyHolder.getKeys();
+        Object id = keys == null ? null : keys.entrySet().stream()
+                .filter(entry -> "id".equalsIgnoreCase(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+        if (!(id instanceof Number generatedId)) {
+            throw new IllegalStateException("The database did not return a generated identity.");
+        }
+        return generatedId.longValue();
+    }
+    public List<Map<String, Object>> ownershipHistory(long horseId) {
+        return jdbc.query("""
+            SELECT o.*,u.user_code,u.full_name FROM dbo.horse_ownership o
+            JOIN dbo.app_user u ON u.id=o.owner_user_id
+            WHERE o.horse_id=?
+            ORDER BY CASE WHEN o.effective_to IS NULL THEN 0 ELSE 1 END, o.effective_from DESC, o.id DESC
+            """, OWNERSHIP_ROW, horseId);
     }
     public boolean exists(long id) { return Boolean.TRUE.equals(jdbc.queryForObject("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.horse WHERE id=?) THEN 1 ELSE 0 END",Boolean.class,id)); }
     private static String scope(Long trainer,List<Object> args) {
@@ -68,13 +140,14 @@ public class HorseRepository {
             SELECT o.*,u.user_code,u.full_name FROM dbo.horse_ownership o
             JOIN dbo.app_user u ON u.id=o.owner_user_id
             WHERE o.horse_id=? AND o.effective_to IS NULL ORDER BY o.id
-            """,(r,n)->{
-            Map<String,Object> o=new LinkedHashMap<>();o.put("id",r.getLong("id"));
-            o.put("owner",user(r.getLong("owner_user_id"),r.getString("user_code"),r.getString("full_name")));
-            o.put("sharePercentage",r.getBigDecimal("share_percentage"));o.put("effectiveFrom",date(r,"effective_from"));
-            o.put("effectiveTo",date(r,"effective_to"));o.put("isManagingOwner",r.getBoolean("is_managing_owner"));return o;
-        },id);
+            """, OWNERSHIP_ROW, id);
     }
+    private static final RowMapper<Map<String,Object>> OWNERSHIP_ROW=(r,n)->{
+        Map<String,Object> o=new LinkedHashMap<>();o.put("id",r.getLong("id"));
+        o.put("owner",user(r.getLong("owner_user_id"),r.getString("user_code"),r.getString("full_name")));
+        o.put("sharePercentage",r.getBigDecimal("share_percentage"));o.put("effectiveFrom",date(r,"effective_from"));
+        o.put("effectiveTo",date(r,"effective_to"));o.put("isManagingOwner",r.getBoolean("is_managing_owner"));return o;
+    };
     private static Map<String,Object> user(long id,String code,String name){Map<String,Object> u=new LinkedHashMap<>();u.put("id",id);u.put("userCode",code);u.put("fullName",name);return u;}
     private static Object date(ResultSet r,String field)throws SQLException {java.sql.Date d=r.getDate(field);return d==null?null:d.toLocalDate();}
     private static Object instant(ResultSet r,String field)throws SQLException {LocalDateTime t=r.getObject(field,LocalDateTime.class);return t==null?null:t.toInstant(ZoneOffset.UTC);}

@@ -48,4 +48,46 @@ public class HorseService {
     public HorseRepository.Page list(String q,String lifecycle,String health,String availability,int page,int size) {
         return repository.list(q,lifecycle,health,availability,page,size,trainerScope());
     }
+    @Transactional
+    public Map<String,Object> setPedigree(long horseId, PedigreeRequest request) {
+        requireHorse(horseId);
+        validateParent(horseId, request.sire());
+        validateParent(horseId, request.dam());
+        if (request.sire().horseId() != null && request.sire().horseId().equals(request.dam().horseId())) {
+            throw validation("sire", "Sire and dam must be different horses.");
+        }
+        repository.updatePedigree(horseId, request);
+        return detail(horseId);
+    }
+    private void validateParent(long horseId, ParentReference parent) {
+        if (parent.horseId() != null && (parent.horseId() == horseId || !repository.exists(parent.horseId()))) {
+            throw validation("pedigree", "A parent must reference an existing horse other than this horse.");
+        }
+    }
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> ownershipHistory(long horseId) {
+        requireHorse(horseId);
+        return repository.ownershipHistory(horseId);
+    }
+    @Transactional
+    public Map<String,Object> addOwnership(long horseId, OwnershipRequest request) {
+        requireHorse(horseId);
+        if (!repository.ownerIsActiveHorseOwner(request.ownerUserId())) {
+            throw validation("ownerUserId", "The owner must be an active user with the HORSE_OWNER role.");
+        }
+        long ownershipId = repository.insertOwnership(horseId, request);
+        return repository.ownershipHistory(horseId).stream()
+                .filter(row -> ((Number) row.get("id")).longValue() == ownershipId)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Inserted ownership row could not be read back."));
+    }
+    private void requireHorse(long horseId) {
+        if (!repository.exists(horseId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Horse not found.");
+        }
+    }
+    private static BusinessException validation(String field, String message) {
+        return new BusinessException(ErrorCode.VALIDATION_ERROR, message,
+                List.of(new ErrorDetail(field, message)));
+    }
 }
