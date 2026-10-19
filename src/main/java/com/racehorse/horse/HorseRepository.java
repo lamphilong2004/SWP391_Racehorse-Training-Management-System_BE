@@ -109,6 +109,107 @@ public class HorseRepository {
             ORDER BY CASE WHEN o.effective_to IS NULL THEN 0 ELSE 1 END, o.effective_from DESC, o.id DESC
             """, OWNERSHIP_ROW, horseId);
     }
+    public record OpenStableAssignment(long id, LocalDate effectiveFrom, long stableBoxId) {}
+    public boolean stableBoxExists(long stableBoxId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box WHERE id=?) THEN 1 ELSE 0 END
+            """, Boolean.class, stableBoxId));
+    }
+    public Optional<OpenStableAssignment> openStableAssignment(long horseId) {
+        List<OpenStableAssignment> assignments = jdbc.query("""
+            SELECT id,effective_from,stable_box_id
+            FROM dbo.horse_stable_assignment
+            WHERE horse_id=? AND effective_to IS NULL
+            """, (r, n) -> new OpenStableAssignment(
+                r.getLong("id"), r.getDate("effective_from").toLocalDate(), r.getLong("stable_box_id")), horseId);
+        if (assignments.size() > 1) {
+            throw new IllegalStateException("The horse has more than one open stable assignment.");
+        }
+        return assignments.stream().findFirst();
+    }
+    public boolean hasOverlappingHorseAssignment(long horseId, Long excludedAssignmentId, LocalDate effectiveFrom) {
+        if (excludedAssignmentId == null) {
+            return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1 FROM dbo.horse_stable_assignment
+                    WHERE horse_id=? AND (effective_to IS NULL OR effective_to>=?)
+                ) THEN 1 ELSE 0 END
+                """, Boolean.class, horseId, effectiveFrom));
+        }
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.horse_stable_assignment
+                WHERE horse_id=?
+                  AND id<>?
+                  AND (effective_to IS NULL OR effective_to>=?)
+            ) THEN 1 ELSE 0 END
+            """, Boolean.class, horseId, excludedAssignmentId, effectiveFrom));
+    }
+    public boolean hasOverlappingBoxAssignment(long stableBoxId, LocalDate effectiveFrom) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.horse_stable_assignment
+                WHERE stable_box_id=?
+                  AND (effective_to IS NULL OR effective_to>=?)
+            ) THEN 1 ELSE 0 END
+            """, Boolean.class, stableBoxId, effectiveFrom));
+    }
+    public int closeOpenStableAssignment(long assignmentId, LocalDate effectiveTo) {
+        return jdbc.update("""
+            UPDATE dbo.horse_stable_assignment
+            SET effective_to=?,updated_at=?
+            WHERE id=? AND effective_to IS NULL
+            """, effectiveTo, LocalDateTime.now(Clock.systemUTC()), assignmentId);
+    }
+    public long insertStableAssignment(long horseId, StableAssignmentRequest request, long assignedByUserId) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO dbo.horse_stable_assignment
+                    (horse_id,stable_box_id,assigned_by_user_id,effective_from,reason)
+                VALUES (?,?,?,?,?)
+                """, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, horseId);
+            statement.setLong(2, request.stableBoxId());
+            statement.setLong(3, assignedByUserId);
+            statement.setObject(4, request.effectiveFrom());
+            statement.setString(5, normalized(request.reason()));
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder);
+    }
+    public List<Map<String,Object>> stableAssignmentHistory(long horseId) {
+        return jdbc.query("""
+            SELECT a.*,b.box_code,b.yard,u.user_code,u.full_name
+            FROM dbo.horse_stable_assignment a
+            JOIN dbo.stable_box b ON b.id=a.stable_box_id
+            JOIN dbo.app_user u ON u.id=a.assigned_by_user_id
+            WHERE a.horse_id=?
+            ORDER BY CASE WHEN a.effective_to IS NULL THEN 0 ELSE 1 END,
+                     a.effective_from DESC,a.id DESC
+            """, STABLE_ASSIGNMENT_ROW, horseId);
+    }
+    public Optional<Map<String,Object>> stableAssignment(long assignmentId) {
+        return jdbc.query("""
+            SELECT a.*,b.box_code,b.yard,u.user_code,u.full_name
+            FROM dbo.horse_stable_assignment a
+            JOIN dbo.stable_box b ON b.id=a.stable_box_id
+            JOIN dbo.app_user u ON u.id=a.assigned_by_user_id
+            WHERE a.id=?
+            """, STABLE_ASSIGNMENT_ROW, assignmentId).stream().findFirst();
+    }
+    private static final RowMapper<Map<String,Object>> STABLE_ASSIGNMENT_ROW=(r,n)->{
+        Map<String,Object> assignment=new LinkedHashMap<>();
+        assignment.put("id",r.getLong("id"));
+        assignment.put("stableBoxId",r.getLong("stable_box_id"));
+        assignment.put("boxCode",r.getString("box_code"));
+        assignment.put("yard",r.getString("yard"));
+        assignment.put("effectiveFrom",date(r,"effective_from"));
+        assignment.put("effectiveTo",date(r,"effective_to"));
+        assignment.put("reason",r.getString("reason"));
+        assignment.put("assignedBy",user(r.getLong("assigned_by_user_id"),r.getString("user_code"),r.getString("full_name")));
+        return assignment;
+    };
     public boolean exists(long id) { return Boolean.TRUE.equals(jdbc.queryForObject("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.horse WHERE id=?) THEN 1 ELSE 0 END",Boolean.class,id)); }
     private static String scope(Long trainer,List<Object> args) {
         if(trainer==null)return "";

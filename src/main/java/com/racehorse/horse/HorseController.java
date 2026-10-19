@@ -84,4 +84,34 @@ public class HorseController {
             @Valid @RequestBody OwnershipRequest body) {
         return ApiResponse.ok(service.addOwnership(id, body));
     }
+    @GetMapping("/{id}/stable-assignments")
+    @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER')")
+    @Operation(operationId="listStableAssignments",summary="Read current and past stable assignments")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200", description="Assignment history, current first."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="401", description="Missing, invalid or expired JWT."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403", description="Role is not permitted to read assignment history."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="404", description="Horse not found.")
+    })
+    public ApiResponse<java.util.List<Map<String,Object>>> stableAssignmentHistory(@PathVariable @Min(1) long id) {
+        return ApiResponse.ok(service.stableAssignmentHistory(id));
+    }
+    @PostMapping("/{id}/stable-assignments")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('CLUB_MANAGER')")
+    @Operation(operationId="assignStableBox",summary="Assign or move the horse to a stable box",
+            description="Moves close the previous assignment the day before the new inclusive effective date. The close and new assignment are atomic.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="201", description="Assignment created."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400", description="Invalid effective date or assignment request."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="401", description="Missing, invalid or expired JWT."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403", description="Only CLUB_MANAGER may assign a stable box."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="404", description="Horse or stable box not found."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="409", description="The requested assignment period overlaps an existing assignment.")
+    })
+    public ApiResponse<Map<String,Object>> assignStableBox(
+            @PathVariable @Min(1) long id,
+            @Valid @RequestBody StableAssignmentRequest body) {
+        return ApiResponse.ok(service.assignStableBox(id, body));
+    }
 }
