@@ -1,8 +1,9 @@
-# Racehorse local-first database handoff — release candidate
+# Racehorse local-first database handoff
 
 Leader approved DB-01 and the CORE-007 technical migration on 2026-10-18.
-This package is pending clean-install evidence and Leader approval before team rollout.
-Source baseline: BE `6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04`.
+Use [TEAM-LOCAL-ONBOARDING](TEAM-LOCAL-ONBOARDING.md) for pinned revisions, setup and the second-machine checklist.
+The manifest retains its original source baseline `6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04`;
+team onboarding builds on accepted BE dev `5867f07`. Each member must verify their own machine.
 CORE-001/011 ownership and original contribution history remain Dung's. This work
 reuses the CORE-007 seed SQL and BCrypt generator; it does not replace the demo seeder.
 
@@ -69,7 +70,7 @@ failure does not change an already completed schema receipt into a test PASS.
 
 ## Run the real stack
 
-Build BE with `mvn verify` and package it normally. Set DB_URL to the exact new DB,
+Build the pinned, already-tested BE with `mvn -DskipTests package`. Set DB_URL to the exact new DB,
 `encrypt=true;trustServerCertificate=false`, the certificate hostname and auth mode.
 Pass truststore path/password through Hikari data-source environment properties from
 the template. Keep `spring.jpa.hibernate.ddl-auto=validate`. Generate JWT signing key
@@ -78,9 +79,9 @@ locally; never print or commit it. Use profile dev, not demo, and bind BE to127.
 Set FE `VITE_API_BASE_URL` to the loopback BE and CORS to the exact FE origin.
 Use API mode with role-test/sample flags disabled. Run FE from the existing official
 implementation, not a new demo app. Missing business APIs must remain honest errors.
-After CORE-012 is on dev, `scripts/db/Test-LocalStack.ps1` (added with CORE-012) provides real
-JWT/me/401/403/readback/logout evidence. Until then, verify browser login, workspace, refresh
-and logout on the same new stack.
+Use `scripts/db/Test-LocalHorse.ps1` for the small JWT/me/Horse/SQL-readback/logout journey,
+then verify browser login,workspace,create/list/detail and refresh on the same new stack.
+The earlier private `Test-LocalStack.ps1` was not published in this baseline and is not a team prerequisite.
 H2/Maven test results must be reported separately from SQL Server/browser results.
 
 ## Team verification and rollback

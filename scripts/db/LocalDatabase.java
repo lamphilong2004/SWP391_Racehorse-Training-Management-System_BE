@@ -131,6 +131,21 @@ class LocalDatabase {
                         }
                     }
                 }
+                case "horse" -> {
+                    String code=env("RH_HORSE_CODE");
+                    require(code.length()<=20,"HORSE_CODE_TOO_LONG");
+                    try(PreparedStatement q=c.prepareStatement("SELECT id,horse_code,name,lifecycle FROM dbo.horse WHERE horse_code=?")) {
+                        q.setString(1,code);
+                        try(ResultSet r=q.executeQuery()) {
+                            require(r.next(),"HORSE_READBACK_NOT_FOUND");
+                            Map<String,Object> horse=new LinkedHashMap<>();
+                            horse.put("id",r.getLong(1));horse.put("horseCode",r.getString(2));
+                            horse.put("name",r.getString(3));horse.put("lifecycle",r.getString(4));
+                            require(!r.next(),"HORSE_CODE_NOT_UNIQUE");
+                            System.out.println(json(horse));
+                        }
+                    }
+                }
                 default -> throw new IllegalStateException("UNKNOWN_OPERATION");
             }
         }
