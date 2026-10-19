@@ -1,0 +1,41 @@
+name: Staging container
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - render.yaml
+      - pom.xml
+      - src/**
+      - .github/workflows/staging-image.yml
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build Java 21 image and run deployment-focused tests
+        run: docker build --tag racehorse-staging:verify .
+      - name: Verify runtime profile, user and Java version
+        run: |
+          test "$(docker inspect --format '{{.Config.User}}' racehorse-staging:verify)" = "10001:1000"
+          docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' racehorse-staging:verify | grep -Fx 'SPRING_PROFILES_ACTIVE=staging'
+          docker run --rm --entrypoint java racehorse-staging:verify -version
+      - name: Refuse startup without staging configuration
+        run: |
+          docker run --name staging-no-config racehorse-staging:verify > startup.log 2>&1 &
+          runner=$!
+          sleep 15
+          if [ "$(docker inspect --format '{{.State.Running}}' staging-no-config)" = true ]; then
+            docker stop staging-no-config
+            echo 'Unexpected startup without staging configuration'
+            exit 1
+          fi
+          wait "$runner" && exit 1 || true
+          test "$(docker inspect --format '{{.State.ExitCode}}' staging-no-config)" != 0
+          grep -E 'Missing required staging property|Could not resolve placeholder' startup.log >/dev/null

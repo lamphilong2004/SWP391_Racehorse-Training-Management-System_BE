@@ -1,0 +1,11 @@
+**
+!pom.xml
+!src/
+!src/**
+**/application-local*.yml
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.key
+**/.env*
+# Allowlisted build context: no Git metadata, local credentials, receipts or certificates.
