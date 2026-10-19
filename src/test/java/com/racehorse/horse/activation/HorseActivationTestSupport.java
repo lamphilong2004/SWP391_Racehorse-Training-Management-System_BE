@@ -62,6 +62,7 @@ abstract class HorseActivationTestSupport {
     void cleanActivationTestData() {
         for (long horseId : horseIds) {
             jdbc.update("DELETE FROM dbo.audit_log WHERE target_type = 'HORSE' AND target_id = ?", horseId);
+            jdbc.update("DELETE FROM dbo.horse_photo WHERE horse_id = ?", horseId);
             jdbc.update("DELETE FROM dbo.weight_record WHERE horse_id = ?", horseId);
             jdbc.update("DELETE FROM dbo.veterinary_examination WHERE horse_id = ?", horseId);
             jdbc.update("DELETE FROM dbo.horse_stable_assignment WHERE horse_id = ?", horseId);

@@ -3,6 +3,7 @@ package com.racehorse.security;
 import com.racehorse.auth.JwtSettings;
 import com.racehorse.auth.RoleCode;
 import com.racehorse.auth.AuthenticationService;
+import com.racehorse.horse.photo.LocalHorsePhotoProperties;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -47,6 +48,7 @@ public class SecurityConfiguration {
             JsonSecurityHandlers securityHandlers,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             CurrentAccountStatusFilter currentAccountStatusFilter,
+            LocalHorsePhotoProperties photoProperties,
             Environment environment) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -62,6 +64,8 @@ public class SecurityConfiguration {
                     authorize.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
                     authorize.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll();
                     authorize.requestMatchers(HttpMethod.GET, "/api/health").permitAll();
+                    authorize.requestMatchers(photoProperties.resourceHandlerPattern())
+                            .hasAnyRole("CLUB_MANAGER", "HEAD_TRAINER", "TRAINER", "VETERINARIAN", "GROOM");
                     if (environment.acceptsProfiles(Profiles.of("dev", "test"))) {
                         authorize.requestMatchers(
                                 "/v3/api-docs", "/v3/api-docs/**",
