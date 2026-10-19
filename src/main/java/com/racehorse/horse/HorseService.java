@@ -3,6 +3,7 @@ package com.racehorse.horse;
 import com.racehorse.auth.*;
 import com.racehorse.common.api.ErrorDetail;
 import com.racehorse.common.error.*;
+import com.racehorse.horse.activation.HorseActivationService;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -14,8 +15,16 @@ import java.util.*;
 
 @Service
 public class HorseService {
-    private final HorseRepository repository;private final CurrentActorProvider actors;
-    public HorseService(HorseRepository repository,CurrentActorProvider actors){this.repository=repository;this.actors=actors;}
+    private final HorseRepository repository;
+    private final CurrentActorProvider actors;
+    private final HorseActivationService activationService;
+
+    public HorseService(HorseRepository repository, CurrentActorProvider actors,
+                        HorseActivationService activationService) {
+        this.repository = repository;
+        this.actors = actors;
+        this.activationService = activationService;
+    }
     private Long trainerScope() {
         ActorContext actor=actors.currentActor().orElseThrow(()->new BusinessException(ErrorCode.UNAUTHORIZED,"Authentication required."));
         if(actor.roles().stream().anyMatch(r->Set.of(RoleCode.CLUB_MANAGER,RoleCode.HEAD_TRAINER,RoleCode.VETERINARIAN,RoleCode.GROOM).contains(r)))return null;
@@ -39,6 +48,37 @@ public class HorseService {
         }
         return detail(id);
     }
+    @Transactional
+    public Map<String,Object> update(long horseId, HorseIdentityRequest input) {
+        requireHorse(horseId);
+        try {
+            if (repository.updateIdentity(horseId, input.normalized()) != 1) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "Horse not found.");
+            }
+        } catch (DataIntegrityViolationException error) {
+            Throwable cause = error;
+            boolean duplicate = false;
+            String field = "horseCode";
+            while (cause != null) {
+                if (cause instanceof SQLException sql) {
+                    if (sql.getErrorCode() == 2601 || sql.getErrorCode() == 2627
+                            || "23505".equals(sql.getSQLState())) {
+                        duplicate = true;
+                    }
+                    if (sql.getMessage() != null && sql.getMessage().contains("registration_no")) {
+                        field = "registrationNo";
+                    }
+                }
+                cause = cause.getCause();
+            }
+            if (!duplicate) {
+                throw error;
+            }
+            throw new BusinessException(ErrorCode.CONFLICT, "Horse code or registration number already exists.",
+                    List.of(new ErrorDetail(field, "already exists")));
+        }
+        return detail(horseId);
+    }
     @Transactional(readOnly=true)
     public Map<String,Object> detail(long id) {
         Long trainer=trainerScope();
@@ -51,7 +91,7 @@ public class HorseService {
     public HorseRepository.Page list(String q,String lifecycle,String health,String availability,int page,int size) {
         return repository.list(q,lifecycle,health,availability,page,size,trainerScope());
     }
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public Map<String,Object> setPedigree(long horseId, PedigreeRequest request) {
         requireHorse(horseId);
         validateParent(horseId, request.sire());
@@ -60,6 +100,7 @@ public class HorseService {
             throw validation("sire", "Sire and dam must be different horses.");
         }
         repository.updatePedigree(horseId, request);
+        activationService.reevaluate(horseId);
         return detail(horseId);
     }
     private void validateParent(long horseId, ParentReference parent) {
@@ -72,13 +113,14 @@ public class HorseService {
         requireHorse(horseId);
         return repository.ownershipHistory(horseId);
     }
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public Map<String,Object> addOwnership(long horseId, OwnershipRequest request) {
         requireHorse(horseId);
         if (!repository.ownerIsActiveHorseOwner(request.ownerUserId())) {
             throw validation("ownerUserId", "The owner must be an active user with the HORSE_OWNER role.");
         }
         long ownershipId = repository.insertOwnership(horseId, request);
+        activationService.reevaluate(horseId);
         return repository.ownershipHistory(horseId).stream()
                 .filter(row -> ((Number) row.get("id")).longValue() == ownershipId)
                 .findFirst()
@@ -121,6 +163,7 @@ public class HorseService {
             }
             long assignmentId = repository.insertStableAssignment(
                     horseId, request, actor.userId());
+            activationService.reevaluate(horseId);
             return repository.stableAssignment(assignmentId)
                     .orElseThrow(() -> new IllegalStateException("Inserted stable assignment could not be read back."));
         } catch (DataAccessException error) {

@@ -141,6 +141,15 @@ abstract class HorseActivationTestSupport {
     }
 
     protected void addStableAssignment(long horseId, long assignedByUserId) {
+        long stableBoxId = createStableBox();
+        jdbc.update("""
+                INSERT INTO dbo.horse_stable_assignment
+                    (horse_id, stable_box_id, assigned_by_user_id, effective_from)
+                VALUES (?, ?, ?, ?)
+                """, horseId, stableBoxId, assignedByUserId, LocalDate.now());
+    }
+
+    protected long createStableBox() {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         KeyHolder boxKey = new GeneratedKeyHolder();
         jdbc.update(connection -> {
@@ -151,13 +160,9 @@ abstract class HorseActivationTestSupport {
             statement.setString(2, "CORE-016 Test Yard");
             return statement;
         }, boxKey);
-        long boxId = generatedId(boxKey);
-        stableBoxIds.add(boxId);
-        jdbc.update("""
-                INSERT INTO dbo.horse_stable_assignment
-                    (horse_id, stable_box_id, assigned_by_user_id, effective_from)
-                VALUES (?, ?, ?, ?)
-                """, horseId, boxId, assignedByUserId, LocalDate.now());
+        long stableBoxId = generatedId(boxKey);
+        stableBoxIds.add(stableBoxId);
+        return stableBoxId;
     }
 
     protected void addBaseline(long horseId, long veterinarianId) {

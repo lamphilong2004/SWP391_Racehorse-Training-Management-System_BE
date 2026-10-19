@@ -38,6 +38,14 @@ public class HorseController {
     @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER','TRAINER','VETERINARIAN','GROOM')")
     @Operation(operationId="getHorse",summary="Horse detail, Trainer assignment scoped")
     public ApiResponse<Map<String,Object>> detail(@PathVariable @Min(1) long id){return ApiResponse.ok(service.detail(id));}
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('CLUB_MANAGER')")
+    @Operation(operationId="updateHorse",summary="Edit horse identification data")
+    public ApiResponse<Map<String,Object>> update(
+            @PathVariable @Min(1) long id,
+            @Valid @RequestBody HorseIdentityRequest body) {
+        return ApiResponse.ok(service.update(id, body));
+    }
     @PutMapping("/{id}/pedigree")
     @PreAuthorize("hasRole('CLUB_MANAGER')")
     @Operation(operationId="setPedigree",summary="Declare the horse pedigree",

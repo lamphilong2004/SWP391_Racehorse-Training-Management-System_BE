@@ -50,6 +50,15 @@ public class HorseRepository {
         }, keyHolder);
         return generatedId(keyHolder);
     }
+    public int updateIdentity(long horseId, HorseIdentityRequest v) {
+        return jdbc.update("""
+            UPDATE dbo.horse
+            SET horse_code=?, name=?, breed=?, sex=?, foaled_date=?,
+                country_of_origin=?, registration_no=?, updated_at=?
+            WHERE id=?
+            """, v.horseCode(), v.name(), v.breed(), v.sex(), v.foaledDate(),
+                v.countryOfOrigin(), v.registrationNo(), LocalDateTime.now(Clock.systemUTC()), horseId);
+    }
     public void updatePedigree(long horseId, PedigreeRequest request) {
         jdbc.update("""
             UPDATE dbo.horse

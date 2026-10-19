@@ -149,6 +149,36 @@ class HorseRegistrationApiTest {
     }
 
     @Test
+    void clubManagerCanUpdateHorseIdentificationWithoutChangingServerOwnedFields() throws Exception {
+        String manager = tokenFor(RoleCode.CLUB_MANAGER);
+        long horseId = createHorse(manager, "UPDATE-01");
+        jdbc.update("UPDATE dbo.horse SET health_status='FIT', sire_name='Original sire' WHERE id=?", horseId);
+
+        mockMvc.perform(put("/api/horses/{id}", horseId)
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "horseCode": "UPDATE-01",
+                                  "name": "Updated Horse",
+                                  "breed": "Arabian",
+                                  "sex": "MARE",
+                                  "foaledDate": "2021-04-12",
+                                  "countryOfOrigin": "Testland",
+                                  "registrationNo": "REG-UPDATE-01"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Updated Horse"))
+                .andExpect(jsonPath("$.data.lifecycle").value("DRAFT"))
+                .andExpect(jsonPath("$.data.healthStatus").value("FIT"))
+                .andExpect(jsonPath("$.data.pedigree.sire.name").value("Original sire"));
+
+        assertEquals("Updated Horse", jdbc.queryForObject(
+                "SELECT name FROM dbo.horse WHERE id=?", String.class, horseId));
+    }
+
+    @Test
     void ownershipWriteRequiresActiveHorseOwnerAndHistoryIsRoleScoped() throws Exception {
         String manager = tokenFor(RoleCode.CLUB_MANAGER);
         long ownerId = createUser(RoleCode.HORSE_OWNER, AccountStatus.ACTIVE);
