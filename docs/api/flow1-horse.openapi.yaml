@@ -354,9 +354,17 @@ paths:
       description: |
         Read model assembled from existing tables (activation, box assignments, ownership changes, examinations,
         restrictions, programs, sessions, incidents). The horse timeline starts at `horse.activated_at`, the timestamp set
-        when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). Approved `TimelineEvent.eventType`
-        values and source mappings beyond this activation start remain NEEDS CLARIFICATION. Events carry titles only;
-        clinical detail is never included for non-Veterinarian callers.
+        when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). It includes
+        `HORSE_ACTIVATED` from `horse.activated_at`; `STABLE_ASSIGNED` from
+        `horse_stable_assignment.effective_from`; `OWNERSHIP_CHANGED` from `horse_ownership.effective_from`;
+        `VETERINARY_EXAMINATION` from `veterinary_examination.examined_at`; `RESTRICTION_CHANGED` from
+        `medical_restriction.effective_from` and, when present, `lifted_at`; `PROGRAM_ACTIVATED` from
+        `horse_training_program.activated_at`; `TRAINING_SESSION` from `training_session.actual_start` only; and
+        `INCIDENT_REPORTED` from `incident.reported_at`. Scheduled-only sessions are excluded. The DATE-valued
+        `effective_from` fields are represented at 00:00:00Z and do not imply an exact operation time. Events before
+        `horse.activated_at` are excluded. Results are newest first with a stable event-type/source-row tie-break.
+        Titles are neutral; clinical detail is never included. `targetType` and `targetId` are omitted unless the caller
+        may access the corresponding source resource. A DRAFT horse with no activation timestamp has an empty timeline.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
       parameters:
         - $ref: '#/components/parameters/Page'
@@ -378,6 +386,7 @@ paths:
                               items:
                                 type: array
                                 items: { $ref: '#/components/schemas/TimelineEvent' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -915,16 +924,16 @@ components:
         recordedAt: { type: string, format: date-time, description: UTC timestamp; maps to dbo.weight_record.measured_at DATETIME2(3). Aligned with flow3-medical WeightRecord.recordedAt (CORE-006). }
     TimelineEvent:
       type: object
-      description: 'The timeline starts at horse.activated_at, when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). Approved event types and source mappings beyond this activation start remain NEEDS CLARIFICATION.'
+      description: 'A neutral event summary. DATE-valued ownership/stable effective_from values are normalized to 00:00:00Z; this is a date representation, not the exact operation time.'
       required: [occurredAt, eventType, title]
       properties:
-        occurredAt: { type: string, format: date-time }
+        occurredAt: { type: string, format: date-time, description: UTC timestamp; DATE-valued source dates are represented at 00:00:00Z. }
         eventType:
           type: string
-          description: 'NEEDS CLARIFICATION: approved event values.'
+          enum: [HORSE_ACTIVATED, STABLE_ASSIGNED, OWNERSHIP_CHANGED, VETERINARY_EXAMINATION, RESTRICTION_CHANGED, PROGRAM_ACTIVATED, TRAINING_SESSION, INCIDENT_REPORTED]
         title: { type: string, maxLength: 200, description: Non-clinical wording. }
-        targetType: { type: [string, 'null'] }
-        targetId: { type: [integer, 'null'], format: int64 }
+        targetType: { type: [string, 'null'], description: Null unless the caller may access the corresponding source resource. }
+        targetId: { type: [integer, 'null'], format: int64, description: Null unless the caller may access the corresponding source resource. }
 
     # ---------- Stable ----------
     StableBox:

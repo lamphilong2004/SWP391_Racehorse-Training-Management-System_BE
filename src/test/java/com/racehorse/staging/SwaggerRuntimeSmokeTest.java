@@ -53,6 +53,8 @@ class SwaggerRuntimeSmokeTest {
         assertEquals("recordHorseWeight",
                 api.at("/paths/~1api~1horses~1{horseId}~1weights/post/operationId").asText());
         assertEquals("listMyHorses", api.at("/paths/~1api~1owner~1horses/get/operationId").asText());
+        assertEquals("getHorseTimeline",
+                api.at("/paths/~1api~1horses~1{id}~1timeline/get/operationId").asText());
     }
 
     private HttpResponse<String> get(HttpClient client, URI uri) throws Exception {
