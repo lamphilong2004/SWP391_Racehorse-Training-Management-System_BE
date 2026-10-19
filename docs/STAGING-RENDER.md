@@ -10,7 +10,7 @@ docker build -t racehorse-staging .
 
 The multi-stage image compiles on Java21 and runs only `StagingDeploymentTest`. It runs as non-root UID10001, defaults to profile `staging`, binds `0.0.0.0:${PORT:10000}`, and performs no schema creation, seed or migration. `.dockerignore` allows only pom/src and excludes local secret/certificate files. The public-repository `Staging container` PR check builds this image on a standard free GitHub runner and checks its Java version, runtime user/profile and failure without configuration. It does not publish an image or deploy a service.
 
-After review and an approved reachable SQL staging database exist, create the Render Docker web service from the reviewed **dev commit**, Free plan, Dockerfile `./Dockerfile`, health path `/api/health/ready`, auto-deploy **Off**. `render.yaml` describes these settings but has not been applied. Do not create a service before credentials/network access are ready. A first deploy is an explicit hosting action; no paid resource is authorized by this file.
+After review and an approved reachable SQL staging database exist, create the Render Docker web service from the reviewed **dev commit**, Free plan, Dockerfile `./Dockerfile`, health path `/api/health`, auto-deploy **Off**. `render.yaml` describes these settings but has not been applied. Do not create a service before credentials/network access are ready. A first deploy is an explicit hosting action; no paid resource is authorized by this file.
 
 Configure through Render Environment, never build arguments, source or FE variables:
 
@@ -28,8 +28,8 @@ STAGING_DOCS_USERNAME / STAGING_DOCS_PASSWORD | Separate documentation credentia
 
 ## HTTP boundaries
 
-- `/api/health` retains existing public process liveness. It does not query SQL.
-- `/api/health/ready` is staging-only; runs read-only `SELECT 1`, returns200 UP or503 with a generic unavailable error. It reveals no host, schema, credentials or exception. It does not prove business writes, canonical schema or authorization correctness.
+- `/api/health` retains existing public process liveness. It does not query SQL. It is the Render health check path: Render probes every few seconds, and a SQL probe there would prevent Azure serverless auto-pause and drain the free vCore-second allowance. The service still cannot become healthy without a database, because startup fails when Hibernate `validate` cannot obtain a connection (verified with an unreachable `DB_URL`: context refresh fails, port never opens).
+- `/api/health/ready` is staging-only and used by the manual hosted gate; runs read-only `SELECT 1`, returns200 UP or503 with a generic unavailable error. It reveals no host, schema, credentials or exception. It does not prove business writes, canonical schema or authorization correctness.
 - `/swagger-ui/index.html`, `/swagger-ui.html`, `/v3/api-docs` and child paths require separate HTTP Basic documentation credentials over Render HTTPS. A browser prompts for them, then Swagger's Authorize action takes a **real business JWT** for API calls. Swagger does not persist that token. Do not share screenshots/traces containing credentials or tokens.
 - Documentation credentials apply only to documentation paths. The canonical JWT/RBAC chain remains responsible for every business API; Basic credentials cannot replace a business JWT. Staging does not enable dev/test public Swagger policy.
 - No broad proxy/header trust or CORS wildcard is enabled. Incorrect browser origins must be rejected.

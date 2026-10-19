@@ -8,7 +8,9 @@ services:
     branch: dev
     dockerfilePath: ./Dockerfile
     autoDeployTrigger: 'off'
-    healthCheckPath: /api/health/ready
+    # Liveness only: Render probes every few seconds, and a SQL probe would keep Azure serverless from
+    # auto-pausing. Startup already fails without a reachable DB (Hibernate validate), so deploys still fail.
+    healthCheckPath: /api/health
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: staging
