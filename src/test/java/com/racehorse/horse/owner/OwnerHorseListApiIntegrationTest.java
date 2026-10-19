@@ -84,7 +84,8 @@ class OwnerHorseListApiIntegrationTest extends OwnerApiIntegrationTestSupport {
         List<String> endpoints = List.of(
                 "/api/owner/horses",
                 "/api/owner/horses/{id}/profile",
-                "/api/owner/horses/{id}/health-summary");
+                "/api/owner/horses/{id}/health-summary",
+                "/api/owner/horses/{id}/training-summary");
 
         for (String endpoint : endpoints) {
             mockMvc.perform(ownerRequest(endpoint, horseId))
@@ -125,7 +126,10 @@ class OwnerHorseListApiIntegrationTest extends OwnerApiIntegrationTestSupport {
                 .andExpect(jsonPath("$.components.schemas.OwnerHorseCard.properties.trainingAvailability").exists())
                 .andExpect(jsonPath("$.components.schemas.OwnerHorseProfile.properties.myOwnership").exists())
                 .andExpect(jsonPath("$.components.schemas.OwnerHealthSummary.properties.weights").exists())
-                .andExpect(jsonPath("$.paths['/api/owner/horses/{id}/training-summary']").doesNotExist());
+                .andExpect(jsonPath("$.paths['/api/owner/horses/{id}/training-summary'].get.operationId")
+                        .value("getMyHorseTrainingSummary"))
+                .andExpect(jsonPath("$.components.schemas.OwnerTrainingSummary.properties.currentProgram").exists())
+                .andExpect(jsonPath("$.components.schemas.OwnerTrainingSummary.properties.recentSessions").exists());
     }
 
     private MockHttpServletRequestBuilder ownerRequest(String endpoint, long horseId) {

@@ -41,6 +41,22 @@ public final class OwnerHorseDtos {
         RECOVERED
     }
 
+    @Schema(name = "ProgramStatus")
+    public enum ProgramStatus {
+        ACTIVE,
+        PAUSED,
+        COMPLETED
+    }
+
+    @Schema(name = "SessionStatus")
+    public enum SessionStatus {
+        SCHEDULED,
+        IN_PROGRESS,
+        PAUSED,
+        COMPLETED,
+        INTERRUPTED
+    }
+
     @Schema(name = "OwnerHorseCard")
     public record HorseCard(
             long id,
@@ -94,6 +110,35 @@ public final class OwnerHorseDtos {
 
         public HealthSummary {
             weights = List.copyOf(weights);
+        }
+    }
+
+    @Schema(name = "OwnerProgramSummary")
+    public record ProgramSummary(
+            String name,
+            ProgramStatus status,
+            LocalDate periodStart,
+            LocalDate periodEnd,
+            @Schema(nullable = true) String currentPhaseName,
+            int sessionsCompleted,
+            int sessionsPlanned) {
+    }
+
+    @Schema(name = "OwnerSessionSummary")
+    public record SessionSummary(
+            String sessionCode,
+            Instant scheduledStart,
+            SessionStatus status,
+            @Schema(nullable = true) String evaluationLabel) {
+    }
+
+    @Schema(name = "OwnerTrainingSummary")
+    public record TrainingSummary(
+            @Schema(nullable = true) ProgramSummary currentProgram,
+            List<SessionSummary> recentSessions) {
+
+        public TrainingSummary {
+            recentSessions = List.copyOf(recentSessions);
         }
     }
 }

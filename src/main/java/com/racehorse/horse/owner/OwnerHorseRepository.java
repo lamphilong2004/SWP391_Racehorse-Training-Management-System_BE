@@ -7,7 +7,12 @@ import com.racehorse.horse.owner.OwnerHorseDtos.Lifecycle;
 import com.racehorse.horse.owner.OwnerHorseDtos.Ownership;
 import com.racehorse.horse.owner.OwnerHorseDtos.ParentRef;
 import com.racehorse.horse.owner.OwnerHorseDtos.Pedigree;
+import com.racehorse.horse.owner.OwnerHorseDtos.ProgramStatus;
+import com.racehorse.horse.owner.OwnerHorseDtos.ProgramSummary;
 import com.racehorse.horse.owner.OwnerHorseDtos.RecoveryStatus;
+import com.racehorse.horse.owner.OwnerHorseDtos.SessionStatus;
+import com.racehorse.horse.owner.OwnerHorseDtos.SessionSummary;
+import com.racehorse.horse.owner.OwnerHorseDtos.TrainingSummary;
 import com.racehorse.horse.owner.OwnerHorseDtos.TrainingAvailability;
 import com.racehorse.horse.owner.OwnerHorseDtos.WeightPoint;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,6 +22,7 @@ import org.springframework.dao.support.DataAccessUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -198,6 +204,103 @@ public class OwnerHorseRepository {
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) ->
                 new WeightPoint(rs.getBigDecimal("weight"), instant(rs, "measured_at")), horseId, ownerUserId);
+    }
+
+    public Optional<TrainingSummary> findOwnedTrainingSummary(long ownerUserId, long horseId) {
+        if (!isOwnedBy(ownerUserId, horseId)) {
+            return Optional.empty();
+        }
+
+        LocalDate today = LocalDate.now(Clock.systemUTC());
+        ProgramSummary currentProgram = findCurrentProgram(ownerUserId, horseId, today).orElse(null);
+        List<SessionSummary> recentSessions = findRecentSessions(ownerUserId, horseId);
+        return Optional.of(new TrainingSummary(currentProgram, recentSessions));
+    }
+
+    private boolean isOwnedBy(long ownerUserId, long horseId) {
+        Boolean owned = jdbcTemplate.queryForObject("""
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.horse_ownership ho
+                    WHERE ho.horse_id = ?
+                      AND ho.owner_user_id = ?
+                      AND ho.effective_to IS NULL
+                ) THEN 1 ELSE 0 END
+                """, Boolean.class, horseId, ownerUserId);
+        return Boolean.TRUE.equals(owned);
+    }
+
+    private Optional<ProgramSummary> findCurrentProgram(long ownerUserId, long horseId, LocalDate today) {
+        List<ProgramSummary> programs = jdbcTemplate.query("""
+                SELECT p.name, p.status, p.period_start, p.period_end,
+                       (
+                           SELECT CASE WHEN COUNT(*) = 1 THEN MAX(ph.name) ELSE NULL END
+                           FROM dbo.horse_program_phase ph
+                           WHERE ph.horse_training_program_id = p.id
+                             AND ph.start_date <= ?
+                             AND ph.end_date >= ?
+                       ) AS current_phase_name,
+                       (
+                           SELECT COUNT(*)
+                           FROM dbo.horse_program_phase ph
+                           JOIN dbo.training_session s ON s.horse_program_phase_id = ph.id
+                           WHERE ph.horse_training_program_id = p.id
+                             AND s.status = 'COMPLETED'
+                       ) AS sessions_completed,
+                       (
+                           SELECT COUNT(*)
+                           FROM dbo.horse_program_phase ph
+                           JOIN dbo.training_session s ON s.horse_program_phase_id = ph.id
+                           WHERE ph.horse_training_program_id = p.id
+                       ) AS sessions_planned
+                FROM dbo.horse_training_program p
+                WHERE p.horse_id = ?
+                  AND p.status = 'ACTIVE'
+                  AND p.period_start <= ?
+                  AND p.period_end >= ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM dbo.horse_ownership ho
+                      WHERE ho.horse_id = p.horse_id
+                        AND ho.owner_user_id = ?
+                        AND ho.effective_to IS NULL
+                  )
+                ORDER BY p.activated_at DESC, p.id DESC
+                OFFSET 0 ROWS FETCH NEXT 1 ROW ONLY
+                """, (rs, rowNum) -> new ProgramSummary(
+                rs.getString("name"),
+                ProgramStatus.valueOf(rs.getString("status")),
+                rs.getObject("period_start", LocalDate.class),
+                rs.getObject("period_end", LocalDate.class),
+                rs.getString("current_phase_name"),
+                rs.getInt("sessions_completed"),
+                rs.getInt("sessions_planned")),
+                today, today, horseId, today, today, ownerUserId);
+        return Optional.ofNullable(DataAccessUtils.singleResult(programs));
+    }
+
+    private List<SessionSummary> findRecentSessions(long ownerUserId, long horseId) {
+        return jdbcTemplate.query("""
+                SELECT s.session_code, s.scheduled_start, s.status, sr.evaluation_label
+                FROM dbo.training_session s
+                JOIN dbo.horse_program_phase ph ON ph.id = s.horse_program_phase_id
+                JOIN dbo.horse_training_program p ON p.id = ph.horse_training_program_id
+                LEFT JOIN dbo.session_result sr ON sr.training_session_id = s.id
+                WHERE p.horse_id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM dbo.horse_ownership ho
+                      WHERE ho.horse_id = p.horse_id
+                        AND ho.owner_user_id = ?
+                        AND ho.effective_to IS NULL
+                  )
+                ORDER BY s.scheduled_start DESC, s.id DESC
+                OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY
+                """, (rs, rowNum) -> new SessionSummary(
+                rs.getString("session_code"),
+                instant(rs, "scheduled_start"),
+                SessionStatus.valueOf(rs.getString("status")),
+                rs.getString("evaluation_label")), horseId, ownerUserId);
     }
 
     public boolean horseExists(long horseId) {

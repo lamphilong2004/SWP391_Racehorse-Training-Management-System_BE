@@ -678,7 +678,14 @@ paths:
       tags: [Owner]
       operationId: getMyHorseTrainingSummary
       summary: Training & Performance tab (SCR-OWNER-002)
-      description: Current program progress and recent session results produced by Flow 2. No race fields (target race is not exposed).
+      description: |
+        Current program is the ACTIVE program whose inclusive period contains the current UTC date. If more than one
+        qualifies, select the latest `activated_at`, then highest program ID for a stable tie-break. The current phase
+        name is returned only when exactly one phase date range contains today's UTC date. `sessionsCompleted` counts
+        COMPLETED sessions in the selected program; `sessionsPlanned` counts all sessions in that program.
+        `recentSessions` contains up to 10 sessions across all of the horse's programs, all statuses included, ordered by
+        `scheduled_start` descending then session ID descending. Only `session_result.evaluation_label` is exposed; no
+        evaluation notes, exercise details, race fields, or clinical data are returned.
       x-roles: [HORSE_OWNER]
       responses:
         '200':
@@ -690,6 +697,7 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - properties:
                       data: { $ref: '#/components/schemas/OwnerTrainingSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/OwnerForbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1097,9 +1105,9 @@ components:
                 status: { $ref: '#/components/schemas/ProgramStatus' }
                 periodStart: { type: string, format: date }
                 periodEnd: { type: string, format: date }
-                currentPhaseName: { type: [string, 'null'] }
-                sessionsCompleted: { type: integer, minimum: 0 }
-                sessionsPlanned: { type: integer, minimum: 0 }
+                currentPhaseName: { type: [string, 'null'], description: Null unless exactly one phase date range includes the current UTC date. }
+                sessionsCompleted: { type: integer, minimum: 0, description: Count of sessions with status COMPLETED in the selected program. }
+                sessionsPlanned: { type: integer, minimum: 0, description: Count of all sessions in the selected program. }
             - type: 'null'
         recentSessions:
           type: array

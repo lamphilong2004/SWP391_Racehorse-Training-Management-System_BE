@@ -267,11 +267,14 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO dbo.horse_training_program (horse_id, name, status, activated_at)
-                    VALUES (?, 'Test program', 'ACTIVE', ?)
+                    INSERT INTO dbo.horse_training_program
+                        (horse_id, name, status, period_start, period_end, activated_at)
+                    VALUES (?, 'Test program', 'ACTIVE', ?, ?, ?)
                     """, new String[]{"id"});
             statement.setLong(1, horseId);
-            statement.setObject(2, activatedAt);
+            statement.setObject(2, LocalDate.of(2026, 2, 1));
+            statement.setObject(3, LocalDate.of(2026, 2, 28));
+            statement.setObject(4, activatedAt);
             return statement;
         }, keyHolder);
         return generatedId(keyHolder);
@@ -280,10 +283,14 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
     private long insertPhase(long programId) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
-            PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO dbo.horse_program_phase (horse_training_program_id) VALUES (?)",
-                    new String[]{"id"});
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO dbo.horse_program_phase
+                        (horse_training_program_id, name, phase_order, start_date, end_date)
+                    VALUES (?, 'Test phase', 1, ?, ?)
+                    """, new String[]{"id"});
             statement.setLong(1, programId);
+            statement.setObject(2, LocalDate.of(2026, 2, 1));
+            statement.setObject(3, LocalDate.of(2026, 2, 28));
             return statement;
         }, keyHolder);
         return generatedId(keyHolder);

@@ -3,6 +3,7 @@ package com.racehorse.horse.owner;
 import com.racehorse.common.api.ApiResponse;
 import com.racehorse.horse.owner.OwnerHorseDtos.HealthSummary;
 import com.racehorse.horse.owner.OwnerHorseDtos.HorseProfile;
+import com.racehorse.horse.owner.OwnerHorseDtos.TrainingSummary;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.Operation;
@@ -96,5 +97,27 @@ public class OwnerHorseController {
             })
     public ApiResponse<HealthSummary> getMyHorseHealthSummary(@PathVariable("id") @Positive long id) {
         return ApiResponse.ok(ownerHorseService.getOwnedHealthSummary(id));
+    }
+
+    @GetMapping("/{id}/training-summary")
+    @Operation(
+            operationId = "getMyHorseTrainingSummary",
+            summary = "Get the current program and recent sessions",
+            description = "The current program is ACTIVE and covers the current UTC date; if several qualify, the latest activation and then highest program ID are selected. The current phase is returned only when exactly one phase covers today; progress counts completed and all sessions in the selected program. Recent sessions include all statuses across the horse's programs, ordered by scheduled start and then session ID newest first, limited to 10. Evaluation notes, exercise details, race fields, and clinical data are excluded.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "200",
+                            description = "Training summary.",
+                            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+                                    {"success":true,"data":{"currentProgram":{"name":"Conditioning","status":"ACTIVE","periodStart":"2026-01-01","periodEnd":"2026-12-31","currentPhaseName":"Base","sessionsCompleted":8,"sessionsPlanned":12},"recentSessions":[{"sessionCode":"TS-01201","scheduledStart":"2026-06-05T10:00:00Z","status":"COMPLETED","evaluationLabel":"SATISFACTORY"}]}}
+                                    """))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "The horse id is invalid."),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication is required."),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "The horse is not owned by the authenticated Owner."),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "The horse does not exist.")
+            })
+    public ApiResponse<TrainingSummary> getMyHorseTrainingSummary(@PathVariable("id") @Positive long id) {
+        return ApiResponse.ok(ownerHorseService.getOwnedTrainingSummary(id));
     }
 }

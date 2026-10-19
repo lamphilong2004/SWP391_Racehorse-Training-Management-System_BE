@@ -7,6 +7,7 @@ import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
 import com.racehorse.horse.owner.OwnerHorseDtos.HealthSummary;
 import com.racehorse.horse.owner.OwnerHorseDtos.HorseProfile;
+import com.racehorse.horse.owner.OwnerHorseDtos.TrainingSummary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +51,13 @@ public class OwnerHorseService {
                 repository.findLatestOpenCaseRecoveryStatus(actor.userId(), horseId).orElse(null),
                 repository.findLatestExaminedAt(actor.userId(), horseId).orElse(null),
                 repository.findRecentWeights(actor.userId(), horseId));
+    }
+
+    @Transactional(readOnly = true)
+    public TrainingSummary getOwnedTrainingSummary(long horseId) {
+        ActorContext actor = requireOwner();
+        return repository.findOwnedTrainingSummary(actor.userId(), horseId)
+                .orElseThrow(() -> missingOrForbidden(horseId));
     }
 
     private ActorContext requireOwner() {
