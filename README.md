@@ -36,7 +36,9 @@ Use [LOCAL-FIRST-DATABASE](docs/LOCAL-FIRST-DATABASE.md). Existing database setu
 
    Set JWT values through the environment or the deployment secret manager. The application has no
    signing-key or token-lifetime default and fails startup if either value is missing or invalid.
-   Do not commit the signing key. Swagger UI and API docs are enabled only in `dev` and `test`.
+   Do not commit the signing key. Swagger UI and API docs are public only in `dev` and `test`.
+   The separate [Render staging profile](docs/STAGING-RENDER.md) protects documentation with its own credentials,
+   keeps business JWT/RBAC and strict SQL TLS, and uses schema validation without migrations or seeds.
 
 4. Run: `mvn spring-boot:run` (profile `dev` by default).
 5. Check: `GET http://localhost:8080/api/health` → `{"success":true,"data":{"status":"UP"}}`.
