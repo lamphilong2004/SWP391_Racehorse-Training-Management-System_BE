@@ -58,6 +58,7 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
         long managerId = createAccount(RoleCode.CLUB_MANAGER);
         long ownerId = createAccount(RoleCode.HORSE_OWNER);
         long veterinarianId = createAccount(RoleCode.VETERINARIAN);
+        long workRiderId = createAccount(RoleCode.WORK_RIDER);
         long stableBoxId = createStableBox();
 
         jdbc.update("""
@@ -78,11 +79,11 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
 
         long examinationId = insertExamination(horseId, veterinarianId, at(5, 9));
         long restrictionId = insertRestriction(horseId, veterinarianId, at(6, 11), at(7, 12));
-        long programId = insertProgram(horseId, at(8, 8));
+        long programId = insertProgram(horseId, managerId, at(8, 8));
         long phaseId = insertPhase(programId);
-        insertSession(phaseId, "TIMELINE-SCHEDULED", at(9, 8), null);
-        insertSession(phaseId, "TIMELINE-STARTED", at(9, 8), at(9, 9));
-        insertIncident(horseId, at(11, 10), at(10, 10));
+        insertSession(phaseId, "TIMELINE-SCHEDULED", managerId, workRiderId, at(9, 8), null);
+        insertSession(phaseId, "TIMELINE-STARTED", managerId, workRiderId, at(9, 8), at(9, 9));
+        insertIncident(horseId, managerId, at(11, 10), at(10, 10));
 
         MvcResult result = mvc.perform(get("/api/horses/{id}/timeline", horseId)
                         .param("page", "0")
@@ -190,11 +191,12 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
                     (horse_id, stable_box_id, assigned_by_user_id, effective_from)
                 VALUES (?, ?, ?, ?)
                 """, activeHorseId, stableBoxId, managerId, LocalDate.of(2026, 2, 2));
-        long programId = insertProgram(activeHorseId, at(1, 11));
+        long programId = insertProgram(activeHorseId, managerId, at(1, 11));
         jdbc.update("""
-                INSERT INTO dbo.trainer_assignment (horse_training_program_id, trainer_user_id)
-                VALUES (?, ?)
-                """, programId, trainerId);
+                INSERT INTO dbo.trainer_assignment
+                    (horse_training_program_id, trainer_user_id, assigned_by_user_id, effective_from)
+                VALUES (?, ?, ?, ?)
+                """, programId, trainerId, managerId, LocalDate.of(2026, 1, 1));
 
         mvc.perform(get("/api/horses/{id}/timeline", activeHorseId)
                         .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
@@ -263,18 +265,19 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
         return generatedId(keyHolder);
     }
 
-    private long insertProgram(long horseId, LocalDateTime activatedAt) {
+    private long insertProgram(long horseId, long createdByUserId, LocalDateTime activatedAt) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO dbo.horse_training_program
-                        (horse_id, name, status, period_start, period_end, activated_at)
-                    VALUES (?, 'Test program', 'ACTIVE', ?, ?, ?)
+                        (horse_id, template_version_id, created_by_user_id, name, status, period_start, period_end, activated_at)
+                    VALUES (?, 1, ?, 'Test program', 'ACTIVE', ?, ?, ?)
                     """, new String[]{"id"});
             statement.setLong(1, horseId);
-            statement.setObject(2, LocalDate.of(2026, 2, 1));
-            statement.setObject(3, LocalDate.of(2026, 2, 28));
-            statement.setObject(4, activatedAt);
+            statement.setLong(2, createdByUserId);
+            statement.setObject(3, LocalDate.of(2026, 2, 1));
+            statement.setObject(4, LocalDate.of(2026, 2, 28));
+            statement.setObject(5, activatedAt);
             return statement;
         }, keyHolder);
         return generatedId(keyHolder);
@@ -296,21 +299,25 @@ class HorseTimelineApiTest extends HorseActivationTestSupport {
         return generatedId(keyHolder);
     }
 
-    private void insertSession(long phaseId, String code, LocalDateTime scheduledStart,
-                               LocalDateTime actualStart) {
+    private void insertSession(long phaseId, String code, long createdByUserId, long workRiderUserId,
+                               LocalDateTime scheduledStart, LocalDateTime actualStart) {
         jdbc.update("""
                 INSERT INTO dbo.training_session
-                    (session_code, horse_program_phase_id, scheduled_start, actual_start, status)
-                VALUES (?, ?, ?, ?, ?)
-                """, code, phaseId, scheduledStart, actualStart,
+                    (session_code, horse_program_phase_id, created_by_user_id, work_rider_user_id,
+                     scheduled_start, actual_start, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, code, phaseId, createdByUserId, workRiderUserId, scheduledStart, actualStart,
                 actualStart == null ? "SCHEDULED" : "COMPLETED");
     }
 
-    private void insertIncident(long horseId, LocalDateTime observedAt, LocalDateTime reportedAt) {
+    private void insertIncident(long horseId, long reportedByUserId,
+                                LocalDateTime observedAt, LocalDateTime reportedAt) {
         jdbc.update("""
-                INSERT INTO dbo.incident (horse_id, observed_at, reported_at)
-                VALUES (?, ?, ?)
-                """, horseId, observedAt, reportedAt);
+                INSERT INTO dbo.incident
+                    (incident_code, horse_id, reported_by_user_id, observed_at, reported_at,
+                     incident_type, observed_severity, status)
+                VALUES (?, ?, ?, ?, ?, 'OTHER', 'LOW', 'REPORTED')
+                """, "TL-" + horseId, horseId, reportedByUserId, observedAt, reportedAt);
     }
 
     private static LocalDateTime at(int day, int hour) {

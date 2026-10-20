@@ -83,11 +83,12 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
-        long programId = createActiveProgram(horseId);
+        long programId = createActiveProgram(horseId, managerId);
         jdbc.update("""
-                INSERT INTO dbo.trainer_assignment (horse_training_program_id, trainer_user_id)
-                VALUES (?, ?)
-                """, programId, trainerId);
+                INSERT INTO dbo.trainer_assignment
+                    (horse_training_program_id, trainer_user_id, assigned_by_user_id, effective_from)
+                VALUES (?, ?, ?, ?)
+                """, programId, trainerId, managerId, LocalDate.of(2026, 1, 1));
 
         mvc.perform(get("/api/horses/{id}/photos", horseId)
                         .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
@@ -114,18 +115,19 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
                 .andExpect(status().isForbidden());
     }
 
-    private long createActiveProgram(long horseId) {
+    private long createActiveProgram(long horseId, long createdByUserId) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO dbo.horse_training_program
-                        (horse_id, name, status, period_start, period_end, activated_at)
-                    VALUES (?, 'Photo scope test', 'ACTIVE', ?, ?, ?)
+                        (horse_id, template_version_id, created_by_user_id, name, status, period_start, period_end, activated_at)
+                    VALUES (?, 1, ?, 'Photo scope test', 'ACTIVE', ?, ?, ?)
                     """, new String[]{"id"});
             statement.setLong(1, horseId);
-            statement.setObject(2, LocalDate.of(2026, 1, 1));
-            statement.setObject(3, LocalDate.of(2026, 12, 31));
-            statement.setObject(4, LocalDateTime.now());
+            statement.setLong(2, createdByUserId);
+            statement.setObject(3, LocalDate.of(2026, 1, 1));
+            statement.setObject(4, LocalDate.of(2026, 12, 31));
+            statement.setObject(5, LocalDateTime.now());
             return statement;
         }, keyHolder);
         Number programId = keyHolder.getKey();

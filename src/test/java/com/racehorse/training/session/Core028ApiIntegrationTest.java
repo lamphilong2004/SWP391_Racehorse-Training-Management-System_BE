@@ -44,8 +44,16 @@ class Core028ApiIntegrationTest {
         for(String table:new String[]{"incident","rider_feedback","notification","training_session","trainer_assignment","horse_program_phase","horse_training_program","horse","user_role","app_user","role"})jdbc.update("DELETE FROM dbo."+table);
         for(RoleCode role:RoleCode.values())jdbc.update("INSERT INTO dbo.role(id,role_code) VALUES (?,?)",role.ordinal()+1,role.name());
         jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle) VALUES (1,'H-1','Horse One','ACTIVE')");
-        jdbc.update("INSERT INTO dbo.horse_training_program(id,horse_id,status) VALUES (1,1,'ACTIVE')");
-        jdbc.update("INSERT INTO dbo.horse_program_phase(id,horse_training_program_id,name) VALUES (1,1,'Base')");
+        jdbc.update("""
+                INSERT INTO dbo.horse_training_program
+                    (id,horse_id,template_version_id,created_by_user_id,name,status,period_start,period_end,activated_at)
+                VALUES (1,1,1,280001,'CORE-028 test program','ACTIVE',CURRENT_DATE,CURRENT_DATE,CURRENT_TIMESTAMP)
+                """);
+        jdbc.update("""
+                INSERT INTO dbo.horse_program_phase
+                    (id,horse_training_program_id,name,phase_order,start_date,end_date)
+                VALUES (1,1,'Base',1,CURRENT_DATE,CURRENT_DATE)
+                """);
     }
 
     @Test void riderCompletesReportsIssueAndSubmitsFeedbackWithinOwnScope() throws Exception {
@@ -82,7 +90,7 @@ class Core028ApiIntegrationTest {
     }
 
     private long session(String state,long rider,String code){jdbc.update("INSERT INTO dbo.training_session(session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,status,actual_start) VALUES (?,1,?,?,?, ?,?)",code,280001,rider,java.sql.Timestamp.from(Instant.now().minusSeconds(60)),state,"IN_PROGRESS".equals(state)?java.sql.Timestamp.from(Instant.now().minusSeconds(30)):null);return jdbc.queryForObject("SELECT id FROM dbo.training_session WHERE session_code=?",Long.class,code);}
-    private void assign(long trainer){jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) VALUES (1,1,?,?)",trainer,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));}
+    private void assign(long trainer){jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (1,1,?,?,?)",trainer,trainer,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));}
     private long addUser(RoleCode role){long id=IDS.incrementAndGet();String email="core028-"+id+"@test.invalid";jdbc.update("INSERT INTO dbo.app_user(id,user_code,full_name,email,password_hash,account_status) VALUES (?,?,?,?,?,'ACTIVE')",id,"U"+id,"Core028 User",email,encoder.encode(PASSWORD));jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (?,?,?)",id,id,role.ordinal()+1);return id;}
     private String login(long id)throws Exception{String raw=mvc.perform(post("/api/auth/login").contentType("application/json").content(json.writeValueAsString(Map.of("email","core028-"+id+"@test.invalid","password",PASSWORD)))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();JsonNode node=json.readTree(raw);return node.path("data").path("accessToken").stringValue();}
     private void tables(){

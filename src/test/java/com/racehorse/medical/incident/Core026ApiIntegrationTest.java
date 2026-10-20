@@ -56,10 +56,20 @@ class Core026ApiIntegrationTest {
         jdbc.update("DELETE FROM dbo.user_role");jdbc.update("DELETE FROM dbo.app_user");jdbc.update("DELETE FROM dbo.role");
         for(RoleCode role:RoleCode.values())jdbc.update("INSERT INTO dbo.role(id,role_code) VALUES (?,?)",role.ordinal()+1,role.name());
         jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle) VALUES (1,'H-1','Horse One','ACTIVE'),(2,'H-2','Horse Two','ACTIVE')");
-        jdbc.update("INSERT INTO dbo.horse_training_program(id,horse_id,status) VALUES (1,1,'ACTIVE'),(2,2,'ACTIVE')");
+        jdbc.update("""
+                INSERT INTO dbo.horse_training_program
+                    (id,horse_id,template_version_id,created_by_user_id,name,status,period_start,period_end,activated_at)
+                VALUES (1,1,1,260001,'Incident test program one','ACTIVE',CURRENT_DATE,CURRENT_DATE,CURRENT_TIMESTAMP),
+                       (2,2,1,260001,'Incident test program two','ACTIVE',CURRENT_DATE,CURRENT_DATE,CURRENT_TIMESTAMP)
+                """);
         LocalDate today=LocalDate.now();
-        jdbc.update("INSERT INTO dbo.horse_program_phase(id,horse_training_program_id) VALUES (1,1),(2,2)");
-        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) VALUES (1,1,260001,?)",java.sql.Date.valueOf(today.minusDays(1)));
+        jdbc.update("""
+                INSERT INTO dbo.horse_program_phase
+                    (id,horse_training_program_id,name,phase_order,start_date,end_date)
+                VALUES (1,1,'Incident test phase one',1,?,?),(2,2,'Incident test phase two',1,?,?)
+                """,java.sql.Date.valueOf(today),java.sql.Date.valueOf(today),
+                java.sql.Date.valueOf(today),java.sql.Date.valueOf(today));
+        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (1,1,260001,260001,?)",java.sql.Date.valueOf(today.minusDays(1)));
         jdbc.update("INSERT INTO dbo.training_session(id,session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,status) VALUES (1,'S-1',1,260001,260002,?,'SCHEDULED'),(2,'S-2',1,260001,260002,?,'SCHEDULED'),(3,'S-3',1,260001,260002,?,'SCHEDULED')",java.sql.Timestamp.from(Instant.now().plusSeconds(600)),java.sql.Timestamp.from(Instant.now().plusSeconds(3600)),java.sql.Timestamp.from(Instant.now().plusSeconds(7200)));
     }
 
@@ -93,7 +103,7 @@ class Core026ApiIntegrationTest {
         long riderId=addUser(RoleCode.WORK_RIDER);String rider=login(riderId,RoleCode.WORK_RIDER);
         long vetId=addUser(RoleCode.VETERINARIAN);String vet=login(vetId,RoleCode.VETERINARIAN);
         long ownerId=addUser(RoleCode.HORSE_OWNER);String owner=login(ownerId,RoleCode.HORSE_OWNER);
-        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) VALUES (2,1,?,?)",trainerId,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
+        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (2,1,?,?,?)",trainerId,trainerId,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
 
         String trainerReport=String.format("{\"horseId\":1,\"incidentType\":\"COLIC_SIGNS\",\"observedSeverity\":\"HIGH\",\"description\":\"Observed unwell\",\"observedAt\":\"%s\"}",Instant.now());
         String response=mvc.perform(post("/api/incidents").header("Authorization","Bearer "+trainer).contentType("application/json").content(trainerReport))

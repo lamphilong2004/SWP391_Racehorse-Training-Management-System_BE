@@ -98,9 +98,24 @@ class MedicalRestrictionSecurityIntegrationTest {
             jdbcTemplate.update("INSERT INTO dbo.role (id, role_code) VALUES (?, ?)", role.ordinal() + 1, role.name());
         }
         jdbcTemplate.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (1, 'R-TEST-1', 'Test Horse One', 'ACTIVE'), (2, 'R-TEST-2', 'Test Horse Two', 'ACTIVE')");
-        jdbcTemplate.update("INSERT INTO dbo.medical_case (id, horse_id) VALUES (10, 1)");
-        jdbcTemplate.update("INSERT INTO dbo.horse_training_program (id, horse_id) VALUES (1, 1)");
-        jdbcTemplate.update("INSERT INTO dbo.horse_program_phase (id, horse_training_program_id) VALUES (1, 1)");
+        jdbcTemplate.update("""
+                INSERT INTO dbo.app_user (id, user_code, full_name, email, account_status)
+                VALUES (1, 'CASE-ACTOR', 'Case Actor', 'case-actor@example.test', 'ACTIVE')
+                """);
+        jdbcTemplate.update("""
+                INSERT INTO dbo.medical_case (id, horse_id, opened_by_user_id, status, opened_at)
+                VALUES (10, 1, 1, 'OPEN', CURRENT_TIMESTAMP)
+                """);
+        jdbcTemplate.update("""
+                INSERT INTO dbo.horse_training_program
+                    (id, horse_id, template_version_id, created_by_user_id, name, status, period_start, period_end, activated_at)
+                VALUES (1, 1, 1, 1, 'Restriction test program', 'ACTIVE', CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP)
+                """);
+        jdbcTemplate.update("""
+                INSERT INTO dbo.horse_program_phase
+                    (id, horse_training_program_id, name, phase_order, start_date, end_date)
+                VALUES (1, 1, 'Restriction test phase', 1, CURRENT_DATE, CURRENT_DATE)
+                """);
         jdbcTemplate.update("INSERT INTO dbo.exercise_definition (id, name, exercise_type) VALUES (5, 'Working trot', 'TROT')");
     }
 
@@ -143,9 +158,10 @@ class MedicalRestrictionSecurityIntegrationTest {
         long trainerId = createUser(RoleCode.TRAINER);
         String trainerToken = login(trainerId);
         jdbcTemplate.update("""
-                INSERT INTO dbo.trainer_assignment (id, horse_training_program_id, trainer_user_id, effective_from)
-                VALUES (1, 1, ?, ?)
-                """, trainerId, java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
+                INSERT INTO dbo.trainer_assignment
+                    (id, horse_training_program_id, trainer_user_id, assigned_by_user_id, effective_from)
+                VALUES (1, 1, ?, ?, ?)
+                """, trainerId, trainerId, java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
 
         mockMvc.perform(post("/api/horses/1/medical-restrictions")
                         .header("Authorization", "Bearer " + trainerToken)
@@ -165,9 +181,10 @@ class MedicalRestrictionSecurityIntegrationTest {
         long workRiderId = createUser(RoleCode.WORK_RIDER);
         String workRiderToken = login(workRiderId);
         jdbcTemplate.update("""
-                INSERT INTO dbo.training_session (id, horse_program_phase_id, work_rider_user_id, status)
-                VALUES (1, 1, ?, 'SCHEDULED')
-                """, workRiderId);
+                INSERT INTO dbo.training_session
+                    (id, session_code, horse_program_phase_id, created_by_user_id, work_rider_user_id, scheduled_start, status)
+                VALUES (1, 'RIDER-SCOPE', 1, ?, ?, CURRENT_TIMESTAMP, 'SCHEDULED')
+                """, workRiderId, workRiderId);
 
         mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization", "Bearer " + workRiderToken))
                 .andExpect(status().isOk());
@@ -207,8 +224,8 @@ class MedicalRestrictionSecurityIntegrationTest {
         long trainerId = createUser(RoleCode.TRAINER);
         String trainerToken = login(trainerId);
         jdbcTemplate.update("UPDATE dbo.horse_training_program SET status='ACTIVE' WHERE id=1");
-        jdbcTemplate.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) VALUES (?,?,?,?)",
-                41L, 1L, trainerId, java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
+        jdbcTemplate.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (?,?,?,?,?)",
+                41L, 1L, trainerId, trainerId, java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
 
         mockMvc.perform(get("/api/medical/thresholds").header("Authorization", "Bearer " + trainerToken))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].metricType").value("HEART_RATE"))

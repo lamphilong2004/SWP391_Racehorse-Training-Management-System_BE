@@ -98,7 +98,7 @@ class TrainingSessionApiIntegrationTest {
 
     @Test void lockedHorsesAndLimitedProhibitedExercisesFailClosed() throws Exception {
         Fixture f=fixture(); String trainer=login(f.trainer());
-        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,restriction_level,reason,effective_from) VALUES (?, 'LIMITED','No gallop',CURRENT_TIMESTAMP)",f.horse());
+        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,set_by_user_id,restriction_level,reason,effective_from) VALUES (?, ?, 'LIMITED','No gallop',CURRENT_TIMESTAMP)",f.horse(),f.trainer());
         long restriction=jdbc.queryForObject("SELECT MAX(id) FROM dbo.medical_restriction",Long.class);
         jdbc.update("INSERT INTO dbo.restriction_exercise_rule(medical_restriction_id,exercise_definition_id,rule_type) VALUES (?,?,'PROHIBITED')",restriction,f.exercise());
         String draft="{\"horseProgramPhaseId\":%d,\"scheduledStart\":\"%s\",\"intensity\":\"LOW\",\"exercises\":[{\"exerciseDefinitionId\":%d,\"exerciseOrder\":1}]}".formatted(f.phase(),f.start(),f.exercise());
@@ -111,7 +111,7 @@ class TrainingSessionApiIntegrationTest {
 
     @Test void lockedSuitabilityReturnsWholeSessionBlockWithoutExerciseDetails() throws Exception {
         Fixture f=fixture(); String trainer=login(f.trainer());
-        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,restriction_level,reason,effective_from) VALUES (?, 'LOCKED','Rest for re-examination',CURRENT_TIMESTAMP)",f.horse());
+        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,set_by_user_id,restriction_level,reason,effective_from) VALUES (?, ?, 'LOCKED','Rest for re-examination',CURRENT_TIMESTAMP)",f.horse(),f.trainer());
         String draft="{\"horseProgramPhaseId\":"+f.phase()+",\"scheduledStart\":\""+f.start()+"\",\"exercises\":[{\"exerciseDefinitionId\":"+f.exercise()+",\"exerciseOrder\":1}]}";
         mvc.perform(post("/api/training-sessions/suitability-check").header("Authorization","Bearer "+trainer)
                         .contentType("application/json").content(draft))
@@ -127,7 +127,7 @@ class TrainingSessionApiIntegrationTest {
         long session=jdbc.queryForObject("SELECT id FROM dbo.training_session WHERE session_code='RESUME-1'",Long.class);
         jdbc.update("INSERT INTO dbo.session_exercise(training_session_id,exercise_definition_id,exercise_order,duration) VALUES (?,?,1,10)",session,f.exercise());
         jdbc.update("INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,overall_result) VALUES (?,?,CURRENT_TIMESTAMP,'ALL_NORMAL')",session,f.groom());
-        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,restriction_level,reason,effective_from) VALUES (?, 'LIMITED','No walking work',CURRENT_TIMESTAMP)",f.horse());
+        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,set_by_user_id,restriction_level,reason,effective_from) VALUES (?, ?, 'LIMITED','No walking work',CURRENT_TIMESTAMP)",f.horse(),f.trainer());
         long restriction=jdbc.queryForObject("SELECT MAX(id) FROM dbo.medical_restriction",Long.class);
         jdbc.update("INSERT INTO dbo.restriction_exercise_rule(medical_restriction_id,exercise_definition_id,rule_type) VALUES (?,?,'PROHIBITED')",restriction,f.exercise());
         mvc.perform(post("/api/training-sessions/{id}/resume",session).header("Authorization","Bearer "+trainer))
@@ -142,7 +142,7 @@ class TrainingSessionApiIntegrationTest {
         jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle) VALUES (?,?,'Test horse','ACTIVE')",horse,"H"+horse);
         jdbc.update("INSERT INTO dbo.horse_training_program(id,horse_id,template_version_id,created_by_user_id,name,period_start,period_end,status,activated_at) VALUES (?,?,1,?,'Test program',?,?,'ACTIVE',CURRENT_TIMESTAMP)",program,horse,trainer,today.minusDays(2),today.plusDays(2));
         jdbc.update("INSERT INTO dbo.horse_program_phase(id,horse_training_program_id,phase_order,name,start_date,end_date,intensity_min,intensity_max) VALUES (?,?,1,'Base',?,?, 'LOW','HIGH')",phase,program,today.minusDays(1),today.plusDays(1));
-        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) VALUES (?,?,?,?)",IDS.incrementAndGet(),program,trainer,today.minusDays(5));
+        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (?,?,?,?,?)",IDS.incrementAndGet(),program,trainer,trainer,today.minusDays(5));
         jdbc.update("INSERT INTO dbo.exercise_definition(id,name,exercise_type) VALUES (?,'Walk','Walk')",exercise);
         return new Fixture(trainer,rider,groom,horse,program,phase,exercise,Instant.now().minusSeconds(300));
     }

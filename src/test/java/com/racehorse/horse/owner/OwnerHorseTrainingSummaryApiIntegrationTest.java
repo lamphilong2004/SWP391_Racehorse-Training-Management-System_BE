@@ -27,6 +27,9 @@ class OwnerHorseTrainingSummaryApiIntegrationTest extends OwnerApiIntegrationTes
     void returnsSelectedCurrentProgramAndTenNewestSessionsAcrossAllPrograms() throws Exception {
         long ownerId = createUser();
         long otherOwnerId = createUser();
+        long programCreatorId = createUser();
+        long sessionCreatorId = createUser();
+        long workRiderId = createUser();
         long horseId = createHorse("Training Summary Horse", "FIT", null, null, null, null);
         long otherHorseId = createHorse("Other Owner Horse", "FIT", null, null, null, null);
         addOwnership(horseId, ownerId, "100.00", true);
@@ -35,19 +38,19 @@ class OwnerHorseTrainingSummaryApiIntegrationTest extends OwnerApiIntegrationTes
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         LocalDateTime olderActivation = today.atTime(8, 0);
         LocalDateTime latestActivation = today.atTime(9, 0);
-        long olderProgramId = insertProgram(horseId, "Older current program", "ACTIVE",
+        long olderProgramId = insertProgram(horseId, programCreatorId, "Older current program", "ACTIVE",
                 today.minusDays(10), today.plusDays(10), olderActivation);
-        insertProgram(horseId, "Earlier tie program", "ACTIVE",
+        insertProgram(horseId, programCreatorId, "Earlier tie program", "ACTIVE",
                 today.minusDays(5), today.plusDays(5), latestActivation);
-        long chosenProgramId = insertProgram(horseId, "Selected current program", "ACTIVE",
+        long chosenProgramId = insertProgram(horseId, programCreatorId, "Selected current program", "ACTIVE",
                 today.minusDays(5), today.plusDays(5), latestActivation);
-        insertProgram(horseId, "Higher ID but older activation", "ACTIVE",
+        insertProgram(horseId, programCreatorId, "Higher ID but older activation", "ACTIVE",
                 today.minusDays(5), today.plusDays(5), today.atTime(7, 0));
-        insertProgram(horseId, "Expired program", "ACTIVE",
+        insertProgram(horseId, programCreatorId, "Expired program", "ACTIVE",
                 today.minusDays(20), today.minusDays(1), today.atTime(11, 0));
-        insertProgram(horseId, "Paused program", "PAUSED",
+        insertProgram(horseId, programCreatorId, "Paused program", "PAUSED",
                 today.minusDays(5), today.plusDays(5), today.atTime(12, 0));
-        long otherProgramId = insertProgram(otherHorseId, "Private other program", "ACTIVE",
+        long otherProgramId = insertProgram(otherHorseId, programCreatorId, "Private other program", "ACTIVE",
                 today.minusDays(5), today.plusDays(5), today.atTime(13, 0));
 
         long chosenPhaseId = insertPhase(chosenProgramId, "Current phase", 1,
@@ -69,14 +72,15 @@ class OwnerHorseTrainingSummaryApiIntegrationTest extends OwnerApiIntegrationTes
             LocalDateTime scheduledStart = index <= 1
                     ? today.atTime(12, 0)
                     : today.atTime(12, 0).minusHours(index - 1);
-            long sessionId = insertSession(phaseId, "TS-OWNER-" + index, scheduledStart, status);
+            long sessionId = insertSession(phaseId, "TS-OWNER-" + index, sessionCreatorId,
+                    workRiderId, scheduledStart, status);
             if (index == 1) {
-                insertResult(sessionId, "SATISFACTORY", "SECRET_EVALUATION_NOTES");
+                insertResult(sessionId, sessionCreatorId, "SATISFACTORY", "SECRET_EVALUATION_NOTES");
             }
         }
         long privateSessionId = insertSession(otherOwnerPhaseId, "TS-PRIVATE",
-                today.atTime(23, 0), "SCHEDULED");
-        insertResult(privateSessionId, "PRIVATE_LABEL", "PRIVATE_NOTES");
+                sessionCreatorId, workRiderId, today.atTime(23, 0), "SCHEDULED");
+        insertResult(privateSessionId, sessionCreatorId, "PRIVATE_LABEL", "PRIVATE_NOTES");
 
         String ownerToken = bearerToken(ownerId, RoleCode.HORSE_OWNER);
         MvcResult result = mockMvc.perform(get("/api/owner/horses/{id}/training-summary", horseId)
@@ -146,11 +150,12 @@ class OwnerHorseTrainingSummaryApiIntegrationTest extends OwnerApiIntegrationTes
     @Test
     void omitsCurrentPhaseWhenMultiplePhasesCoverToday() throws Exception {
         long ownerId = createUser();
+        long programCreatorId = createUser();
         long horseId = createHorse("Overlapping Phases Horse", "FIT", null, null, null, null);
         addOwnership(horseId, ownerId, "100.00", true);
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
-        long programId = insertProgram(horseId, "Current program", "ACTIVE",
+        long programId = insertProgram(horseId, programCreatorId, "Current program", "ACTIVE",
                 today.minusDays(5), today.plusDays(5), today.atTime(9, 0));
         insertPhase(programId, "First matching phase", 1, today.minusDays(1), today.plusDays(1));
         insertPhase(programId, "Second matching phase", 2, today, today.plusDays(2));
@@ -164,21 +169,22 @@ class OwnerHorseTrainingSummaryApiIntegrationTest extends OwnerApiIntegrationTes
                 .andExpect(jsonPath("$.data.currentProgram.sessionsPlanned").value(0));
     }
 
-    private long insertProgram(long horseId, String name, String status, LocalDate start, LocalDate end,
+    private long insertProgram(long horseId, long createdByUserId, String name, String status, LocalDate start, LocalDate end,
                                LocalDateTime activatedAt) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO dbo.horse_training_program
-                        (horse_id, name, status, period_start, period_end, activated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (horse_id, template_version_id, created_by_user_id, name, status, period_start, period_end, activated_at)
+                    VALUES (?, 1, ?, ?, ?, ?, ?, ?)
                     """, new String[]{"id"});
             statement.setLong(1, horseId);
-            statement.setString(2, name);
-            statement.setString(3, status);
-            statement.setObject(4, start);
-            statement.setObject(5, end);
-            statement.setObject(6, activatedAt);
+            statement.setLong(2, createdByUserId);
+            statement.setString(3, name);
+            statement.setString(4, status);
+            statement.setObject(5, start);
+            statement.setObject(6, end);
+            statement.setObject(7, activatedAt);
             return statement;
         }, keyHolder);
         return generatedId(keyHolder);
@@ -202,28 +208,34 @@ class OwnerHorseTrainingSummaryApiIntegrationTest extends OwnerApiIntegrationTes
         return generatedId(keyHolder);
     }
 
-    private long insertSession(long phaseId, String code, LocalDateTime scheduledStart, String status) {
+    private long insertSession(long phaseId, String code, long createdByUserId, long workRiderUserId,
+                               LocalDateTime scheduledStart, String status) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO dbo.training_session
-                        (session_code, horse_program_phase_id, scheduled_start, status)
-                    VALUES (?, ?, ?, ?)
+                        (session_code, horse_program_phase_id, created_by_user_id, work_rider_user_id,
+                         scheduled_start, status, interruption_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, new String[]{"id"});
             statement.setString(1, code);
             statement.setLong(2, phaseId);
-            statement.setObject(3, scheduledStart);
-            statement.setString(4, status);
+            statement.setLong(3, createdByUserId);
+            statement.setLong(4, workRiderUserId);
+            statement.setObject(5, scheduledStart);
+            statement.setString(6, status);
+            statement.setString(7, "INTERRUPTED".equals(status) ? "Test interruption" : null);
             return statement;
         }, keyHolder);
         return generatedId(keyHolder);
     }
 
-    private void insertResult(long sessionId, String label, String notes) {
+    private void insertResult(long sessionId, long evaluatedByUserId, String label, String notes) {
         jdbcTemplate.update("""
-                INSERT INTO dbo.session_result (training_session_id, evaluation_label, evaluation_notes)
-                VALUES (?, ?, ?)
-                """, sessionId, label, notes);
+                INSERT INTO dbo.session_result
+                    (training_session_id, evaluated_by_user_id, evaluation_label, evaluation_notes, evaluated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, sessionId, evaluatedByUserId, label, notes);
     }
 
     private static long generatedId(KeyHolder keyHolder) {
