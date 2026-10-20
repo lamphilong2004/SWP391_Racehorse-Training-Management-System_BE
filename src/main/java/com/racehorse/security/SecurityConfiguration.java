@@ -62,6 +62,7 @@ public class SecurityConfiguration {
                     authorize.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
                     authorize.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll();
                     authorize.requestMatchers(HttpMethod.GET, "/api/health").permitAll();
+                    authorize.requestMatchers("/ws", "/ws/**").permitAll();
                     if (environment.acceptsProfiles(Profiles.of("dev", "test"))) {
                         authorize.requestMatchers(
                                 "/v3/api-docs", "/v3/api-docs/**",
