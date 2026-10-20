@@ -3,3 +3,9 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+
+app:
+  storage:
+    local:
+      directory: ${HORSE_PHOTO_STORAGE_DIR:${user.home}/.racehorse/horse-photos}
+      public-base-url: ${HORSE_PHOTO_PUBLIC_BASE_URL:/local-media/horse-photos}

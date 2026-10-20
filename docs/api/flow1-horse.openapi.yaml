@@ -277,7 +277,9 @@ paths:
       tags: [Horses]
       operationId: listHorsePhotos
       summary: List horse photos
-      description: Returns photos newest first; horses without photos return an empty array.
+      description: |
+        Returns photos newest first; horses without photos return an empty array. TRAINER access is limited to horses
+        with an open `trainer_assignment`.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
       responses:
         '200':
@@ -354,9 +356,17 @@ paths:
       description: |
         Read model assembled from existing tables (activation, box assignments, ownership changes, examinations,
         restrictions, programs, sessions, incidents). The horse timeline starts at `horse.activated_at`, the timestamp set
-        when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). Approved `TimelineEvent.eventType`
-        values and source mappings beyond this activation start remain NEEDS CLARIFICATION. Events carry titles only;
-        clinical detail is never included for non-Veterinarian callers.
+        when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). It includes
+        `HORSE_ACTIVATED` from `horse.activated_at`; `STABLE_ASSIGNED` from
+        `horse_stable_assignment.effective_from`; `OWNERSHIP_CHANGED` from `horse_ownership.effective_from`;
+        `VETERINARY_EXAMINATION` from `veterinary_examination.examined_at`; `RESTRICTION_CHANGED` from
+        `medical_restriction.effective_from` and, when present, `lifted_at`; `PROGRAM_ACTIVATED` from
+        `horse_training_program.activated_at`; `TRAINING_SESSION` from `training_session.actual_start` only; and
+        `INCIDENT_REPORTED` from `incident.reported_at`. Scheduled-only sessions are excluded. The DATE-valued
+        `effective_from` fields are represented at 00:00:00Z and do not imply an exact operation time. Events before
+        `horse.activated_at` are excluded. Results are newest first with a stable event-type/source-row tie-break.
+        Titles are neutral; clinical detail is never included. `targetType` and `targetId` are omitted unless the caller
+        may access the corresponding source resource. A DRAFT horse with no activation timestamp has an empty timeline.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
       parameters:
         - $ref: '#/components/parameters/Page'
@@ -378,6 +388,7 @@ paths:
                               items:
                                 type: array
                                 items: { $ref: '#/components/schemas/TimelineEvent' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -435,8 +446,10 @@ paths:
       operationId: assignStableBox
       summary: Assign or move the horse to a box (Flow 1.2, BR-03)
       description: |
-        One transaction: close the horse's open assignment (if any) and open the new one. The target box must be free
-        (ux_horse_stable_assignment__open_per_box) → otherwise 409. After a successful write, the System re-evaluates the
+        Assignment dates are inclusive. On a move, close the previous open assignment with effective_to equal to the day
+        before the new effective_from; reject a date that would place effective_to before the previous effective_from.
+        Reject any overlapping assignment period for the horse or target box. Close the previous assignment and insert
+        the new open-ended assignment atomically in one transaction. After a successful write, the System re-evaluates the
         activation conditions. If the horse is DRAFT and all mandatory conditions are satisfied, the System transitions it
         to ACTIVE and sets `horse.activated_at`; CORE-016 owns this transition. A stable assignment does not necessarily
         activate the horse. The write response does not guarantee the updated activation checklist; clients can GET
@@ -463,13 +476,13 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: The box is occupied (BR-03).
+          description: The horse or target box has an overlapping assignment period (BR-03).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
               example:
                 success: false
-                error: { code: CONFLICT, message: This stable box is already occupied., details: [{ field: stableBoxId, message: occupied }] }
+                error: { code: CONFLICT, message: The requested assignment overlaps an existing assignment., details: [{ field: stableBoxId, message: overlap }] }
 
   /api/horses/pending-activation:
     get:
@@ -667,7 +680,14 @@ paths:
       tags: [Owner]
       operationId: getMyHorseTrainingSummary
       summary: Training & Performance tab (SCR-OWNER-002)
-      description: Current program progress and recent session results produced by Flow 2. No race fields (target race is not exposed).
+      description: |
+        Current program is the ACTIVE program whose inclusive period contains the current UTC date. If more than one
+        qualifies, select the latest `activated_at`, then highest program ID for a stable tie-break. The current phase
+        name is returned only when exactly one phase date range contains today's UTC date. `sessionsCompleted` counts
+        COMPLETED sessions in the selected program; `sessionsPlanned` counts all sessions in that program.
+        `recentSessions` contains up to 10 sessions across all of the horse's programs, all statuses included, ordered by
+        `scheduled_start` descending then session ID descending. Only `session_result.evaluation_label` is exposed; no
+        evaluation notes, exercise details, race fields, or clinical data are returned.
       x-roles: [HORSE_OWNER]
       responses:
         '200':
@@ -679,6 +699,7 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - properties:
                       data: { $ref: '#/components/schemas/OwnerTrainingSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/OwnerForbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -913,16 +934,16 @@ components:
         recordedAt: { type: string, format: date-time, description: UTC timestamp; maps to dbo.weight_record.measured_at DATETIME2(3). Aligned with flow3-medical WeightRecord.recordedAt (CORE-006). }
     TimelineEvent:
       type: object
-      description: 'The timeline starts at horse.activated_at, when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). Approved event types and source mappings beyond this activation start remain NEEDS CLARIFICATION.'
+      description: 'A neutral event summary. DATE-valued ownership/stable effective_from values are normalized to 00:00:00Z; this is a date representation, not the exact operation time.'
       required: [occurredAt, eventType, title]
       properties:
-        occurredAt: { type: string, format: date-time }
+        occurredAt: { type: string, format: date-time, description: UTC timestamp; DATE-valued source dates are represented at 00:00:00Z. }
         eventType:
           type: string
-          description: 'NEEDS CLARIFICATION: approved event values.'
+          enum: [HORSE_ACTIVATED, STABLE_ASSIGNED, OWNERSHIP_CHANGED, VETERINARY_EXAMINATION, RESTRICTION_CHANGED, PROGRAM_ACTIVATED, TRAINING_SESSION, INCIDENT_REPORTED]
         title: { type: string, maxLength: 200, description: Non-clinical wording. }
-        targetType: { type: [string, 'null'] }
-        targetId: { type: [integer, 'null'], format: int64 }
+        targetType: { type: [string, 'null'], description: Null unless the caller may access the corresponding source resource. }
+        targetId: { type: [integer, 'null'], format: int64, description: Null unless the caller may access the corresponding source resource. }
 
     # ---------- Stable ----------
     StableBox:
@@ -1086,9 +1107,9 @@ components:
                 status: { $ref: '#/components/schemas/ProgramStatus' }
                 periodStart: { type: string, format: date }
                 periodEnd: { type: string, format: date }
-                currentPhaseName: { type: [string, 'null'] }
-                sessionsCompleted: { type: integer, minimum: 0 }
-                sessionsPlanned: { type: integer, minimum: 0 }
+                currentPhaseName: { type: [string, 'null'], description: Null unless exactly one phase date range includes the current UTC date. }
+                sessionsCompleted: { type: integer, minimum: 0, description: Count of sessions with status COMPLETED in the selected program. }
+                sessionsPlanned: { type: integer, minimum: 0, description: Count of all sessions in the selected program. }
             - type: 'null'
         recentSessions:
           type: array
