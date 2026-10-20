@@ -29,27 +29,44 @@ import static com.racehorse.training.realtime.Core030Api.*;
 @Service
 public class Core030Service {
     private final JdbcTemplate jdbc;private final CurrentActorProvider actors;private final SimpMessagingTemplate broker;
-    private final BigDecimal globalCritical,globalWarning;private final boolean sqlServer;
+    private final BigDecimal globalCritical,globalWarning;private final boolean sqlServer,simulatorEnabled;
     public Core030Service(JdbcTemplate jdbc,CurrentActorProvider actors,SimpMessagingTemplate broker,DataSource dataSource,
             @Value("${app.medical.thresholds.heart-rate-critical:#{null}}") BigDecimal globalCritical,
-            @Value("${app.medical.thresholds.heart-rate-warning:#{null}}") BigDecimal globalWarning){
-        this.jdbc=jdbc;this.actors=actors;this.broker=broker;this.globalCritical=globalCritical;this.globalWarning=globalWarning;
+            @Value("${app.medical.thresholds.heart-rate-warning:#{null}}") BigDecimal globalWarning,
+            @Value("${app.realtime.simulator.enabled:false}") boolean simulatorEnabled){
+        this.jdbc=jdbc;this.actors=actors;this.broker=broker;this.globalCritical=globalCritical;this.globalWarning=globalWarning;this.simulatorEnabled=simulatorEnabled;
         boolean server=false;try(var c=dataSource.getConnection()){server=c.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("microsoft");}catch(Exception ignored){}this.sqlServer=server;
     }
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
-    public MetricResult submit(long sessionId,MetricRequest request){ActorContext actor=require(RoleCode.WORK_RIDER);lock(sessionId);Session s=session(sessionId);
-        if(s.riderId()!=actor.userId())throw forbidden("This is not the Work Rider's assigned session.");
+    public MetricResult submit(long sessionId,MetricRequest request){return record(sessionId,request,"MANUAL",require(RoleCode.WORK_RIDER));}
+
+    @Transactional(isolation=Isolation.SERIALIZABLE)
+    public MetricResult submitSimulated(long sessionId,MetricRequest request){
+        if(!simulatorEnabled)throw notFound("Simulator is available only in dev/demo profiles.");
+        return record(sessionId,request,"SIMULATOR",null);
+    }
+
+    public void authorizeSimulator(long sessionId,boolean starting){
+        if(!simulatorEnabled)throw notFound("Simulator is available only in dev/demo profiles.");
+        ActorContext actor=require(RoleCode.TRAINER);Session session=session(sessionId);authorizeTrainer(session,actor.userId());
+        if(starting&&!Set.of("IN_PROGRESS","PAUSED").contains(session.status()))throw conflict("The simulator runs only for an IN_PROGRESS or PAUSED session.");
+    }
+
+    private MetricResult record(long sessionId,MetricRequest request,String source,ActorContext actor){
+        lock(sessionId);Session s=session(sessionId);
+        if(actor!=null&&s.riderId()!=actor.userId())throw forbidden("This is not the Work Rider's assigned session.");
         if(!Set.of("IN_PROGRESS","PAUSED").contains(s.status()))throw conflict("Metrics are accepted only while the session is IN_PROGRESS or PAUSED.");
         validateMetric(request);BigDecimal critical=effectiveCritical(s.horseId(),request.recordedAt());BigDecimal warning=globalWarning;
         if(warning!=null&&critical!=null&&warning.compareTo(critical)>=0)throw new IllegalStateException("Configured heart-rate warning threshold must be below critical threshold.");
-        long sampleId=insertId("INSERT INTO dbo.training_metric_sample(training_session_id,recorded_at,heart_rate,speed,distance,source) VALUES (?,?,?,?,?,'MANUAL')",ps->{ps.setLong(1,sessionId);ps.setTimestamp(2,Timestamp.from(request.recordedAt()));if(request.heartRate()==null)ps.setNull(3,java.sql.Types.SMALLINT);else ps.setInt(3,request.heartRate());ps.setBigDecimal(4,request.speedKmh());ps.setBigDecimal(5,request.distanceM());});
+        boolean simulated="SIMULATOR".equals(source);
+        long sampleId=insertId("INSERT INTO dbo.training_metric_sample(training_session_id,recorded_at,heart_rate,speed,distance,source) VALUES (?,?,?,?,?,?)",ps->{ps.setLong(1,sessionId);ps.setTimestamp(2,Timestamp.from(request.recordedAt()));if(request.heartRate()==null)ps.setNull(3,java.sql.Types.SMALLINT);else ps.setInt(3,request.heartRate());ps.setBigDecimal(4,request.speedKmh());ps.setBigDecimal(5,request.distanceM());ps.setString(6,source);});
         String state="NORMAL";Long alertId=null;
-        if(request.heartRate()!=null&&critical!=null){BigDecimal value=BigDecimal.valueOf(request.heartRate());if(value.compareTo(critical)>=0){state="CRITICAL";List<Integer> previous=jdbc.query("SELECT TOP 1 heart_rate FROM dbo.training_metric_sample WHERE training_session_id=? AND id<? AND heart_rate IS NOT NULL ORDER BY id DESC",(rs,n)->rs.getInt(1),sessionId,sampleId);if(previous.isEmpty()||BigDecimal.valueOf(previous.getFirst()).compareTo(critical)<0)alertId=createCritical(s,sessionId,value,critical,request.recordedAt());}else if(warning!=null&&value.compareTo(warning)>=0)state="WARNING";}
+        if(request.heartRate()!=null&&critical!=null){BigDecimal value=BigDecimal.valueOf(request.heartRate());if(value.compareTo(critical)>=0){state="CRITICAL";List<Integer> previous=jdbc.query("SELECT TOP 1 heart_rate FROM dbo.training_metric_sample WHERE training_session_id=? AND id<? AND heart_rate IS NOT NULL ORDER BY id DESC",(rs,n)->rs.getInt(1),sessionId,sampleId);if(previous.isEmpty()||BigDecimal.valueOf(previous.getFirst()).compareTo(critical)<0)alertId=createCritical(s,sessionId,value,critical,request.recordedAt(),simulated);}else if(warning!=null&&value.compareTo(warning)>=0)state="WARNING";}
         Map<String,Object> thresholds=new LinkedHashMap<>();thresholds.put("heartRateCritical",critical);thresholds.put("heartRateWarning",warning);
-        Map<String,Object> event=new LinkedHashMap<>();event.put("sessionId",sessionId);event.put("sampleId",sampleId);event.put("recordedAt",request.recordedAt());event.put("heartRate",request.heartRate());event.put("speedKmh",request.speedKmh());event.put("distanceM",request.distanceM());event.put("source","MANUAL");event.put("simulated",false);event.put("realtimeState",state);event.put("thresholds",thresholds);
+        Map<String,Object> event=new LinkedHashMap<>();event.put("sessionId",sessionId);event.put("sampleId",sampleId);event.put("recordedAt",request.recordedAt());event.put("heartRate",request.heartRate());event.put("speedKmh",request.speedKmh());event.put("distanceM",request.distanceM());event.put("source",source);event.put("simulated",simulated);event.put("realtimeState",state);event.put("thresholds",thresholds);
         send("/topic/sessions/"+sessionId+"/metrics",event);
-        if("WARNING".equals(state)){Map<String,Object> warningEvent=new LinkedHashMap<>();warningEvent.put("type","WARNING");warningEvent.put("sessionId",sessionId);warningEvent.put("alertId",null);warningEvent.put("severity","WARNING");warningEvent.put("metric","HEART_RATE");warningEvent.put("metricValue",request.heartRate());warningEvent.put("thresholdApplied",warning);warningEvent.put("suggestedActions",List.of("REDUCE_INTENSITY"));warningEvent.put("simulated",false);send("/topic/sessions/"+sessionId+"/alerts",warningEvent);}
+        if("WARNING".equals(state)){Map<String,Object> warningEvent=new LinkedHashMap<>();warningEvent.put("type","WARNING");warningEvent.put("sessionId",sessionId);warningEvent.put("alertId",null);warningEvent.put("severity","WARNING");warningEvent.put("metric","HEART_RATE");warningEvent.put("metricValue",request.heartRate());warningEvent.put("thresholdApplied",warning);warningEvent.put("suggestedActions",List.of("REDUCE_INTENSITY"));warningEvent.put("simulated",simulated);send("/topic/sessions/"+sessionId+"/alerts",warningEvent);}
         return new MetricResult(sampleId,state,alertId);
     }
 
@@ -66,11 +83,11 @@ public class Core030Service {
         if(jdbc.update("UPDATE dbo.monitoring_alert SET acknowledged_at=CURRENT_TIMESTAMP,acknowledged_by_user_id=?,action_taken=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND acknowledged_at IS NULL",actor.userId(),request.action(),alertId)!=1)throw conflict("Monitoring alert changed concurrently.");
         Alert updated=alert(alertId);send("/topic/sessions/"+session.id()+"/alerts",Map.of("type","CRITICAL_ACKNOWLEDGED","sessionId",session.id(),"alertId",alertId,"acknowledgedAt",updated.acknowledgedAt(),"acknowledgedBy",updated.acknowledgedBy(),"actionTaken",request.action()));return updated;}
 
-    private Long createCritical(Session s,long sessionId,BigDecimal value,BigDecimal threshold,Instant at){long id=insertId("INSERT INTO dbo.monitoring_alert(training_session_id,metric,metric_value,threshold_applied,severity,raised_at) VALUES (?,'HEART_RATE',?,?,'CRITICAL',?)",ps->{ps.setLong(1,sessionId);ps.setBigDecimal(2,value);ps.setBigDecimal(3,threshold);ps.setTimestamp(4,Timestamp.from(at));});
+    private Long createCritical(Session s,long sessionId,BigDecimal value,BigDecimal threshold,Instant at,boolean simulated){long id=insertId("INSERT INTO dbo.monitoring_alert(training_session_id,metric,metric_value,threshold_applied,severity,raised_at) VALUES (?,'HEART_RATE',?,?,'CRITICAL',?)",ps->{ps.setLong(1,sessionId);ps.setBigDecimal(2,value);ps.setBigDecimal(3,threshold);ps.setTimestamp(4,Timestamp.from(at));});
         String message="Critical heart rate threshold reached in session "+sessionId+".";
-        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) SELECT u.id,'ALERTS','MONITORING_ALERT_CRITICAL','Critical monitoring alert',?,'TRAINING_SESSION',? FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'",message,sessionId);
-        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) SELECT DISTINCT ta.trainer_user_id,'ALERTS','MONITORING_ALERT_CRITICAL','Critical monitoring alert',?,'TRAINING_SESSION',? FROM dbo.horse_program_phase ph JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=ph.horse_training_program_id JOIN dbo.app_user tu ON tu.id=ta.trainer_user_id AND tu.account_status='ACTIVE' WHERE ph.id=? AND ta.effective_from<=CAST(CURRENT_TIMESTAMP AS DATE) AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(CURRENT_TIMESTAMP AS DATE)) AND NOT EXISTS (SELECT 1 FROM dbo.user_role ur JOIN dbo.role r ON r.id=ur.role_id WHERE ur.user_id=ta.trainer_user_id AND r.role_code='VETERINARIAN')",message,sessionId,s.phaseId());
-        send("/topic/sessions/"+sessionId+"/alerts",Map.of("type","CRITICAL_RAISED","sessionId",sessionId,"alertId",id,"severity","CRITICAL","metric","HEART_RATE","metricValue",value,"thresholdApplied",threshold,"raisedAt",at,"suggestedActions",List.of("ACKNOWLEDGE","REDUCE_INTENSITY","PAUSE","STOP"),"simulated",false));return id;}
+        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id,is_simulated) SELECT u.id,'ALERTS','MONITORING_ALERT_CRITICAL','Critical monitoring alert',?,'TRAINING_SESSION',?,? FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'",message,sessionId,simulated);
+        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id,is_simulated) SELECT DISTINCT ta.trainer_user_id,'ALERTS','MONITORING_ALERT_CRITICAL','Critical monitoring alert',?,'TRAINING_SESSION',?,? FROM dbo.horse_program_phase ph JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=ph.horse_training_program_id JOIN dbo.app_user tu ON tu.id=ta.trainer_user_id AND tu.account_status='ACTIVE' WHERE ph.id=? AND ta.effective_from<=CAST(CURRENT_TIMESTAMP AS DATE) AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(CURRENT_TIMESTAMP AS DATE)) AND NOT EXISTS (SELECT 1 FROM dbo.user_role ur JOIN dbo.role r ON r.id=ur.role_id WHERE ur.user_id=ta.trainer_user_id AND r.role_code='VETERINARIAN')",message,sessionId,simulated,s.phaseId());
+        send("/topic/sessions/"+sessionId+"/alerts",Map.of("type","CRITICAL_RAISED","sessionId",sessionId,"alertId",id,"severity","CRITICAL","metric","HEART_RATE","metricValue",value,"thresholdApplied",threshold,"raisedAt",at,"suggestedActions",List.of("ACKNOWLEDGE","REDUCE_INTENSITY","PAUSE","STOP"),"simulated",simulated));return id;}
 
     private void createIncident(Session s,String value,String type,String severity,String description,long user){String code="INC-"+UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(Locale.ROOT);jdbc.update("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,?,?,'REPORTED')",code,s.horseId(),user,s.id(),type,severity,description);}
     private void publishState(Session s,String status,String reason,long actor){Map<String,Object> event=new LinkedHashMap<>();event.put("sessionId",s.id());event.put("status",status);event.put("previousStatus",s.status());event.put("changedAt",Instant.now());event.put("changedBy",Map.of("id",actor));event.put("interruptionReason",reason);event.put("blocked",false);event.put("blockedReasons",List.of());send("/topic/sessions/"+s.id()+"/state",event);}
