@@ -8,6 +8,8 @@ import org.springframework.jdbc.support.KeyHolder;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,12 +24,13 @@ public class ThresholdRepository {
     }
 
     public boolean trainerAssignedToHorse(long horseId, long trainerId, Instant at) {
+        java.sql.Date assignmentDate = java.sql.Date.valueOf(LocalDate.ofInstant(at, ZoneOffset.UTC));
         return jdbc.queryForObject("""
                 SELECT COUNT(*) FROM dbo.horse_training_program p
                 JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=p.id
                 WHERE p.horse_id=? AND p.status='ACTIVE' AND ta.trainer_user_id=?
                   AND ta.effective_from<=? AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(? AS DATE))
-                """, Integer.class, horseId, trainerId, java.sql.Date.from(at), java.sql.Date.from(at)) > 0;
+                """, Integer.class, horseId, trainerId, assignmentDate, assignmentDate) > 0;
     }
 
     public List<ThresholdRecord> findOverrides(long horseId) {
@@ -70,6 +73,25 @@ public class ThresholdRepository {
     }
 
     public long insertOverride(long horseId, long actorId, java.math.BigDecimal value, String reason, Instant from) {
+        if (isSqlServer()) {
+            Long id = jdbc.query("""
+                    INSERT INTO dbo.horse_threshold_override
+                        (horse_id,set_by_user_id,metric,critical_value,reason,effective_from)
+                    OUTPUT INSERTED.id
+                    VALUES (?,?,'HEART_RATE',?,?,?)
+                    """, statement -> {
+                statement.setLong(1, horseId);
+                statement.setLong(2, actorId);
+                statement.setBigDecimal(3, value);
+                statement.setString(4, reason);
+                statement.setTimestamp(5, java.sql.Timestamp.from(from));
+            }, resultSet -> resultSet.next() ? resultSet.getLong(1) : null);
+            if (id == null) {
+                throw new IllegalStateException("The database did not return the threshold override id.");
+            }
+            return id;
+        }
+
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement("""
@@ -80,10 +102,21 @@ public class ThresholdRepository {
             statement.setString(4, reason); statement.setTimestamp(5, java.sql.Timestamp.from(from));
             return statement;
         }, keys);
-        Number key = keys.getKeys().values().stream().filter(Number.class::isInstance)
-                .map(Number.class::cast).findFirst().orElse(null);
-        if (key == null) throw new IllegalStateException("SQL Server did not return the threshold override identity.");
+        Object keyValue = keys.getKeys().entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase("id"))
+                .map(java.util.Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+        Number key = keyValue instanceof Number number ? number : null;
+        if (key == null) throw new IllegalStateException("The database did not return the threshold override id.");
         return key.longValue();
+    }
+
+    private boolean isSqlServer() {
+        String productName = jdbc.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
+                        connection.getMetaData().getDatabaseProductName());
+        return productName != null && productName.toLowerCase(java.util.Locale.ROOT).contains("sql server");
     }
 
     public Optional<ThresholdRecord> findById(long id) {
