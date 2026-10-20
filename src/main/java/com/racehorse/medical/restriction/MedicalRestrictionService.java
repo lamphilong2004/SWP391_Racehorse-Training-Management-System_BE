@@ -137,7 +137,7 @@ public class MedicalRestrictionService {
         }
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         List<RestrictionRecord> restrictions = repository.findRestrictions(page, size, trainerUserId, today);
-        boolean clinicalProjection = trainerUserId == null;
+        boolean clinicalProjection = actor.roles().contains(RoleCode.VETERINARIAN);
         List<?> items = restrictions.stream()
                 .map(restriction -> clinicalProjection
                         ? restrictionResponse(restriction)
