@@ -1,5 +1,7 @@
 # Render staging
 
+**Current Leader direction (20 October 2026):** the candidate private route is Render → Tailscale userspace → Leader's SQL Server. Use [RENDER-TAILSCALE.md](RENDER-TAILSCALE.md) for its exact launcher, DB URL, runtime secrets, CI and manual verification. The text below records the earlier direct-managed-SQL foundation and alternatives; it is historical, not approval to create Azure/VM resources or use the old Docker entrypoint for the new route.
+
 Deployment preparation for BE dev `9dc594d`; separate from Production and local-first developer databases. This patch maps to CORE-001 deployment/CORS/Swagger and CORE-007 security configuration under the Leader's direct deployment authorization. It does not complete either full CORE or modify DB-01, migrations or seeding.
 
 ## Build and deploy

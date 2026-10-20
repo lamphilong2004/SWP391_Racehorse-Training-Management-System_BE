@@ -6,3 +6,8 @@ target/
 .env
 .env.*
 application-local.yml
+*.p12
+*.pfx
+*.jks
+*.key
+*.b64
