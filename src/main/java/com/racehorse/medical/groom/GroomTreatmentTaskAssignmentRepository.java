@@ -31,7 +31,7 @@ public class GroomTreatmentTaskAssignmentRepository {
                 JOIN dbo.role r ON r.id = ur.role_id
                 WHERE u.id = ? AND u.account_status = 'ACTIVE' AND r.role_code = 'GROOM'
                 """, Long.class, groomUserId);
-        if (count == null || count != 1) {
+        if (count == null || count < 1) {
             throw validation("assignedGroomUserId must identify an active GROOM account.");
         }
     }
@@ -90,7 +90,7 @@ public class GroomTreatmentTaskAssignmentRepository {
         return id.longValue();
     }
 
-    private void requireAssignmentMigration() {
+    public void requireAssignmentMigration() {
         if (!GroomTaskDatabaseSupport.hasAssignedGroomColumn(jdbc, sqlServer)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "Assigned Groom tasks are unavailable until the approved CORE-045 database migration is applied.");
