@@ -69,6 +69,8 @@ class MedicalRestrictionSecurityIntegrationTest {
     @DynamicPropertySource
     static void jwtProperties(DynamicPropertyRegistry registry) {
         TestJwtProperties.register(registry);
+        registry.add("spring.datasource.url", () -> "jdbc:h2:mem:racehorse_restriction_security;MODE=MSSQLServer;DB_CLOSE_DELAY=-1");
+        registry.add("app.medical.thresholds.heart-rate-critical", () -> "178.25");
     }
 
     @BeforeEach
@@ -79,6 +81,7 @@ class MedicalRestrictionSecurityIntegrationTest {
         createRestrictionTables();
         jdbcTemplate.update("DELETE FROM dbo.restriction_exercise_rule");
         jdbcTemplate.update("DELETE FROM dbo.medical_restriction");
+        jdbcTemplate.update("DELETE FROM dbo.horse_threshold_override");
         jdbcTemplate.update("DELETE FROM dbo.medical_case");
         jdbcTemplate.update("DELETE FROM dbo.training_session");
         jdbcTemplate.update("DELETE FROM dbo.horse_program_phase");
@@ -197,11 +200,74 @@ class MedicalRestrictionSecurityIntegrationTest {
                 .andExpect(jsonPath("$.data.diagnosis").doesNotExist());
     }
 
+    @Test
+    void thresholdsAreRoleScopedAndEffectiveOverrideLifecycleUsesJwtActor() throws Exception {
+        long veterinarianId = createUser(RoleCode.VETERINARIAN);
+        String vetToken = login(veterinarianId);
+        long trainerId = createUser(RoleCode.TRAINER);
+        String trainerToken = login(trainerId);
+        jdbcTemplate.update("UPDATE dbo.horse_training_program SET status='ACTIVE' WHERE id=1");
+        jdbcTemplate.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) VALUES (?,?,?,?)",
+                41L, 1L, trainerId, java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
+
+        mockMvc.perform(get("/api/medical/thresholds").header("Authorization", "Bearer " + trainerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].metricType").value("HEART_RATE"))
+                .andExpect(jsonPath("$.data[0].thresholdValue").value(178.25))
+                .andExpect(jsonPath("$.data[0].scope").value("GLOBAL"));
+        mockMvc.perform(get("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + trainerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].scope").value("GLOBAL"));
+        mockMvc.perform(get("/api/horses/2/medical-thresholds").header("Authorization", "Bearer " + trainerToken))
+                .andExpect(status().isForbidden());
+
+        String override = String.format("{\"metricType\":\"HEART_RATE\",\"thresholdValue\":155.50,\"reason\":\"Clinical override\",\"effectiveFrom\":\"%s\"}",
+                java.time.Instant.now().minusSeconds(60));
+        mockMvc.perform(put("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + vetToken)
+                        .contentType("application/json").content(override))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.scope").value("HORSE_OVERRIDE"))
+                .andExpect(jsonPath("$.data.thresholdValue").value(155.50));
+        assertEquals(veterinarianId, jdbcTemplate.queryForObject(
+                "SELECT set_by_user_id FROM dbo.horse_threshold_override WHERE horse_id=1", Long.class));
+        mockMvc.perform(get("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + trainerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].scope").value("HORSE_OVERRIDE"))
+                .andExpect(jsonPath("$.data[0].thresholdValue").value(155.50));
+
+        String replacement = String.format("{\"metricType\":\"HEART_RATE\",\"thresholdValue\":160.00,\"effectiveFrom\":\"%s\"}",
+                java.time.Instant.now().plusSeconds(2));
+        mockMvc.perform(put("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + vetToken)
+                        .contentType("application/json").content(replacement))
+                .andExpect(status().isOk());
+        assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM dbo.horse_threshold_override WHERE horse_id=1 AND effective_to IS NULL", Integer.class));
+        mockMvc.perform(post("/api/horses/1/medical-thresholds/end").header("Authorization", "Bearer " + vetToken)
+                        .contentType("application/json").content(String.format("{\"effectiveTo\":\"%s\"}", java.time.Instant.now().plusSeconds(20))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.effectiveTo").exists());
+        mockMvc.perform(put("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + trainerToken)
+                        .contentType("application/json").content(override))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void thresholdsRejectInvalidMetricAndOverlappingFutureOverride() throws Exception {
+        String vetToken = login(createUser(RoleCode.VETERINARIAN));
+        String future = java.time.Instant.now().plusSeconds(120).toString();
+        String first = String.format("{\"metricType\":\"HEART_RATE\",\"thresholdValue\":140,\"effectiveFrom\":\"%s\"}", future);
+        mockMvc.perform(put("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + vetToken)
+                        .contentType("application/json").content(first)).andExpect(status().isOk());
+        String earlier = String.format("{\"metricType\":\"HEART_RATE\",\"thresholdValue\":150,\"effectiveFrom\":\"%s\"}",
+                java.time.Instant.now());
+        mockMvc.perform(put("/api/horses/1/medical-thresholds").header("Authorization", "Bearer " + vetToken)
+                        .contentType("application/json").content(earlier)).andExpect(status().isConflict());
+        String unsupported = String.format("{\"metricType\":\"SPEED\",\"thresholdValue\":150,\"effectiveFrom\":\"%s\"}",
+                java.time.Instant.now().plusSeconds(300));
+        mockMvc.perform(put("/api/horses/2/medical-thresholds").header("Authorization", "Bearer " + vetToken)
+                        .contentType("application/json").content(unsupported)).andExpect(status().isBadRequest());
+    }
+
     private void createRestrictionTables() {
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.horse (id BIGINT PRIMARY KEY, horse_code VARCHAR(20) NOT NULL UNIQUE, name NVARCHAR(150) NOT NULL, lifecycle VARCHAR(20) NOT NULL)");
+        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.horse_threshold_override (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, horse_id BIGINT NOT NULL, set_by_user_id BIGINT NOT NULL, metric VARCHAR(20) NOT NULL, critical_value DECIMAL(7,2) NOT NULL, reason NVARCHAR(1000), effective_from TIMESTAMP(3) NOT NULL, effective_to TIMESTAMP(3), created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP(3))");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.medical_case (id BIGINT PRIMARY KEY, horse_id BIGINT NOT NULL)");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.exercise_definition (id BIGINT PRIMARY KEY, name NVARCHAR(150) NOT NULL, exercise_type NVARCHAR(50))");
-        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.horse_training_program (id BIGINT PRIMARY KEY, horse_id BIGINT NOT NULL)");
+        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.horse_training_program (id BIGINT PRIMARY KEY, horse_id BIGINT NOT NULL, status VARCHAR(20))");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.trainer_assignment (id BIGINT PRIMARY KEY, horse_training_program_id BIGINT NOT NULL, trainer_user_id BIGINT NOT NULL, effective_from DATE NOT NULL, effective_to DATE)");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.horse_program_phase (id BIGINT PRIMARY KEY, horse_training_program_id BIGINT NOT NULL)");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS dbo.training_session (id BIGINT PRIMARY KEY, horse_program_phase_id BIGINT NOT NULL, work_rider_user_id BIGINT NOT NULL, status VARCHAR(20) NOT NULL)");
