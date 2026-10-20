@@ -54,6 +54,69 @@ public class TrainingProgramService {
     }
 
     @Transactional(readOnly = true)
+    public List<ProgramApi.TemplateRecommendation> templateRecommendations(long horseId) {
+        requireRole(RoleCode.HEAD_TRAINER);
+        if (horseId <= 0) throw validation("Horse id must be positive.");
+        List<Map<String,Object>> horses=jdbc.query("SELECT breed,sex FROM dbo.horse WHERE id=?",(rs,n)->row("breed",rs.getString("breed"),"sex",rs.getString("sex")),horseId);
+        if (horses.isEmpty()) throw notFound("Horse was not found.");
+        Map<String,Object> horse=horses.getFirst();
+        List<String> fields=new ArrayList<>();
+        if (horse.get("breed")!=null&&!horse.get("breed").toString().isBlank()) fields.add("breed");
+        if (horse.get("sex")!=null&&!horse.get("sex").toString().isBlank()) fields.add("sex");
+        if (fields.isEmpty()) return List.of();
+        List<Map<String,Object>> templates=jdbc.query("""
+                SELECT t.id,t.template_code,v.id AS version_id,v.version_no,v.name,v.suitable_horse_profile,
+                       h.breed,h.sex
+                FROM dbo.training_program_template t
+                JOIN dbo.template_version v ON v.training_program_template_id=t.id
+                  AND v.version_no=(SELECT MAX(v2.version_no) FROM dbo.template_version v2 WHERE v2.training_program_template_id=t.id)
+                CROSS JOIN dbo.horse h
+                WHERE t.status='ACTIVE' AND h.id=?
+                """,(rs,n)->row("templateId",rs.getLong("id"),"templateCode",rs.getString("template_code"),
+                "versionId",rs.getLong("version_id"),"versionNo",rs.getInt("version_no"),"name",rs.getString("name"),
+                "profile",rs.getString("suitable_horse_profile"),"breed",rs.getString("breed"),"sex",rs.getString("sex")),horseId);
+        List<ProgramApi.TemplateRecommendation> out=new ArrayList<>();
+        for(Map<String,Object> template:templates){
+            String profile=(String)template.get("profile");if(profile==null||profile.isBlank())continue;
+            List<String> reasons=new ArrayList<>();
+            for(String field:fields){Object value=horse.get(field);if(value!=null&&profile.toLowerCase(java.util.Locale.ROOT).contains(value.toString().toLowerCase(java.util.Locale.ROOT)))
+                reasons.add("Horse "+field+" matches the template's suitableHorseProfile.");}
+            if(!reasons.isEmpty())out.add(new ProgramApi.TemplateRecommendation((Long)template.get("templateId"),(String)template.get("templateCode"),
+                    (Long)template.get("versionId"),(Integer)template.get("versionNo"),(String)template.get("name"),"SUITABLE",List.copyOf(reasons)));
+        }
+        return List.copyOf(out);
+    }
+
+    @Transactional(readOnly = true)
+    public ProgramApi.CandidateList trainerRecommendations(long horseId,long templateVersionId) {
+        requireRole(RoleCode.HEAD_TRAINER);
+        if(horseId<=0||templateVersionId<=0)throw validation("Horse id and templateVersionId must be positive.");
+        Integer horse=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse WHERE id=?",Integer.class,horseId);
+        if(horse==null||horse==0)throw notFound("Horse was not found.");
+        Integer version=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.template_version v JOIN dbo.training_program_template t ON t.id=v.training_program_template_id WHERE v.id=? AND t.status='ACTIVE'",Integer.class,templateVersionId);
+        if(version==null||version==0)throw notFound("An active template version was not found.");
+        List<ProgramApi.SkillRef> required=jdbc.query("SELECT s.id,s.name FROM dbo.template_required_skill r JOIN dbo.skill s ON s.id=r.skill_id WHERE r.template_version_id=?",(rs,n)->new ProgramApi.SkillRef(rs.getLong("id"),rs.getString("name")),templateVersionId);
+        if(required.isEmpty())return new ProgramApi.CandidateList(List.of(),"The selected template version has no required skills for profile matching.");
+        String sql="""
+                SELECT u.id,u.user_code,u.full_name,u.experience_level,s.id AS skill_id,s.name AS skill_name
+                FROM dbo.app_user u
+                JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role ro ON ro.id=ur.role_id AND ro.role_code='TRAINER'
+                JOIN dbo.user_skill us ON us.user_id=u.id JOIN dbo.skill s ON s.id=us.skill_id
+                JOIN dbo.template_required_skill rs ON rs.skill_id=s.id AND rs.template_version_id=?
+                WHERE u.account_status='ACTIVE' AND s.kind='TRAINER_SPECIALIZATION'
+                """;
+        Map<Long,Map<String,Object>> users=new LinkedHashMap<>();Map<Long,List<String>> matched=new LinkedHashMap<>();
+        jdbc.query(sql,rs->{long id=rs.getLong("id");users.putIfAbsent(id,row("id",id,"userCode",rs.getString("user_code"),"name",rs.getString("full_name"),"experience",rs.getString("experience_level")));matched.computeIfAbsent(id,k->new ArrayList<>()).add(rs.getString("skill_name"));},templateVersionId);
+        List<ProgramApi.RecommendationCandidate> candidates=new ArrayList<>();
+        for(var entry:users.entrySet()){Map<String,Object> u=entry.getValue();List<String> skills=List.copyOf(new java.util.LinkedHashSet<>(matched.get(entry.getKey())));
+            List<String> reasons=skills.stream().map(s->"Trainer specialization matches a required template skill: "+s+".").toList();
+            candidates.add(new ProgramApi.RecommendationCandidate(new UserRef(entry.getKey(),(String)u.get("userCode"),(String)u.get("name")),
+                    (String)u.get("experience"),skills,"SUITABLE",reasons,List.of(),null));}
+        String empty=candidates.isEmpty()?"No active Trainer has a profile matching the template's required skills.":null;
+        return new ProgramApi.CandidateList(List.copyOf(candidates),empty);
+    }
+
+    @Transactional(readOnly = true)
     public ProgramApi.Page<TemplateSummary> listTemplates(String status, String q, int page, int size) {
         ActorContext actor = actor();
         validatePage(page, size);

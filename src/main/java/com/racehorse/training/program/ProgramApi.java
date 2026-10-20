@@ -51,6 +51,11 @@ public final class ProgramApi {
                                 String intensityGuidance) {}
     public record TemplateDetail(TemplateSummary template, TemplateVersion version, List<VersionRef> versions) {}
     public record VersionRef(long id, int versionNo, Instant createdAt) {}
+    public record TemplateRecommendation(long templateId,String templateCode,long templateVersionId,int versionNo,
+                                         String name,String label,List<String> reasons) {}
+    public record RecommendationCandidate(UserRef user,String experienceLevel,List<String> skills,String label,
+                                          List<String> reasons,List<String> warnings,String hardBlock) {}
+    public record CandidateList(List<RecommendationCandidate> candidates,String emptyReason) {}
 
     public record TrainerAssignmentRequest(@Positive long trainerUserId, @NotNull LocalDate effectiveFrom,
                                            @Size(max = 500) String reason, Boolean warningsAcknowledged) {}

@@ -48,6 +48,19 @@ public class TrainingProgramController {
         return ApiResponse.ok(service.templateDetail(id, versionNo));
     }
 
+    @GetMapping("/api/horses/{id}/template-recommendations")
+    @PreAuthorize("hasRole('HEAD_TRAINER')")
+    public ApiResponse<java.util.List<ProgramApi.TemplateRecommendation>> templateRecommendations(@PathVariable long id) {
+        return ApiResponse.ok(service.templateRecommendations(id));
+    }
+
+    @GetMapping("/api/horses/{id}/trainer-recommendations")
+    @PreAuthorize("hasRole('HEAD_TRAINER')")
+    public ApiResponse<ProgramApi.CandidateList> trainerRecommendations(@PathVariable long id,
+            @RequestParam long templateVersionId) {
+        return ApiResponse.ok(service.trainerRecommendations(id,templateVersionId));
+    }
+
     @PostMapping("/api/program-templates/{id}/versions")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('HEAD_TRAINER')")
