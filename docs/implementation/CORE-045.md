@@ -1,6 +1,6 @@
 # CORE-045 — Assigned Groom treatment tasks
 
-Status: implementation started on `feat/CORE-045-groom-treatment-be`, based on BE `dev` `5867f07`. This is a review candidate; no test suite or SQL Server database was run in this work session.
+Status: implementation candidate on `feat/CORE-045-groom-treatment-be`, based on BE `dev` `5867f07`. The full Java suite passes locally; SQL Server integration remains pending.
 
 ## Scope
 
@@ -16,6 +16,6 @@ CORE-035 must call `GroomTreatmentTaskAssignmentRepository` when materializing t
 
 ## Pending gates
 
-- Unit/API tests and full Java build have not been run for this candidate.
-- The migration has not been applied. SQL Server verification requires the approved isolated integration database and credentials.
-- End-to-end Groom assignment depends on integration with CORE-035, which is currently an older unmerged PR and must be ported to current `dev`.
+- Full Maven suite: **BUILD SUCCESS**, Java 21, 81 tests, 0 failures, 0 errors, 14 SQL Server integration tests skipped. Four H2 tests cover approved Groom assignment validation, task scoping/pagination, one-time completion and fail-closed behavior before migration.
+- The migration has not been applied. SQL Server verification requires only the approved isolated `racehorse_integration_test` database and its separately supplied credentials.
+- End-to-end task materialization still depends on CORE-035's current-`dev` port and a CORE-045 adapter implementing its reconciliation port. Until both are integrated, Groom task reads/completion fail closed for tasks that have not been assigned through the approved migration.
