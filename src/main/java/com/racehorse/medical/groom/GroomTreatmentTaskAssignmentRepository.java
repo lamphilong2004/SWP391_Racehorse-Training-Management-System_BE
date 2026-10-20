@@ -9,10 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.sql.Connection;
 import java.time.LocalDate;
-import java.util.Locale;
 import java.util.Objects;
 
 /** Persistence boundary for CORE-035 treatment-plan task materialization. */
@@ -23,18 +20,12 @@ public class GroomTreatmentTaskAssignmentRepository {
 
     public GroomTreatmentTaskAssignmentRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        try (Connection connection = Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
-            this.sqlServer = connection.getMetaData().getDatabaseProductName()
-                    .toLowerCase(Locale.ROOT).contains("microsoft sql server");
-        } catch (java.sql.SQLException error) {
-            throw new IllegalStateException("Could not determine the database product for treatment task insertion.", error);
-        }
+        this.sqlServer = GroomTaskDatabaseSupport.isSqlServer(jdbc);
     }
 
     public void requireActiveGroom(long groomUserId) {
         if (groomUserId <= 0) throw validation("assignedGroomUserId must be positive.");
-        Long count = jdbc.queryForObject("""
-                SELECT COUNT_BIG(*)
+        Long count = jdbc.queryForObject((sqlServer ? "SELECT COUNT_BIG(*)" : "SELECT COUNT(*)") + """
                 FROM dbo.app_user u
                 JOIN dbo.user_role ur ON ur.user_id = u.id
                 JOIN dbo.role r ON r.id = ur.role_id
@@ -53,9 +44,9 @@ public class GroomTreatmentTaskAssignmentRepository {
                 || scheduledSlot != null && scheduledSlot.length() > 50) {
             throw validation("Treatment task fields are invalid.");
         }
+        requireAssignmentMigration();
         requireActiveGroom(groomUserId);
-        Long validPlan = jdbc.queryForObject("""
-                SELECT COUNT_BIG(*)
+        Long validPlan = jdbc.queryForObject((sqlServer ? "SELECT COUNT_BIG(*)" : "SELECT COUNT(*)") + """
                 FROM dbo.treatment_plan tp
                 JOIN dbo.medical_case mc ON mc.id = tp.medical_case_id
                 WHERE tp.id = ? AND mc.horse_id = ? AND mc.status = 'OPEN'
@@ -85,7 +76,7 @@ public class GroomTreatmentTaskAssignmentRepository {
                         (horse_id, treatment_plan_id, assigned_groom_user_id, task_date,
                          scheduled_slot, instruction_snapshot)
                     VALUES (?, ?, ?, ?, ?, ?)
-                    """, Statement.RETURN_GENERATED_KEYS);
+                    """, new String[]{"id"});
             statement.setLong(1, horseId);
             statement.setLong(2, treatmentPlanId);
             statement.setLong(3, groomUserId);
@@ -97,6 +88,13 @@ public class GroomTreatmentTaskAssignmentRepository {
         Number id = keys.getKey();
         if (id == null) throw new IllegalStateException("Database did not return the inserted treatment task id.");
         return id.longValue();
+    }
+
+    private void requireAssignmentMigration() {
+        if (!GroomTaskDatabaseSupport.hasAssignedGroomColumn(jdbc, sqlServer)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "Assigned Groom tasks are unavailable until the approved CORE-045 database migration is applied.");
+        }
     }
 
     private static BusinessException validation(String message) {

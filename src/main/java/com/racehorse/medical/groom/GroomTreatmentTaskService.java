@@ -28,18 +28,21 @@ public class GroomTreatmentTaskService {
 
     private final JdbcTemplate jdbc;
     private final CurrentActorProvider actors;
+    private final boolean sqlServer;
 
     public GroomTreatmentTaskService(JdbcTemplate jdbc, CurrentActorProvider actors) {
         this.jdbc = jdbc;
         this.actors = actors;
+        this.sqlServer = GroomTaskDatabaseSupport.isSqlServer(jdbc);
     }
 
     @Transactional(readOnly = true)
     public GroomTreatmentTasksPage list(int page, int size) {
         validatePage(page, size);
         ActorContext actor = requireGroom();
+        requireAssignmentMigration();
         long total = jdbc.queryForObject(
-                "SELECT COUNT_BIG(*) " + ASSIGNED_TREATMENT_TASK,
+                "SELECT " + (sqlServer ? "COUNT_BIG(*) " : "COUNT(*) ") + ASSIGNED_TREATMENT_TASK,
                 Long.class,
                 actor.userId());
         List<GroomTreatmentTask> items = jdbc.query("""
@@ -62,16 +65,16 @@ public class GroomTreatmentTaskService {
             throw validation("The completion request must be an empty object.");
         }
         ActorContext actor = requireGroom();
+        requireAssignmentMigration();
 
-        Long assignedCount = jdbc.queryForObject("""
-                SELECT COUNT_BIG(*)
+        Long assignedCount = jdbc.queryForObject((sqlServer ? "SELECT COUNT_BIG(*)" : "SELECT COUNT(*)") + """
                 FROM dbo.care_task
                 WHERE id = ? AND treatment_plan_id IS NOT NULL
                   AND assigned_groom_user_id = ?
                 """, Long.class, taskId, actor.userId());
         if (assignedCount == null || assignedCount == 0) {
-            Long treatmentTaskCount = jdbc.queryForObject("""
-                    SELECT COUNT_BIG(*) FROM dbo.care_task
+            Long treatmentTaskCount = jdbc.queryForObject((sqlServer ? "SELECT COUNT_BIG(*)" : "SELECT COUNT(*)") + """
+                    FROM dbo.care_task
                     WHERE id = ? AND treatment_plan_id IS NOT NULL
                     """, Long.class, taskId);
             if (treatmentTaskCount != null && treatmentTaskCount > 0) {
@@ -81,15 +84,16 @@ public class GroomTreatmentTaskService {
             throw notFound("Treatment task was not found.");
         }
 
+        String utcNow = sqlServer ? "SYSUTCDATETIME()" : "CURRENT_TIMESTAMP";
         int changed = jdbc.update("""
                 UPDATE dbo.care_task
-                SET completed_at = SYSUTCDATETIME(),
+                SET completed_at = %s,
                     completed_by_user_id = ?,
-                    updated_at = SYSUTCDATETIME()
+                    updated_at = %s
                 WHERE id = ? AND treatment_plan_id IS NOT NULL
                   AND assigned_groom_user_id = ?
                   AND completed_at IS NULL AND completed_by_user_id IS NULL
-                """, actor.userId(), taskId, actor.userId());
+                """.formatted(utcNow, utcNow), actor.userId(), taskId, actor.userId());
         if (changed != 1) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "The treatment task has already been completed or changed.");
@@ -119,6 +123,13 @@ public class GroomTreatmentTaskService {
                     "Only a Groom may access assigned treatment tasks.");
         }
         return actor;
+    }
+
+    private void requireAssignmentMigration() {
+        if (!GroomTaskDatabaseSupport.hasAssignedGroomColumn(jdbc, sqlServer)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "Assigned Groom tasks are unavailable until the approved CORE-045 database migration is applied.");
+        }
     }
 
     private static GroomTreatmentTask mapTask(ResultSet rs, int row) throws SQLException {
