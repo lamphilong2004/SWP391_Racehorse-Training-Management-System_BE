@@ -13,6 +13,23 @@
 
 Counts cover only the three Flow 1/2/3 contracts; `shared.openapi.yaml` is not included in the 100-operation denominator. `MAPPED` means a controller mapping exists. The H2 column identifies the area suite present in the successful full suite, not proof that every row has a dedicated assertion. SQL evidence is uniformly unverified.
 
+## Ownership, priority, and deferral of the 26 missing operations
+
+Tracker ownership/priority checked against `Racehorse_Team_Project_Tracking_Gated_PR.xlsx` on 2026-10-20. No missing operation below is assigned to Dũng for implementation; Dũng owns integration/release coordination. CORE-026 and CORE-035 are marked `Reassigned` in the tracker even though the Member Queues still list Tiến, so confirm their current assignees before assigning implementation.
+
+| Priority | CORE | Missing operation IDs | Current tracker owner/state | Deferral |
+|---|---|---|---|---|
+| P0 | CORE-021 | `setProgramStatus` | Tiến; missing in PR #22 | Not marked deferrable by tracker priority |
+| P0 | CORE-024 | `reduceSessionIntensity` | Tiến; missing in PR #21 | Not marked deferrable by tracker priority |
+| P0 | CORE-026 | `listGroomSessions` | Reassigned; current owner needs confirmation | Groom assignment/notification mapping is also a dependency; no acceptance waiver recorded |
+| P0 | CORE-030 | `submitMetricSample`, `startSimulator`, `stopSimulator`, `acknowledgeAlert` | Tiến | Not marked deferrable by tracker priority |
+| P0 | CORE-032 | `submitEvaluation`, `getSessionResult`, `getHorsePerformance` | Tiến | Not marked deferrable by tracker priority |
+| P0 | CORE-035 | `listMedicalCases`, `createMedicalCase`, `getMedicalCase`, `createMedicalExamination`, `createInjury`, `createReexamination`, `closeMedicalCase`, `getTreatmentPlan`, `putTreatmentPlan` | Reassigned; current owner needs confirmation | Not marked deferrable by tracker priority |
+| P1 | CORE-040 | `createAdjustmentRequest`, `listAdjustmentRequests`, `approveAdjustmentRequest`, `rejectAdjustmentRequest` | Tiến | Lower priority than P0; sequencing later is possible, but no acceptance waiver is recorded |
+| P1 | CORE-045 | `listTreatmentCaseTasks`, `getMyTreatmentTasks`, `completeTreatmentTask` | Tiến | Lower priority than P0; sequencing later is possible, but no acceptance waiver is recorded |
+
+**Priority totals:** P0 = 19 missing operations; P1 = 7. P1 sequencing after P0 is not equivalent to declaring those APIs complete or formally removing them from the approved contract.
+
 H2 verification on Java 21: `mvn -B -ntp verify` exit 0, 198 tests, 0 failures, 0 errors, 15 SQL Server-gated skips. Pinned Redocly 2.63.0 lint passed for the three flow contracts and shared contract.
 
 SQL Server: **NOT RUN**. No Tailscale client or SQL environment variables are available here; the approved SQL endpoint was unreachable. Existing CORE-007/012/016 guards require per-CORE disposable local databases, so `racehorse_integration_test` cannot be substituted without approved runner/guard setup.
