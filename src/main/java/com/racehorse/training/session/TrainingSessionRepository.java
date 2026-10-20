@@ -22,23 +22,45 @@ public class TrainingSessionRepository {
 
     public long insert(long phaseId, long trainerId, long riderId, String code, Instant start, Instant end,
                        String surface, String focus, String intensity) {
+        String sql = """
+                INSERT INTO dbo.training_session
+                  (session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,
+                   scheduled_start,scheduled_end,surface,focus,intensity,status)
+                VALUES (?,?,?,?,?,?,?,?,?,'SCHEDULED')
+                """;
+        if (isSqlServer()) {
+            String outputSql = sql.replaceFirst("(?i)\\bVALUES\\b", "OUTPUT INSERTED.id VALUES");
+            Long id = jdbc.query(outputSql,
+                    statement -> bindSessionInsert(statement, phaseId, trainerId, riderId, code, start, end,
+                            surface, focus, intensity),
+                    resultSet -> resultSet.next() ? resultSet.getLong(1) : null);
+            if (id == null) throw new IllegalStateException("Database did not return session id.");
+            return id;
+        }
+
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(c -> {
-            PreparedStatement ps = c.prepareStatement("""
-                    INSERT INTO dbo.training_session
-                      (session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,
-                       scheduled_start,scheduled_end,surface,focus,intensity,status)
-                    VALUES (?,?,?,?,?,?,?,?,?,'SCHEDULED')
-                    """, Statement.RETURN_GENERATED_KEYS);
-            ps.setString(1,code); ps.setLong(2,phaseId); ps.setLong(3,trainerId); ps.setLong(4,riderId);
-            ps.setTimestamp(5,java.sql.Timestamp.from(start)); if(end==null)ps.setNull(6,java.sql.Types.TIMESTAMP);else ps.setTimestamp(6,java.sql.Timestamp.from(end));
-            ps.setString(7,surface); ps.setString(8,focus); ps.setString(9,intensity);
+            PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            bindSessionInsert(ps, phaseId, trainerId, riderId, code, start, end, surface, focus, intensity);
             return ps;
         }, keys);
         Object value = keys.getKeyList().stream().flatMap(m -> m.entrySet().stream())
                 .filter(e -> e.getKey().equalsIgnoreCase("id")).map(Map.Entry::getValue).findFirst().orElse(null);
         if (!(value instanceof Number id)) throw new IllegalStateException("Database did not return session id.");
         return id.longValue();
+    }
+
+    private void bindSessionInsert(PreparedStatement ps, long phaseId, long trainerId, long riderId, String code,
+                                   Instant start, Instant end, String surface, String focus, String intensity)
+            throws java.sql.SQLException {
+        ps.setString(1,code); ps.setLong(2,phaseId); ps.setLong(3,trainerId); ps.setLong(4,riderId);
+        ps.setTimestamp(5,java.sql.Timestamp.from(start));
+        if(end==null)ps.setNull(6,java.sql.Types.TIMESTAMP);else ps.setTimestamp(6,java.sql.Timestamp.from(end));
+        ps.setString(7,surface); ps.setString(8,focus); ps.setString(9,intensity);
+    }
+
+    private boolean isSqlServer() {
+        return databaseProduct != null && databaseProduct.toLowerCase(java.util.Locale.ROOT).contains("sql server");
     }
 
     public void insertExercise(long sessionId, SessionApi.ExerciseInput e, String category) {
