@@ -15,9 +15,9 @@ The Flow 1 OpenAPI contract declares 20 operations.
 
 | # | Method and path | Operation | Allowed roles | Implementation | Test evidence | Status |
 |---|---|---|---|---|---|---|
-| 1 | `GET /api/horses` | `listHorses` | CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM | HorseController → HorseService → HorseRepository | No direct list-route behavioral test found in this audit | PARTIAL |
+| 1 | `GET /api/horses` | `listHorses` | CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM | HorseController → HorseService → HorseRepository | `horseRegisterIsPagedAndDetailIsReadableOnlyByPermittedRoles`: pagination, search, role denial, authentication | DONE |
 | 2 | `POST /api/horses` | `createHorse` | CLUB_MANAGER | HorseController → HorseService → HorseRepository | HorseRegistrationApiTest exercises successful creation through its helper; HorseServiceTest covers duplicate-key mapping | DONE |
-| 3 | `GET /api/horses/{id}` | `getHorse` | CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM | HorseController → HorseService → HorseRepository | No direct detail-route behavioral test found in this audit | PARTIAL |
+| 3 | `GET /api/horses/{id}` | `getHorse` | CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM | HorseController → HorseService → HorseRepository | `horseRegisterIsPagedAndDetailIsReadableOnlyByPermittedRoles`: profile read, server lifecycle field, role denial, authentication | DONE |
 | 4 | `PUT /api/horses/{id}` | `updateHorse` | CLUB_MANAGER | HorseController → HorseService → HorseRepository | `clubManagerCanUpdateHorseIdentificationWithoutChangingServerOwnedFields` | DONE |
 | 5 | `PUT /api/horses/{id}/pedigree` | `setPedigree` | CLUB_MANAGER | HorseController → HorseService → HorseRepository; reevaluates shared activation service | `clubManagerSetsPedigreeAndReadbackMatchesPersistedReferences`, `pedigreeRejectsSelfParentAndMissingHorseReturnsNotFound`, activation and rollback cases | DONE |
 | 6 | `GET /api/horses/{id}/ownerships` | `listOwnerships` | CLUB_MANAGER, HEAD_TRAINER | HorseController → HorseService → HorseRepository | `ownershipWriteRequiresActiveHorseOwnerAndHistoryIsRoleScoped` | DONE |
@@ -52,9 +52,9 @@ These three operations are defined in `flow3-medical.openapi.yaml` and owned by 
 
 ## Verification and remaining gates
 
-- Flow 1 operations: 20 total — 15 DONE, 4 PARTIAL, 1 BLOCKED.
+- Flow 1 operations: 20 total — 17 DONE, 2 PARTIAL, 1 BLOCKED.
 - Flow 3 baseline/weight operations: 3 total — 3 DONE.
-- Combined: 23 operations — 18 DONE, 4 PARTIAL, 1 BLOCKED.
+- Combined: 23 operations — 20 DONE, 2 PARTIAL, 1 BLOCKED.
 - Java 21 `mvn -B verify`: 130 tests, 0 failures, 0 errors, 15 skipped.
 - The 15 skips are SQL Server integration tests gated on absent `core007.sqlserver.it`, `core012.sqlserver.it`, and `core016.sqlserver.it` properties. No approved isolated SQL Server test database was available; SQL Server persistence, generated keys, transaction behavior, constraints, rollback, and real-database RBAC remain NOT VERIFIED.
 - Swagger runtime smoke passed for `/swagger-ui.html` and `/v3/api-docs`.

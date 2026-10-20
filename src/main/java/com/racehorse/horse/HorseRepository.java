@@ -240,7 +240,7 @@ public class HorseRepository {
         if(lifecycle!=null&&!lifecycle.isBlank()){where.append(" AND h.lifecycle=?");args.add(lifecycle);}
         if(health!=null&&!health.isBlank()){where.append(" AND h.health_status=?");args.add(health);}
         if(availability!=null&&!availability.isBlank()){where.append(" AND COALESCE(mr.restriction_level,'AVAILABLE')=?");args.add(availability);}
-        long total=Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT_BIG(*) "+FROM+where,Long.class,args.toArray()));
+        long total=Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT(*) "+FROM+where,Long.class,args.toArray()));
         args.add((long)page*size);args.add(size);
         List<Map<String,Object>> rows=jdbc.query(SELECT+where+" ORDER BY h.id DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",ROW,args.toArray());
         return new Page(rows,page,size,total,total/size+(total%size==0?0:1));

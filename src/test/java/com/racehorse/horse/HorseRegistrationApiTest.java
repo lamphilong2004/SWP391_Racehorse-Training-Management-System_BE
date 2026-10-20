@@ -149,6 +149,42 @@ class HorseRegistrationApiTest {
     }
 
     @Test
+    void horseRegisterIsPagedAndDetailIsReadableOnlyByPermittedRoles() throws Exception {
+        String manager = tokenFor(RoleCode.CLUB_MANAGER);
+        long firstHorseId = createHorse(manager, "LIST-01");
+        long secondHorseId = createHorse(manager, "LIST-02");
+
+        mockMvc.perform(get("/api/horses")
+                        .param("q", "LIST-")
+                        .param("page", "0")
+                        .param("size", "1")
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(1))
+                .andExpect(jsonPath("$.data.totalItems").value(2))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].horseCode").value("LIST-02"));
+
+        mockMvc.perform(get("/api/horses/{id}", secondHorseId)
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(secondHorseId))
+                .andExpect(jsonPath("$.data.horseCode").value("LIST-02"))
+                .andExpect(jsonPath("$.data.lifecycle").value("DRAFT"));
+
+        String owner = tokenFor(RoleCode.HORSE_OWNER);
+        mockMvc.perform(get("/api/horses")
+                        .header("Authorization", "Bearer " + owner))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/horses/{id}", firstHorseId)
+                        .header("Authorization", "Bearer " + owner))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/horses"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void clubManagerCanUpdateHorseIdentificationWithoutChangingServerOwnedFields() throws Exception {
         String manager = tokenFor(RoleCode.CLUB_MANAGER);
         long horseId = createHorse(manager, "UPDATE-01");
