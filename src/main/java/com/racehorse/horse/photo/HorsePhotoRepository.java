@@ -1,6 +1,7 @@
 package com.racehorse.horse.photo;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
@@ -11,6 +12,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class HorsePhotoRepository {
@@ -25,6 +27,14 @@ public class HorsePhotoRepository {
         return Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.horse WHERE id = ?) THEN 1 ELSE 0 END",
                 Boolean.class, horseId));
+    }
+
+    public Optional<Long> findHorseIdByFileReference(String fileReference) {
+        List<Long> horseIds = jdbc.query(
+                "SELECT horse_id FROM dbo.horse_photo WHERE file_reference = ?",
+                (rs, rowNum) -> rs.getLong("horse_id"),
+                fileReference);
+        return Optional.ofNullable(DataAccessUtils.singleResult(horseIds));
     }
 
     public long insert(long horseId, String fileReference, Instant uploadedAt) {

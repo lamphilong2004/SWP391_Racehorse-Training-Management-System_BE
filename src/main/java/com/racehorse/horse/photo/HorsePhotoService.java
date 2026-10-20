@@ -2,6 +2,7 @@ package com.racehorse.horse.photo;
 
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
+import com.racehorse.horse.HorseService;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,15 +31,20 @@ public class HorsePhotoService {
 
     private final HorsePhotoRepository repository;
     private final LocalHorsePhotoStorage storage;
+    private final HorseService horses;
 
-    public HorsePhotoService(HorsePhotoRepository repository, LocalHorsePhotoStorage storage) {
+    public HorsePhotoService(
+            HorsePhotoRepository repository,
+            LocalHorsePhotoStorage storage,
+            HorseService horses) {
         this.repository = repository;
         this.storage = storage;
+        this.horses = horses;
     }
 
     @Transactional(readOnly = true)
     public List<HorsePhoto> list(long horseId) {
-        requireHorse(horseId);
+        horses.detail(horseId);
         return repository.findByHorseId(horseId).stream()
                 .map(row -> {
                     if (!storage.exists(row.fileReference())) {
@@ -47,6 +53,13 @@ public class HorsePhotoService {
                     return new HorsePhoto(row.id(), storage.url(row.fileReference()), row.uploadedAt());
                 })
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public void authorizeStoredPhoto(String fileReference) {
+        long horseId = repository.findHorseIdByFileReference(fileReference)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Horse photo not found."));
+        horses.detail(horseId);
     }
 
     @Transactional

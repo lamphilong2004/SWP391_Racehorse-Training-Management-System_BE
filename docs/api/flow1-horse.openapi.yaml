@@ -277,7 +277,9 @@ paths:
       tags: [Horses]
       operationId: listHorsePhotos
       summary: List horse photos
-      description: Returns photos newest first; horses without photos return an empty array.
+      description: |
+        Returns photos newest first; horses without photos return an empty array. TRAINER access is limited to horses
+        with an open `trainer_assignment`.
       x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
       responses:
         '200':

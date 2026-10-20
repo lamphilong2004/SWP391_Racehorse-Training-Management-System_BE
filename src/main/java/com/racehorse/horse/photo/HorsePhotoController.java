@@ -38,7 +38,10 @@ public class HorsePhotoController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER','TRAINER','VETERINARIAN','GROOM')")
-    @Operation(operationId = "listHorsePhotos", summary = "List horse photos newest first")
+    @Operation(
+            operationId = "listHorsePhotos",
+            summary = "List horse photos newest first",
+            description = "TRAINER access is limited to horses with an open trainer_assignment.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Photo metadata."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication is required."),

@@ -6,6 +6,8 @@ import com.racehorse.horse.photo.LocalHorsePhotoStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.mock.web.MockMultipartFile;
@@ -15,6 +17,9 @@ import tools.jackson.databind.json.JsonMapper;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
+import java.sql.PreparedStatement;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,9 +50,15 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
     private HorsePhotoRepository photoRepository;
 
     private final List<String> storedReferences = new ArrayList<>();
+    private final List<Long> trainerProgramIds = new ArrayList<>();
 
     @AfterEach
     void cleanStoredPhotos() {
+        trainerProgramIds.forEach(programId -> {
+            jdbc.update("DELETE FROM dbo.trainer_assignment WHERE horse_training_program_id = ?", programId);
+            jdbc.update("DELETE FROM dbo.horse_training_program WHERE id = ?", programId);
+        });
+        trainerProgramIds.clear();
         storedReferences.forEach(storage::delete);
         storedReferences.clear();
     }
@@ -65,11 +76,31 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
 
         mvc.perform(get("/api/horses/{id}/photos", horseId)
                         .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+        mvc.perform(get(second.path("data").path("url").asText())
+                        .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        long programId = createActiveProgram(horseId);
+        jdbc.update("""
+                INSERT INTO dbo.trainer_assignment (horse_training_program_id, trainer_user_id)
+                VALUES (?, ?)
+                """, programId, trainerId);
+
+        mvc.perform(get("/api/horses/{id}/photos", horseId)
+                        .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value(second.path("data").path("id").asLong()))
                 .andExpect(jsonPath("$.data[0].url").value(second.path("data").path("url").asText()))
                 .andExpect(jsonPath("$.data[1].id").value(first.path("data").path("id").asLong()));
+
+        mvc.perform(get(second.path("data").path("url").asText())
+                        .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertArrayEquals(png, result.getResponse().getContentAsByteArray()));
 
         byte[] served = mvc.perform(get(second.path("data").path("url").asText())
                         .with(authenticatedAs(RoleCode.CLUB_MANAGER, managerId)))
@@ -81,6 +112,28 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
         mvc.perform(get("/api/horses/{id}/photos", horseId)
                         .with(authenticatedAs(RoleCode.HORSE_OWNER, ownerId)))
                 .andExpect(status().isForbidden());
+    }
+
+    private long createActiveProgram(long horseId) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO dbo.horse_training_program
+                        (horse_id, name, status, period_start, period_end, activated_at)
+                    VALUES (?, 'Photo scope test', 'ACTIVE', ?, ?, ?)
+                    """, new String[]{"id"});
+            statement.setLong(1, horseId);
+            statement.setObject(2, LocalDate.of(2026, 1, 1));
+            statement.setObject(3, LocalDate.of(2026, 12, 31));
+            statement.setObject(4, LocalDateTime.now());
+            return statement;
+        }, keyHolder);
+        Number programId = keyHolder.getKey();
+        if (programId == null) {
+            throw new IllegalStateException("The database did not return a training program identifier.");
+        }
+        trainerProgramIds.add(programId.longValue());
+        return programId.longValue();
     }
 
     @Test
