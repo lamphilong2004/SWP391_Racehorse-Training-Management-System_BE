@@ -45,7 +45,10 @@ class TrainingProgramApiIntegrationTest {
     private MockMvc mockMvc;
 
     @DynamicPropertySource
-    static void jwtProperties(DynamicPropertyRegistry registry) { TestJwtProperties.register(registry); }
+    static void jwtProperties(DynamicPropertyRegistry registry) {
+        TestJwtProperties.register(registry);
+        registry.add("spring.datasource.url", () -> "jdbc:h2:mem:racehorse_program_api;MODE=MSSQLServer;DB_CLOSE_DELAY=-1");
+    }
 
     @BeforeEach
     void setUp() {
