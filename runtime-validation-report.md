@@ -93,7 +93,7 @@ Other acceptance blockers:
 
 ### Current PR and live endpoints
 
-- Candidate branch `integration/api-wave1-review-20261020` is locally at `425b4ac95ac17e0d308cbad848dd6796696bfc72`. This merge includes the concurrent H2 fixture-only commit `77dd844` and the two documentation commits; the full Maven suite and Redocly lint were rerun on this exact local HEAD. No production-source change was added after the generated-key fix.
+- Candidate branch `integration/api-wave1-review-20261020` is at `9ffeee0a067be17061d8c1f9eaac3ada0db47f9f`, matching `origin`. The validated code SHA `425b4ac95ac17e0d308cbad848dd6796696bfc72` includes the concurrent H2 fixture-only commit `77dd844`; full Maven and Redocly passed on that code SHA. The following `9ffeee0` commit only updated documentation. No production-source change was added after the generated-key fix.
 - PR #25 remains Draft. Tiến is the requested reviewer and was @mentioned for an independent review; no review has been recorded. The latest `image` check completed successfully, but this does not satisfy SQL, security, or review gates.
 - Current remote refs observed: `dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`; `main` `89991c1281edd8f2421b5ee57d6e1a283a70683d`. Nothing was merged.
 - Latest requests to Render health, readiness, Swagger/docs, and the Vercel CORS preflight timed out (HTTP 000). The FE Vercel root returned HTTP 200. No Render database name or deployed SHA could be verified; no deployment occurred.
