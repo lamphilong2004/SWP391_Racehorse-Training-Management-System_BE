@@ -1,5 +1,6 @@
 package com.racehorse.training.session;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
@@ -105,7 +106,7 @@ public class Core028Service {
     private Session session(long id){if(id<=0)throw validation("id must be positive.");List<Session> rows=jdbc.query("SELECT s.id,s.status,s.work_rider_user_id,ph.horse_training_program_id,p.horse_id,ph.id AS phase_id,s.session_code FROM dbo.training_session s JOIN dbo.horse_program_phase ph ON ph.id=s.horse_program_phase_id JOIN dbo.horse_training_program p ON p.id=ph.horse_training_program_id WHERE s.id=?",(rs,n)->new Session(rs.getLong(1),rs.getString(2),rs.getLong(3),rs.getLong(4),rs.getLong(5),rs.getLong(6),rs.getString(7)),id);if(rows.isEmpty())throw notFound("Training session was not found.");return rows.getFirst();}
     private void authorizeTrainer(Session s,ActorContext a){if(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.trainer_assignment WHERE horse_training_program_id=? AND trainer_user_id=? AND effective_from<=CAST(CURRENT_TIMESTAMP AS DATE) AND (effective_to IS NULL OR effective_to>=CAST(CURRENT_TIMESTAMP AS DATE))",Integer.class,s.programId(),a.userId())==0)throw forbidden();}
     private int maxLength(String field){return Set.of("preInterruptionDescription","notes").contains(field)?1000:500;}
-    private long generatedId(KeyHolder h){Object id=h.getKeyList().stream().flatMap(m->m.entrySet().stream()).filter(e->e.getKey().equalsIgnoreCase("id")).map(Map.Entry::getValue).findFirst().orElse(null);if(!(id instanceof Number n))throw new IllegalStateException("The database did not return a generated id.");return n.longValue();}
+    private long generatedId(KeyHolder h){return GeneratedIdentity.requireId(h);}
     private ActorContext actor(){return actors.currentActor().orElseThrow(()->new BusinessException(ErrorCode.UNAUTHORIZED,"Authentication is required."));}
     private ActorContext require(RoleCode role){ActorContext a=actor();if(!a.roles().contains(role))throw forbidden();return a;}
     private void validatePage(int page,int size){if(page<0||size<1||size>100)throw validation("page must be non-negative and size must be between 1 and 100.");}

@@ -1,5 +1,6 @@
 package com.racehorse.training.session;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -35,10 +36,7 @@ public class TrainingSessionRepository {
             ps.setString(7,surface); ps.setString(8,focus); ps.setString(9,intensity);
             return ps;
         }, keys);
-        Object value = keys.getKeyList().stream().flatMap(m -> m.entrySet().stream())
-                .filter(e -> e.getKey().equalsIgnoreCase("id")).map(Map.Entry::getValue).findFirst().orElse(null);
-        if (!(value instanceof Number id)) throw new IllegalStateException("Database did not return session id.");
-        return id.longValue();
+        return GeneratedIdentity.requireId(keys);
     }
 
     public void insertExercise(long sessionId, SessionApi.ExerciseInput e, String category) {

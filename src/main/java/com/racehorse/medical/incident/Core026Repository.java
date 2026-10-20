@@ -1,5 +1,6 @@
 package com.racehorse.medical.incident;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -163,7 +164,7 @@ public class Core026Repository {
     private static Long longOrNull(ResultSet rs,String col)throws SQLException { long v=rs.getLong(col);return rs.wasNull()?null:v; }
     private static void nullableLong(java.sql.PreparedStatement ps,int i,Long value)throws SQLException { if(value==null)ps.setNull(i,java.sql.Types.BIGINT);else ps.setLong(i,value); }
     private static long identity(KeyHolder keys) {
-        Number n=keys.getKeys().values().stream().filter(Number.class::isInstance).map(Number.class::cast).findFirst().orElseThrow();return n.longValue();
+        return GeneratedIdentity.requireId(keys);
     }
     public record Session(long id,long horseId,long programId,long riderId,String status){}
     public record CheckContext(long id,long sessionId,long horseId,long programId,long riderId,String status){}

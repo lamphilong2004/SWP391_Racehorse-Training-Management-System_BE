@@ -1,5 +1,6 @@
 package com.racehorse.horse.baseline;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -138,16 +139,7 @@ public class HorseBaselineRepository {
     }
 
     private static long generatedId(KeyHolder keyHolder) {
-        Map<String, Object> keys = keyHolder.getKeys();
-        Object id = keys == null ? null : keys.entrySet().stream()
-                .filter(entry -> "id".equalsIgnoreCase(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse(null);
-        if (!(id instanceof Number generatedId)) {
-            throw new IllegalStateException("The database did not return a generated identity.");
-        }
-        return generatedId.longValue();
+        return GeneratedIdentity.requireId(keyHolder);
     }
 
     public record WeightPage(List<WeightRecord> items, long totalElements) {

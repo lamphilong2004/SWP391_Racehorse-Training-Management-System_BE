@@ -1,5 +1,6 @@
 package com.racehorse.medical.threshold;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -80,10 +81,7 @@ public class ThresholdRepository {
             statement.setString(4, reason); statement.setTimestamp(5, java.sql.Timestamp.from(from));
             return statement;
         }, keys);
-        Number key = keys.getKeys().values().stream().filter(Number.class::isInstance)
-                .map(Number.class::cast).findFirst().orElse(null);
-        if (key == null) throw new IllegalStateException("SQL Server did not return the threshold override identity.");
-        return key.longValue();
+        return GeneratedIdentity.requireId(keys);
     }
 
     public Optional<ThresholdRecord> findById(long id) {

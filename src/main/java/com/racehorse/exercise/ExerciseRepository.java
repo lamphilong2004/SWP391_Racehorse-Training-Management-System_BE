@@ -1,5 +1,6 @@
 package com.racehorse.exercise;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -55,16 +56,7 @@ public class ExerciseRepository {
             statement.setString(4, input.targetMetric());
             return statement;
         }, keyHolder);
-        Number id = keyHolder.getKeyList().stream()
-                .map(ExerciseRepository::generatedId)
-                .filter(Number.class::isInstance)
-                .map(Number.class::cast)
-                .findFirst()
-                .orElse(null);
-        if (id == null) {
-            throw new IllegalStateException("The database did not return the created exercise id.");
-        }
-        return findById(id.longValue()).orElseThrow();
+        return findById(GeneratedIdentity.requireId(keyHolder)).orElseThrow();
     }
 
     public int update(long id, ExerciseInput input) {
@@ -79,11 +71,4 @@ public class ExerciseRepository {
         return new ExerciseResponse(id, name, exerciseType, description, targetMetric);
     }
 
-    private static Object generatedId(Map<String, Object> generatedKeys) {
-        return generatedKeys.entrySet().stream()
-                .filter(entry -> entry.getKey().equalsIgnoreCase("id"))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse(null);
-    }
 }

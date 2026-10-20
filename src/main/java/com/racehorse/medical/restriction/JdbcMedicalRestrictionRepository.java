@@ -1,6 +1,7 @@
 package com.racehorse.medical.restriction;
 
 import org.springframework.dao.DuplicateKeyException;
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -144,16 +145,7 @@ public class JdbcMedicalRestrictionRepository {
             return statement;
         }, keyHolder);
 
-        Object keyValue = keyHolder.getKeys().entrySet().stream()
-                .filter(entry -> entry.getKey().equalsIgnoreCase("id"))
-                .map(java.util.Map.Entry::getValue)
-                .findFirst()
-                .orElse(null);
-        Number key = keyValue instanceof Number number ? number : null;
-        if (key == null) {
-            throw new IllegalStateException("The database did not return the created restriction id.");
-        }
-        return key.longValue();
+        return GeneratedIdentity.requireId(keyHolder);
     }
 
     public void replaceRules(long restrictionId, List<ExerciseRule> rules) {

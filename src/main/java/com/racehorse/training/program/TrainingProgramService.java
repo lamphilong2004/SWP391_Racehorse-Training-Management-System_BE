@@ -1,5 +1,6 @@
 package com.racehorse.training.program;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
@@ -602,10 +603,7 @@ public class TrainingProgramService {
             for (int i=0;i<args.length;i++) ps.setObject(i+1,args[i]);
             return ps;
         }, holder);
-        Object value = holder.getKeyList().stream().flatMap(m -> m.entrySet().stream())
-                .filter(e -> e.getKey().equalsIgnoreCase("id")).map(Map.Entry::getValue).findFirst().orElse(null);
-        if (!(value instanceof Number n)) throw new IllegalStateException("The database did not return the generated id.");
-        return n.longValue();
+        return GeneratedIdentity.requireId(holder);
     }
 
     private UserRef userRef(long id) {

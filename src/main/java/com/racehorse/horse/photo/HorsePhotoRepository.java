@@ -1,5 +1,6 @@
 package com.racehorse.horse.photo;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -49,11 +50,7 @@ public class HorsePhotoRepository {
             statement.setObject(3, LocalDateTime.ofInstant(uploadedAt, ZoneOffset.UTC));
             return statement;
         }, keyHolder);
-        Number key = keyHolder.getKey();
-        if (key == null) {
-            throw new IllegalStateException("The database did not return a horse photo identifier.");
-        }
-        return key.longValue();
+        return GeneratedIdentity.requireId(keyHolder);
     }
 
     public List<PhotoRow> findByHorseId(long horseId) {
