@@ -1,11 +1,13 @@
 package com.racehorse.medical.incident;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -17,7 +19,12 @@ import static com.racehorse.medical.incident.IncidentApi.*;
 @Repository
 public class Core026Repository {
     private final JdbcTemplate jdbc;
-    public Core026Repository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final String databaseProduct;
+    public Core026Repository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+        this.databaseProduct = jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
+                connection.getMetaData().getDatabaseProductName());
+    }
 
     public Optional<Session> session(long id) {
         return jdbc.query("""
@@ -77,13 +84,13 @@ public class Core026Repository {
     }
 
     public long insertPrecheck(long sessionId,long groomId,String observations,String overall,Instant at) {
-        KeyHolder keys=new GeneratedKeyHolder();
-        jdbc.update(c->{var ps=c.prepareStatement("""
+        return insertId("""
                 INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,observations,overall_result)
                 VALUES (?,?,?,?,?)
-                """,java.sql.Statement.RETURN_GENERATED_KEYS);ps.setLong(1,sessionId);ps.setLong(2,groomId);
-            ps.setTimestamp(3,java.sql.Timestamp.from(at));ps.setString(4,observations);ps.setString(5,overall);return ps;},keys);
-        return identity(keys);
+                """, ps -> {
+            ps.setLong(1,sessionId); ps.setLong(2,groomId); ps.setTimestamp(3,java.sql.Timestamp.from(at));
+            ps.setString(4,observations); ps.setString(5,overall);
+        });
     }
 
     public PrecheckData precheckData(long id) {
@@ -95,16 +102,17 @@ public class Core026Repository {
     }
 
     public long insertIncident(CreateRequest req,long actorId) {
-        KeyHolder keys=new GeneratedKeyHolder();String code="INC-"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(java.util.Locale.ROOT);
-        jdbc.update(c->{var ps=c.prepareStatement("""
+        String code="INC-"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(java.util.Locale.ROOT);
+        return insertId("""
                 INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,pre_session_check_id,training_session_id,care_task_id,
                     observed_at,reported_at,incident_type,observed_severity,description,status)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,'REPORTED')
-                """,java.sql.Statement.RETURN_GENERATED_KEYS);ps.setString(1,code);ps.setLong(2,req.horseId());ps.setLong(3,actorId);
+                """, ps -> {
+            ps.setString(1,code); ps.setLong(2,req.horseId()); ps.setLong(3,actorId);
             nullableLong(ps,4,req.preSessionCheckId());nullableLong(ps,5,req.trainingSessionId());nullableLong(ps,6,req.careTaskId());
             ps.setTimestamp(7,java.sql.Timestamp.from(req.observedAt().toInstant()));ps.setTimestamp(8,java.sql.Timestamp.from(Instant.now()));
-            ps.setString(9,req.incidentType());ps.setString(10,req.observedSeverity());ps.setString(11,req.description());return ps;},keys);
-        return identity(keys);
+            ps.setString(9,req.incidentType());ps.setString(10,req.observedSeverity());ps.setString(11,req.description());
+        });
     }
 
     public Optional<Incident> incident(long id) {
@@ -141,9 +149,8 @@ public class Core026Repository {
     }
 
     public long insertCase(long horseId,long actorId,String summary,Instant at) {
-        KeyHolder keys=new GeneratedKeyHolder();
-        jdbc.update(c->{var ps=c.prepareStatement("INSERT INTO dbo.medical_case(horse_id,opened_by_user_id,status,opened_at,condition_summary) VALUES (?,?,'OPEN',?,?)",java.sql.Statement.RETURN_GENERATED_KEYS);
-            ps.setLong(1,horseId);ps.setLong(2,actorId);ps.setTimestamp(3,java.sql.Timestamp.from(at));ps.setString(4,summary);return ps;},keys);return identity(keys);
+        return insertId("INSERT INTO dbo.medical_case(horse_id,opened_by_user_id,status,opened_at,condition_summary) VALUES (?,?,'OPEN',?,?)",
+                ps -> { ps.setLong(1,horseId); ps.setLong(2,actorId); ps.setTimestamp(3,java.sql.Timestamp.from(at)); ps.setString(4,summary); });
     }
 
     public int transitionIncident(long id,String expected,String status,long actorId,Long medicalCaseId) {
@@ -162,8 +169,29 @@ public class Core026Repository {
     }
     private static Long longOrNull(ResultSet rs,String col)throws SQLException { long v=rs.getLong(col);return rs.wasNull()?null:v; }
     private static void nullableLong(java.sql.PreparedStatement ps,int i,Long value)throws SQLException { if(value==null)ps.setNull(i,java.sql.Types.BIGINT);else ps.setLong(i,value); }
-    private static long identity(KeyHolder keys) {
-        Number n=keys.getKeys().values().stream().filter(Number.class::isInstance).map(Number.class::cast).findFirst().orElseThrow();return n.longValue();
+    private long insertId(String sql, PreparedStatementSetter binder) {
+        if (isSqlServer()) {
+            String outputSql = sql.replaceFirst("(?i)\\bVALUES\\b", "OUTPUT INSERTED.id VALUES");
+            if (outputSql.equals(sql)) throw new IllegalArgumentException("An identity insert must use a VALUES clause.");
+            Long id = jdbc.query(outputSql, binder, rs -> rs.next() ? rs.getLong(1) : null);
+            if (id == null) throw new IllegalStateException("The database did not return the generated id.");
+            return id;
+        }
+        KeyHolder keys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS);
+            binder.setValues(statement);
+            return statement;
+        }, keys);
+        Object value = keys.getKeyList().stream().flatMap(row -> row.entrySet().stream())
+                .filter(entry -> entry.getKey().equalsIgnoreCase("id"))
+                .map(java.util.Map.Entry::getValue).findFirst().orElse(null);
+        if (!(value instanceof Number id)) throw new IllegalStateException("The database did not return the generated id.");
+        return id.longValue();
+    }
+
+    private boolean isSqlServer() {
+        return databaseProduct != null && databaseProduct.toLowerCase(java.util.Locale.ROOT).contains("sql server");
     }
     public record Session(long id,long horseId,long programId,long riderId,String status){}
     public record CheckContext(long id,long sessionId,long horseId,long programId,long riderId,String status){}
