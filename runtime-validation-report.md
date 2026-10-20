@@ -2,8 +2,8 @@
 
 **Updated**: 2026-10-21
 **Target**: `C:\Users\ACER\Racehorse-Workspace\_integration-api-wave1-review-20261020`
-**Validated candidate commit**: `3f13087423c49b07189ace4f516cbd7123e42ae6`
-**Validation scope**: working tree at that commit, including uncommitted Swagger operation-ID annotations, smoke assertions, and API coverage updates
+**Validated code/test tree**: based on `3f13087423c49b07189ace4f516cbd7123e42ae6`, including Swagger operation-ID annotations and smoke assertions; subsequently committed as `36e23e29c6cb0f025f3e6d8e5fd8a3cf4c93f4f6`
+**Validation scope**: all production/test source changes were present during Maven verification; documentation-only report/coverage edits were committed afterward
 
 ## Summary
 
@@ -37,7 +37,7 @@ The full Maven run completed successfully with Apache Maven 3.9.16 on Java 21.0.
 
 ## Test Evidence
 
-- Full Maven result on the working tree at candidate commit `3f13087423c49b07189ace4f516cbd7123e42ae6`: 227 tests, 0 failures, 0 errors, 15 skipped; exit code 0.
+- Full Maven result on the code/test tree subsequently committed as `36e23e29c6cb0f025f3e6d8e5fd8a3cf4c93f4f6`: 227 tests, 0 failures, 0 errors, 15 skipped; exit code 0.
 - The 15 skipped SQL Server-gated cases were 10 `PendingRegistrationSqlServerIntegrationTest` cases, 1 `HorseActivationSqlServerIntegrationTest` case, and 4 `StableBox*SqlServerIntegrationTest` cases. These skips are not SQL Server evidence.
 - `SwaggerRuntimeSmokeTest` exercised the actual local Spring Boot server, Swagger UI, `/v3/api-docs`, and operation IDs for Flow 1 and the newly integrated Flow 2/3 endpoints.
 - `GeneratedIdentityTest` covers Microsoft JDBC generated-key labels (`GENERATED_KEYS` and `id`) and invalid/missing/ambiguous key results.
@@ -89,8 +89,8 @@ Other acceptance blockers:
 
 ### Current PR and live endpoints
 
-- Local candidate branch `integration/api-wave1-review-20261020` is at commit `3f13087423c49b07189ace4f516cbd7123e42ae6`; it is 67 commits ahead of `origin/dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`. The working tree has uncommitted changes in the endpoint coverage/report, controller operation-ID annotations, and Swagger smoke assertions. These exact local changes passed full Maven verify and Redocly lint; they are not yet pushed.
-- Remote PR #25 remains Draft at `d19d3321fbc9ddbfb66b937bad5ffb18aae5c1f7`. It is open against `dev`, with Tiến requested as reviewer and no reviews recorded. Its existing PR description is stale (74/26 coverage and old test counts); the current local report has 98 mapped and 2 blocked operations. The only reported check run on the remote PR head is `image` (success), which does not satisfy SQL, security, or independent-review gates.
+- Candidate branch `integration/api-wave1-review-20261020` is pushed at `36e23e29c6cb0f025f3e6d8e5fd8a3cf4c93f4f6`, 67 commits ahead of `origin/dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`; the worktree was clean after the push.
+- Remote PR #25 is Draft at the same pushed SHA, open against `dev`, with Tiến requested as reviewer and no reviews recorded. Its existing PR description is stale (74/26 coverage and old test counts); it needs a description refresh. At the last check, its `image` workflow was still in progress. Neither workflow status nor review satisfies SQL, security, or independent-review gates.
 - Candidate ancestry includes current fetched heads for PRs #17-24, #27, #30, and #31, plus combined PR #29 head `ab00863ba4369d7816820e5d4ec5f2820746619e`. The latest standalone PR #26 and #28 heads are not direct ancestors; the combined PR #29 is included, but the standalone heads have not been proven identical to it and must not be claimed superseded without a source diff review.
 - Current remote refs observed: `dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`; `main` `89991c1281edd8f2421b5ee57d6e1a283a70683`. Nothing was merged.
 - Render and Vercel live endpoint checks were not run in this validation phase. No deployment occurred.
