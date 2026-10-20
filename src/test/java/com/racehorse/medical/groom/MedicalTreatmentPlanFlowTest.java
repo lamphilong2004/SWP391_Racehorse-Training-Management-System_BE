@@ -65,7 +65,8 @@ class MedicalTreatmentPlanFlowTest {
         jdbc.update("DELETE FROM dbo.app_user");
         jdbc.update("DELETE FROM dbo.role");
 
-        jdbc.update("INSERT INTO dbo.horse(id) VALUES (100)");
+        jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle,health_status) " +
+                "VALUES (100,'H-100','Treatment Horse','ACTIVE','FIT')");
         jdbc.update("INSERT INTO dbo.app_user(id,user_code,full_name,email,password_hash,account_status) VALUES (10,'V-10','Vet','vet@example.test','x','ACTIVE'), (20,'G-20','Groom','groom@example.test','x','ACTIVE')");
         jdbc.update("INSERT INTO dbo.role(id,role_code) VALUES (1,'VETERINARIAN'), (2,'GROOM')");
         jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (101,10,1), (102,20,2)");

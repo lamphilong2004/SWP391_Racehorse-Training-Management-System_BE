@@ -59,8 +59,12 @@ class Core032ApiIntegrationTest {
         long manager=user(RoleCode.CLUB_MANAGER); long head=user(RoleCode.HEAD_TRAINER);
         trainerId=user(RoleCode.TRAINER); outsiderTrainerId=user(RoleCode.TRAINER); riderId=user(RoleCode.WORK_RIDER); user(RoleCode.VETERINARIAN);
         jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle,health_status) VALUES (1,'H-1','Horse One','ACTIVE','FIT')");
-        jdbc.update("INSERT INTO dbo.horse_training_program(id,horse_id,name,status) VALUES (1,1,'Program One','ACTIVE')");
-        jdbc.update("INSERT INTO dbo.horse_program_phase(id,horse_training_program_id,name) VALUES (1,1,'Base')");
+        jdbc.update("INSERT INTO dbo.horse_training_program(id,horse_id,template_version_id,created_by_user_id,name,status,period_start,period_end,activated_at) " +
+                "VALUES (1,1,1,?,'Program One','ACTIVE',?,?,CURRENT_TIMESTAMP)",
+                head, java.sql.Date.valueOf(LocalDate.now().minusDays(1)), java.sql.Date.valueOf(LocalDate.now().plusDays(30)));
+        jdbc.update("INSERT INTO dbo.horse_program_phase(id,horse_training_program_id,name,phase_order,start_date,end_date) " +
+                "VALUES (1,1,'Base',1,?,?)",
+                java.sql.Date.valueOf(LocalDate.now().minusDays(1)), java.sql.Date.valueOf(LocalDate.now().plusDays(30)));
         jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (1,1,?,?,?)",
                 trainerId,head,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
         Instant now=Instant.now();

@@ -60,6 +60,7 @@ class GroomTreatmentTaskApiTest {
         jdbc.update("DELETE FROM dbo.care_task");
         jdbc.update("DELETE FROM dbo.treatment_plan");
         jdbc.update("DELETE FROM dbo.medical_case");
+        jdbc.update("DELETE FROM dbo.horse WHERE id IN (100, 200)");
         jdbc.update("DELETE FROM dbo.audit_log");
         jdbc.update("DELETE FROM dbo.user_role");
         jdbc.update("DELETE FROM dbo.app_user");
@@ -73,7 +74,10 @@ class GroomTreatmentTaskApiTest {
                 """);
         jdbc.update("INSERT INTO dbo.role(id, role_code) VALUES (1,'GROOM'), (2,'TRAINER')");
         jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (101,10,1), (102,11,1), (103,20,2), (104,30,1)");
-        jdbc.update("INSERT INTO dbo.medical_case(id,horse_id,status) VALUES (1,100,'OPEN'), (2,200,'CLOSED')");
+        jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle,health_status) VALUES " +
+                "(100,'H-100','Horse 100','ACTIVE','FIT'), (200,'H-200','Horse 200','ACTIVE','FIT')");
+        jdbc.update("INSERT INTO dbo.medical_case(id,horse_id,opened_by_user_id,status,opened_at) " +
+                "VALUES (1,100,20,'OPEN',CURRENT_TIMESTAMP), (2,200,20,'CLOSED',CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO dbo.treatment_plan(id,medical_case_id) VALUES (1,1), (2,2)");
     }
 

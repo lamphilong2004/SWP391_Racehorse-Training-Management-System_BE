@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS dbo.medical_case (
         opened_at TIMESTAMP(3) NOT NULL,
         closed_at TIMESTAMP(3),
         condition_summary NVARCHAR(2000),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3),
         CONSTRAINT fk_test_case_horse FOREIGN KEY (horse_id) REFERENCES dbo.horse (id),
         CONSTRAINT fk_test_case_actor FOREIGN KEY (opened_by_user_id) REFERENCES dbo.app_user (id)
 );
@@ -134,12 +136,17 @@ CREATE TABLE IF NOT EXISTS dbo.veterinary_examination (
         horse_id BIGINT NOT NULL,
         medical_case_id BIGINT,
         performed_by_user_id BIGINT NOT NULL,
+        changed_medical_restriction_id BIGINT,
         exam_type VARCHAR(20) NOT NULL,
         examined_at TIMESTAMP(3) NOT NULL,
+        clinical_severity VARCHAR(20),
         health_status_set VARCHAR(20),
         findings NVARCHAR(1000),
         diagnosis NVARCHAR(1000),
         recovery_outcome VARCHAR(20),
+        body_condition NVARCHAR(500),
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3),
         CONSTRAINT ck_test_exam_type CHECK (exam_type IN ('BASELINE', 'EXAMINATION', 'RE_EXAMINATION')),
         CONSTRAINT ck_test_baseline_case CHECK (
             (exam_type = 'BASELINE' AND medical_case_id IS NULL)
