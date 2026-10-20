@@ -64,6 +64,7 @@ public class SecurityConfiguration {
                     authorize.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
                     authorize.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll();
                     authorize.requestMatchers(HttpMethod.GET, "/api/health").permitAll();
+                    authorize.requestMatchers("/ws", "/ws/**").permitAll();
                     authorize.requestMatchers(photoProperties.resourceHandlerPattern())
                             .hasAnyRole("CLUB_MANAGER", "HEAD_TRAINER", "TRAINER", "VETERINARIAN", "GROOM");
                     if (environment.acceptsProfiles(Profiles.of("dev", "test"))) {
