@@ -124,6 +124,7 @@ public class TrainingProgramController {
     }
 
     @org.springframework.web.bind.annotation.PatchMapping("/api/training-programs/{id}/status")
+    @io.swagger.v3.oas.annotations.Operation(operationId = "setProgramStatus")
     @PreAuthorize("hasRole('HEAD_TRAINER')")
     public ApiResponse<ProgramApi.ProgramDetail> status(
             @PathVariable long id,

@@ -2,6 +2,7 @@ package com.racehorse.training.evaluation;
 
 import com.racehorse.common.api.ApiResponse;
 import jakarta.validation.Valid;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,7 @@ public class EvaluationController {
     public EvaluationController(EvaluationService service) { this.service = service; }
 
     @PostMapping("/api/training-sessions/{id}/evaluation")
+    @Operation(operationId = "submitEvaluation")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('TRAINER')")
     public ApiResponse<Map<String, Object>> evaluate(@PathVariable long id, @Valid @RequestBody EvaluationRequest request) {
@@ -24,10 +26,12 @@ public class EvaluationController {
     }
 
     @GetMapping("/api/training-sessions/{id}/result")
+    @Operation(operationId = "getSessionResult")
     @PreAuthorize("hasAnyRole('HEAD_TRAINER','TRAINER','WORK_RIDER','CLUB_MANAGER','VETERINARIAN')")
     public ApiResponse<Map<String, Object>> result(@PathVariable long id) { return ApiResponse.ok(service.result(id)); }
 
     @GetMapping("/api/horses/{id}/performance")
+    @Operation(operationId = "getHorsePerformance")
     @PreAuthorize("hasAnyRole('HEAD_TRAINER','TRAINER','CLUB_MANAGER','VETERINARIAN')")
     public ApiResponse<java.util.List<PerformancePoint>> performance(@PathVariable long id,
             @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {

@@ -1,6 +1,7 @@
 package com.racehorse.medical.groom;
 
 import com.racehorse.common.api.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +21,7 @@ public class GroomTreatmentTaskController {
     }
 
     @GetMapping("/api/groom/treatment-tasks")
+    @Operation(operationId = "getMyTreatmentTasks")
     @PreAuthorize("hasRole('GROOM')")
     public ApiResponse<GroomTreatmentTasksPage> list(
             @RequestParam(defaultValue = "0") int page,
@@ -28,6 +30,7 @@ public class GroomTreatmentTaskController {
     }
 
     @PostMapping("/api/groom/treatment-tasks/{taskId}/complete")
+    @Operation(operationId = "completeTreatmentTask")
     @PreAuthorize("hasRole('GROOM')")
     public ApiResponse<GroomTreatmentTask> complete(
             @PathVariable long taskId,

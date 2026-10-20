@@ -57,6 +57,36 @@ class SwaggerRuntimeSmokeTest {
                 api.at("/paths/~1api~1horses~1{id}~1timeline/get/operationId").asText());
         assertEquals("getMyHorseTrainingSummary",
                 api.at("/paths/~1api~1owner~1horses~1{id}~1training-summary/get/operationId").asText());
+        assertOperation(api, "/api/training-programs/{id}/status", "patch", "setProgramStatus");
+        assertOperation(api, "/api/training-sessions/{id}/metrics", "post", "submitMetricSample");
+        assertOperation(api, "/api/simulator/sessions/{id}/start", "post", "startSimulator");
+        assertOperation(api, "/api/simulator/sessions/{id}/stop", "post", "stopSimulator");
+        assertOperation(api, "/api/monitoring-alerts/{id}/acknowledge", "post", "acknowledgeAlert");
+        assertOperation(api, "/api/training-sessions/{id}/evaluation", "post", "submitEvaluation");
+        assertOperation(api, "/api/training-sessions/{id}/result", "get", "getSessionResult");
+        assertOperation(api, "/api/horses/{id}/performance", "get", "getHorsePerformance");
+        assertOperation(api, "/api/medical/cases", "get", "listMedicalCases");
+        assertOperation(api, "/api/medical/cases", "post", "createMedicalCase");
+        assertOperation(api, "/api/medical/cases/{caseId}", "get", "getMedicalCase");
+        assertOperation(api, "/api/medical/cases/{caseId}/examinations", "post", "createMedicalExamination");
+        assertOperation(api, "/api/medical/cases/{caseId}/injuries", "post", "createInjury");
+        assertOperation(api, "/api/medical/cases/{caseId}/re-examinations", "post", "createReexamination");
+        assertOperation(api, "/api/medical/cases/{caseId}/close", "post", "closeMedicalCase");
+        assertOperation(api, "/api/medical/cases/{caseId}/treatment-plan", "get", "getTreatmentPlan");
+        assertOperation(api, "/api/medical/cases/{caseId}/treatment-plan", "put", "putTreatmentPlan");
+        assertOperation(api, "/api/medical/cases/{caseId}/treatment-tasks", "get", "listTreatmentCaseTasks");
+        assertOperation(api, "/api/groom/treatment-tasks", "get", "getMyTreatmentTasks");
+        assertOperation(api, "/api/groom/treatment-tasks/{taskId}/complete", "post", "completeTreatmentTask");
+        assertOperation(api, "/api/training-programs/{id}/adjustment-requests", "post", "createAdjustmentRequest");
+        assertOperation(api, "/api/adjustment-requests", "get", "listAdjustmentRequests");
+        assertOperation(api, "/api/adjustment-requests/{id}/approve", "post", "approveAdjustmentRequest");
+        assertOperation(api, "/api/adjustment-requests/{id}/reject", "post", "rejectAdjustmentRequest");
+    }
+
+    private void assertOperation(JsonNode api, String path, String method, String operationId) {
+        assertEquals(operationId,
+                api.at("/paths/" + path.replace("/", "~1") + "/" + method + "/operationId").asText(),
+                path + " " + method);
     }
 
     private HttpResponse<String> get(HttpClient client, URI uri) throws Exception {
