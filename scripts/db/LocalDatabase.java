@@ -7,7 +7,8 @@ import java.util.*;
 /** Local-only operational JDBC adapter. Never edits an existing database during install. */
 class LocalDatabase {
     static final String SCHEMA = "416eb579e59f926e01c08bdfb25af6db5bc9376e87ec93eb7b6aa35d512a9141";
-    static final String MIGRATION = "18a5d3eba5aad92967c6a6d2f6646410a98828d69e3c5be8fa3c61a7ef418604";
+    static final String CORE007_MIGRATION = "431c6d0b0f84309b2820e2697e26dd52ab6072fdd664d0eef9d850abcc98b34c";
+    static final String CORE045_MIGRATION = "decb437690c9e8e4249caba168c6095f1c21bb627bfd575c4b14f6fa2f736488";
     static String env(String key) { String v=System.getenv(key); require(v!=null&&!v.isBlank(), "ENV_REQUIRED_"+key); return v; }
     static void require(boolean ok,String code) { if(!ok) throw new IllegalStateException(code); }
     static String hash(byte[] bytes) throws Exception { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
@@ -87,7 +88,8 @@ class LocalDatabase {
         require(args.length>=2,"OPERATION_AND_REPOSITORY_REQUIRED");
         String op=args[0],db=database(); Path root=Path.of(args[1]).toAbsolutePath();
         require(hash(Files.readAllBytes(root.resolve("database/schema.sql"))).equals(SCHEMA),"CANONICAL_SCHEMA_CHECKSUM_MISMATCH");
-        require(hash(Files.readAllBytes(root.resolve("database/migrations/V20261016_01__create_registration_request.sql"))).equals(MIGRATION),"MIGRATION_CHECKSUM_MISMATCH");
+        require(hash(Files.readAllBytes(root.resolve("database/migrations/V20261016_01__create_registration_request.sql"))).equals(CORE007_MIGRATION),"CORE007_MIGRATION_CHECKSUM_MISMATCH");
+        require(hash(Files.readAllBytes(root.resolve("database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"))).equals(CORE045_MIGRATION),"CORE045_MIGRATION_CHECKSUM_MISMATCH");
         if(op.equals("install")) {
             // A master connection checks local identity and strict TLS BEFORE any CREATE.
             try(Connection c=connect("master");PreparedStatement q=c.prepareStatement("SELECT DB_ID(?)")) {
@@ -98,6 +100,7 @@ class LocalDatabase {
                 s.setQueryTimeout(60);
                 executeBatch(s,Files.readString(root.resolve("database/schema.sql"),StandardCharsets.UTF_8));
                 executeBatch(s,Files.readString(root.resolve("database/migrations/V20261016_01__create_registration_request.sql"),StandardCharsets.UTF_8));
+                executeBatch(s,Files.readString(root.resolve("database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"),StandardCharsets.UTF_8));
             }
             try(Connection fresh=connect(db)){verify(fresh,root);}
             System.out.println("INSTALL_AND_STRUCTURAL_VERIFY_PASS"); return;
