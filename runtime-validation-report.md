@@ -2,7 +2,7 @@
 
 **Updated**: 2026-10-20
 **Target**: `C:\Users\ACER\Racehorse-Workspace\_integration-api-wave1-review-20261020`
-**Validated code SHA**: `3df9e6d38c60e947dba5de01032754877d8d1cbf`
+**Validated candidate SHA**: `425b4ac95ac17e0d308cbad848dd6796696bfc72`
 
 ## Summary
 
@@ -33,7 +33,7 @@ The full Maven run completed successfully with Apache Maven 3.9.16 on Java 21.0.
 
 ## Test Evidence
 
-- Full Maven result on candidate SHA `3df9e6d38c60e947dba5de01032754877d8d1cbf`: 198 tests, 0 failures, 0 errors, 15 skipped; exit code 0.
+- Full Maven result on candidate SHA `425b4ac95ac17e0d308cbad848dd6796696bfc72`: 198 tests, 0 failures, 0 errors, 15 skipped; exit code 0. This rerun includes the concurrent CORE-043 H2 fixture update `77dd844`.
 - The 15 SQL Server-gated skips were:
   - 10 CORE-007 tests: missing `core007.sqlserver.it`.
   - 4 CORE-012 tests: missing `core012.sqlserver.it`.
@@ -93,7 +93,7 @@ Other acceptance blockers:
 
 ### Current PR and live endpoints
 
-- Candidate branch `integration/api-wave1-review-20261020` is at `6aa88dd1719414eb928b7a42edfd0c3a6ef65da5`; `origin` matches. The only commit after code validation SHA `3df9e6d38c60e947dba5de01032754877d8d1cbf` is documentation-only.
+- Candidate branch `integration/api-wave1-review-20261020` is locally at `425b4ac95ac17e0d308cbad848dd6796696bfc72`. This merge includes the concurrent H2 fixture-only commit `77dd844` and the two documentation commits; the full Maven suite and Redocly lint were rerun on this exact local HEAD. No production-source change was added after the generated-key fix.
 - PR #25 remains Draft. Tiến is the requested reviewer and was @mentioned for an independent review; no review has been recorded. The latest `image` check completed successfully, but this does not satisfy SQL, security, or review gates.
 - Current remote refs observed: `dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`; `main` `89991c1281edd8f2421b5ee57d6e1a283a70683d`. Nothing was merged.
 - Latest requests to Render health, readiness, Swagger/docs, and the Vercel CORS preflight timed out (HTTP 000). The FE Vercel root returned HTTP 200. No Render database name or deployed SHA could be verified; no deployment occurred.
