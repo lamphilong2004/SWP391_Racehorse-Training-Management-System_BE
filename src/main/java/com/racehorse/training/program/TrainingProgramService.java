@@ -596,16 +596,42 @@ public class TrainingProgramService {
     }
 
     private long insertId(String sql, Object... args) {
+        if (isSqlServer()) {
+            String outputSql = sql.replaceFirst("(?i)\\bVALUES\\b", "OUTPUT INSERTED.id VALUES");
+            if (outputSql.equals(sql)) {
+                throw new IllegalArgumentException("An identity insert must use a VALUES clause.");
+            }
+            Long id = jdbc.query(outputSql, statement -> bindInsertArguments(statement, args),
+                    resultSet -> resultSet.next() ? resultSet.getLong(1) : null);
+            if (id == null) {
+                throw new IllegalStateException("The database did not return the generated id.");
+            }
+            return id;
+        }
+
         KeyHolder holder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-            for (int i=0;i<args.length;i++) ps.setObject(i+1,args[i]);
+            bindInsertArguments(ps, args);
             return ps;
         }, holder);
         Object value = holder.getKeyList().stream().flatMap(m -> m.entrySet().stream())
                 .filter(e -> e.getKey().equalsIgnoreCase("id")).map(Map.Entry::getValue).findFirst().orElse(null);
         if (!(value instanceof Number n)) throw new IllegalStateException("The database did not return the generated id.");
         return n.longValue();
+    }
+
+    private void bindInsertArguments(PreparedStatement statement, Object[] args) throws java.sql.SQLException {
+        for (int i = 0; i < args.length; i++) {
+            statement.setObject(i + 1, args[i]);
+        }
+    }
+
+    private boolean isSqlServer() {
+        String productName = jdbc.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
+                        connection.getMetaData().getDatabaseProductName());
+        return productName != null && productName.toLowerCase(java.util.Locale.ROOT).contains("sql server");
     }
 
     private UserRef userRef(long id) {
