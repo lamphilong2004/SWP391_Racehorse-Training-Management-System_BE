@@ -158,6 +158,10 @@ public class TrainingSessionService {
         if(!"PAUSED".equals(row.get("status"))) throw business("Only a PAUSED session can resume.");
         if("LOCKED".equals(row.get("availability"))) throw business("Training is locked by the Veterinarian: "+row.get("restriction_reason"));
         if(!"ALL_NORMAL".equals(repository.precheckResult(id))) throw business("Resume is blocked until a fresh ALL_NORMAL Groom pre-session check is recorded.");
+        if(!"ACTIVE".equals(row.get("program_status"))) throw business("The training program is not ACTIVE.");
+        List<SessionApi.ExerciseInput> current=repository.exercises(id).stream().map(e->new SessionApi.ExerciseInput(e.exerciseDefinitionId(),e.exerciseOrder(),e.distanceM(),e.durationMin(),e.repetitions(),e.restIntervalMin(),e.intensity(),e.surface(),e.acknowledgementNote())).toList();
+        SessionApi.SuitabilityResult currentCheck=evaluate(longValue(row,"horse_program_phase_id"),(String)row.get("intensity"),current);
+        if(currentCheck.sessionBlocked()||currentCheck.exercises().stream().anyMatch(e->"A".equals(e.category()))) throw business("The session is medically blocked under the current restriction.");
         if(repository.transition(id,"PAUSED","IN_PROGRESS")!=1) throw business("Session state changed; reload and try again.");
         repository.audit(a.userId(),"TRAINER","SESSION_RESUMED",id,"Session resumed after medical gate passed.");
         return detail(id,false);

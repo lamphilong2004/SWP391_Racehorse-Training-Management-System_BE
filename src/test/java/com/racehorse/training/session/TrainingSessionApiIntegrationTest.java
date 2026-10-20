@@ -120,6 +120,21 @@ class TrainingSessionApiIntegrationTest {
                 .andExpect(jsonPath("$.data.exercises.length()").value(0));
     }
 
+    @Test void resumeFailsClosedWhenLimitedRestrictionBlocksAnExistingExercise() throws Exception {
+        Fixture f=fixture(); String trainer=login(f.trainer());
+        jdbc.update("INSERT INTO dbo.training_session(session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,scheduled_end,intensity,status) VALUES ('RESUME-1',?,?,?,?,?,'LOW','PAUSED')",
+                f.phase(),f.trainer(),f.rider(),java.sql.Timestamp.from(f.start()),java.sql.Timestamp.from(f.start().plusSeconds(1800)));
+        long session=jdbc.queryForObject("SELECT id FROM dbo.training_session WHERE session_code='RESUME-1'",Long.class);
+        jdbc.update("INSERT INTO dbo.session_exercise(training_session_id,exercise_definition_id,exercise_order,duration) VALUES (?,?,1,10)",session,f.exercise());
+        jdbc.update("INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,overall_result) VALUES (?,?,CURRENT_TIMESTAMP,'ALL_NORMAL')",session,f.groom());
+        jdbc.update("INSERT INTO dbo.medical_restriction(horse_id,restriction_level,reason,effective_from) VALUES (?, 'LIMITED','No walking work',CURRENT_TIMESTAMP)",f.horse());
+        long restriction=jdbc.queryForObject("SELECT MAX(id) FROM dbo.medical_restriction",Long.class);
+        jdbc.update("INSERT INTO dbo.restriction_exercise_rule(medical_restriction_id,exercise_definition_id,rule_type) VALUES (?,?,'PROHIBITED')",restriction,f.exercise());
+        mvc.perform(post("/api/training-sessions/{id}/resume",session).header("Authorization","Bearer "+trainer))
+                .andExpect(status().isConflict());
+        org.junit.jupiter.api.Assertions.assertEquals("PAUSED",jdbc.queryForObject("SELECT status FROM dbo.training_session WHERE id=?",String.class,session));
+    }
+
     private Fixture fixture(){
         long trainer=addUser(RoleCode.TRAINER),rider=addUser(RoleCode.WORK_RIDER),groom=addUser(RoleCode.GROOM);
         long horse=IDS.incrementAndGet(),program=IDS.incrementAndGet(),phase=IDS.incrementAndGet(),exercise=IDS.incrementAndGet();
