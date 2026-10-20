@@ -6,6 +6,7 @@ import com.racehorse.auth.RoleCode;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.sql.Statement;
+import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,7 +31,9 @@ public class Core028Service {
     private static final Set<String> SEVERITIES=Set.of("LOW","MEDIUM","HIGH");
     private static final Set<String> FEEDBACK_FIELDS=Set.of("horseResponse","balance","breathing","strideFeeling","abnormalBehavior","preInterruptionDescription","notes");
     private final JdbcTemplate jdbc;private final CurrentActorProvider actors;private final JsonMapper json;
-    public Core028Service(JdbcTemplate jdbc,CurrentActorProvider actors,JsonMapper json){this.jdbc=jdbc;this.actors=actors;this.json=json;}
+    private final String databaseProduct;
+    public Core028Service(JdbcTemplate jdbc,CurrentActorProvider actors,JsonMapper json){this.jdbc=jdbc;this.actors=actors;this.json=json;
+        this.databaseProduct=jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<String>) connection -> connection.getMetaData().getDatabaseProductName());}
 
     @Transactional(readOnly=true)
     public List<Map<String,Object>> assignments(String status){ActorContext a=require(RoleCode.WORK_RIDER);if(status!=null&&!STATUSES.contains(status))throw validation("status is not supported.");
@@ -72,14 +76,14 @@ public class Core028Service {
         if(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.rider_feedback WHERE training_session_id=?",Integer.class,id)>0)throw conflict("Rider feedback was already submitted for this session.");
         for(var e:r.responses().entrySet())if(e.getValue()!=null&&(!(e.getValue() instanceof String v)||v.length()>maxLength(e.getKey())))throw validation("Feedback values must be strings within their field limits.");
         String body;try{body=json.writeValueAsString(r.responses());}catch(Exception e){throw new IllegalStateException("Feedback could not be serialized.",e);}
-        KeyHolder keys=new GeneratedKeyHolder();try{jdbc.update(c->{var ps=c.prepareStatement("INSERT INTO dbo.rider_feedback(training_session_id,submitted_by_user_id,submitted_at,responses) VALUES (?,?,CURRENT_TIMESTAMP,?)",Statement.RETURN_GENERATED_KEYS);ps.setLong(1,id);ps.setLong(2,a.userId());ps.setString(3,body);return ps;},keys);}catch(DataIntegrityViolationException e){throw conflict("Rider feedback was already submitted for this session.");}
-        long feedbackId=generatedId(keys);Instant submitted=jdbc.queryForObject("SELECT submitted_at FROM dbo.rider_feedback WHERE id=?",Timestamp.class,feedbackId).toInstant();return new Feedback(feedbackId,id,a.userId(),submitted,r.responses());}
+        long feedbackId;try{feedbackId=insertId("INSERT INTO dbo.rider_feedback(training_session_id,submitted_by_user_id,submitted_at,responses) VALUES (?,?,CURRENT_TIMESTAMP,?)",ps->{ps.setLong(1,id);ps.setLong(2,a.userId());ps.setString(3,body);});}catch(DataIntegrityViolationException e){throw conflict("Rider feedback was already submitted for this session.");}
+        Instant submitted=jdbc.queryForObject("SELECT submitted_at FROM dbo.rider_feedback WHERE id=?",Timestamp.class,feedbackId).toInstant();return new Feedback(feedbackId,id,a.userId(),submitted,r.responses());}
 
     private void interrupt(Session s,long id,String reason,String type,String severity,Instant at,long actorId){if(!Set.of("IN_PROGRESS","PAUSED").contains(s.status()))throw conflict("Only an IN_PROGRESS or PAUSED session may be interrupted.");
         if(type!=null){String code="INC-"+UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(Locale.ROOT);insertIncident(s,id,actorId,code,type,severity,reason,at);notifyIncident(s,id,code);}
         if(jdbc.update("UPDATE dbo.training_session SET status='INTERRUPTED',interruption_reason=?,actual_end=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('IN_PROGRESS','PAUSED')",reason,id)!=1)throw conflict("Session state changed; reload and try again.");}
 
-    private long insertIncident(Session s,long id,long actor,String code,String type,String severity,String description,Instant observed){KeyHolder keys=new GeneratedKeyHolder();jdbc.update(c->{var ps=c.prepareStatement("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,'REPORTED')",Statement.RETURN_GENERATED_KEYS);ps.setString(1,code);ps.setLong(2,s.horseId());ps.setLong(3,actor);ps.setLong(4,id);ps.setTimestamp(5,Timestamp.from(observed));ps.setString(6,type);ps.setString(7,severity);ps.setString(8,description);return ps;},keys);return generatedId(keys);}
+    private long insertIncident(Session s,long id,long actor,String code,String type,String severity,String description,Instant observed){return insertId("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,'REPORTED')",ps->{ps.setString(1,code);ps.setLong(2,s.horseId());ps.setLong(3,actor);ps.setLong(4,id);ps.setTimestamp(5,Timestamp.from(observed));ps.setString(6,type);ps.setString(7,severity);ps.setString(8,description);});}
 
     private void notifyIncident(Session s,long id,String code){String message="Incident "+code+" was reported for session "+s.code()+".";
         jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) SELECT u.id,'MEDICAL','INCIDENT_REPORTED','Training incident reported',?,'TRAINING_SESSION',? FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'",message,id);
@@ -106,6 +110,9 @@ public class Core028Service {
     private void authorizeTrainer(Session s,ActorContext a){if(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.trainer_assignment WHERE horse_training_program_id=? AND trainer_user_id=? AND effective_from<=CAST(CURRENT_TIMESTAMP AS DATE) AND (effective_to IS NULL OR effective_to>=CAST(CURRENT_TIMESTAMP AS DATE))",Integer.class,s.programId(),a.userId())==0)throw forbidden();}
     private int maxLength(String field){return Set.of("preInterruptionDescription","notes").contains(field)?1000:500;}
     private long generatedId(KeyHolder h){Object id=h.getKeyList().stream().flatMap(m->m.entrySet().stream()).filter(e->e.getKey().equalsIgnoreCase("id")).map(Map.Entry::getValue).findFirst().orElse(null);if(!(id instanceof Number n))throw new IllegalStateException("The database did not return a generated id.");return n.longValue();}
+    private long insertId(String sql,PreparedStatementSetter binder){if(isSqlServer()){String outputSql=sql.replaceFirst("(?i)\\bVALUES\\b","OUTPUT INSERTED.id VALUES");if(outputSql.equals(sql))throw new IllegalArgumentException("An identity insert must use a VALUES clause.");Long id=jdbc.query(outputSql,binder,rs->rs.next()?rs.getLong(1):null);if(id==null)throw new IllegalStateException("The database did not return a generated id.");return id;}
+        KeyHolder keys=new GeneratedKeyHolder();jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS);binder.setValues(ps);return ps;},keys);return generatedId(keys);}
+    private boolean isSqlServer(){return databaseProduct!=null&&databaseProduct.toLowerCase(Locale.ROOT).contains("sql server");}
     private ActorContext actor(){return actors.currentActor().orElseThrow(()->new BusinessException(ErrorCode.UNAUTHORIZED,"Authentication is required."));}
     private ActorContext require(RoleCode role){ActorContext a=actor();if(!a.roles().contains(role))throw forbidden();return a;}
     private void validatePage(int page,int size){if(page<0||size<1||size>100)throw validation("page must be non-negative and size must be between 1 and 100.");}
