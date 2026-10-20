@@ -21,3 +21,7 @@ springdoc:
 app:
   cors:
     allowed-origins: http://localhost:5173
+  storage:
+    local:
+      directory: ${java.io.tmpdir}/racehorse-test-horse-photos
+      public-base-url: /local-media/horse-photos
