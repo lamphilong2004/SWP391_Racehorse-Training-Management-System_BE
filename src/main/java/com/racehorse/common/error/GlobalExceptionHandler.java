@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.util.List;
 
@@ -52,7 +53,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
-            MissingServletRequestParameterException.class})
+            MissingServletRequestParameterException.class, MultipartException.class})
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception ex) {
         return build(ErrorCode.VALIDATION_ERROR, "The request is malformed or has invalid parameters.", List.of());
     }

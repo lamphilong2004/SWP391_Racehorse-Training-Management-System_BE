@@ -1,5 +1,6 @@
 name: Staging container
 on:
+  workflow_dispatch:
   pull_request:
     branches: [dev]
     paths:
@@ -26,6 +27,16 @@ jobs:
           test "$(docker inspect --format '{{.Config.User}}' racehorse-staging:verify)" = "10001:1000"
           docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' racehorse-staging:verify | grep -Fx 'SPRING_PROFILES_ACTIVE=staging'
           docker run --rm --entrypoint java racehorse-staging:verify -version
+          docker run --rm --entrypoint tailscale racehorse-staging:verify version
+          docker run --rm --entrypoint tailscaled racehorse-staging:verify --version
+      - name: Verify final image does not carry deployment secrets
+        run: |
+          if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' racehorse-staging:verify | grep -Eq '^(TS_AUTHKEY|DB_PASSWORD|JWT_SIGNING_KEY|TRUSTSTORE_PASSWORD)='; then exit 1; fi
+          docker run --rm --entrypoint sh racehorse-staging:verify -c '
+            test "$(find /app -type f | wc -l)" -eq 1
+            test -f /app/app.jar
+            test ! -e /etc/secrets/racehorse-truststore.p12.b64
+          '
       - name: Refuse startup without staging configuration
         run: |
           docker run --name staging-no-config racehorse-staging:verify > startup.log 2>&1 &
@@ -38,4 +49,55 @@ jobs:
           fi
           wait "$runner" && exit 1 || true
           test "$(docker inspect --format '{{.State.ExitCode}}' staging-no-config)" != 0
-          grep -E 'Missing required staging property|Could not resolve placeholder' startup.log >/dev/null
+          grep -F 'STAGING_NETWORK_STARTUP_FAILED: MISSING_TS_AUTHKEY' startup.log >/dev/null
+      - name: Verify unprivileged userspace daemon without joining any tailnet
+        run: |
+          docker run -d --name tailscale-no-auth --memory=512m --cpus=1 \
+            --entrypoint sh racehorse-staging:verify -c '
+              tailscaled --tun=userspace-networking --state=mem: --socket=/tmp/ts.sock --socks5-server=127.0.0.1:1055 >/dev/null 2>&1 &
+              child=$!
+              trap "kill $child 2>/dev/null || true" EXIT
+              for n in $(seq 1 30); do
+                test -S /tmp/ts.sock && break
+                kill -0 "$child" || exit 1
+                sleep 1
+              done
+              test -S /tmp/ts.sock || exit 1
+              tailscale --socket=/tmp/ts.sock status --json | grep -E "NeedsLogin|NoState" >/dev/null || exit 1
+              echo USERSPACE_DAEMON_NO_AUTH_PASS
+              wait "$child"
+            '
+          ready=false
+          for n in $(seq 1 40); do
+            if docker logs tailscale-no-auth 2>&1 | grep -q USERSPACE_DAEMON_NO_AUTH_PASS; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          echo 'Daemon-only unauthenticated memory measurement; not a full-stack capacity PASS:'
+          docker stats --no-stream --format '{{.MemUsage}}' tailscale-no-auth
+          docker stop tailscale-no-auth >/dev/null
+      - name: Staging Spring fails closed without SQL (fixture environment, not SQL integration)
+        run: |
+          # Deliberately bypass only the network launcher to exercise the existing Spring staging boundary.
+          # Every value below is a CI fixture. No real credentials, tailnet or database are used.
+          set +e
+          timeout 75s docker run --name staging-unreachable --memory=512m --cpus=1 \
+            -e SPRING_PROFILES_ACTIVE=staging \
+            -e 'DB_URL=jdbc:sqlserver://127.0.0.1:1;databaseName=unreachable_fixture;encrypt=true;trustServerCertificate=false;loginTimeout=1' \
+            -e DB_USERNAME=fixture -e DB_PASSWORD=fixture \
+            -e JWT_SIGNING_KEY=YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE= \
+            -e JWT_ACCESS_TOKEN_TTL_SECONDS=300 \
+            -e CORS_ALLOWED_ORIGINS=https://fixture.example.test \
+            -e STAGING_DOCS_USERNAME=fixture -e STAGING_DOCS_PASSWORD=fixture-docs-password-no-real-secret \
+            --entrypoint java racehorse-staging:verify -Xmx192m -jar /app/app.jar > unreachable.log 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          test "$result" -ne 124
+          test "$(docker inspect --format '{{.State.Running}}' staging-unreachable)" = false
+          grep -E 'APPLICATION FAILED|Unable to determine Dialect|Unable to obtain JDBC|Error creating bean' unreachable.log >/dev/null
+          test "$(docker inspect --format '{{.State.OOMKilled}}' staging-unreachable)" = false
+      - name: Cleanup only CI fixture containers
+        if: always()
+        run: |
+          docker rm -f staging-no-config tailscale-no-auth staging-unreachable >/dev/null 2>&1 || true

@@ -1,8 +1,11 @@
 package com.racehorse.horse;
 
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
@@ -31,12 +34,183 @@ public class HorseRepository {
         """+FROM;
 
     public long insert(HorseIdentityRequest v) {
-        Long id=jdbc.queryForObject("""
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
             INSERT INTO dbo.horse(horse_code,name,breed,sex,foaled_date,country_of_origin,registration_no,lifecycle)
-            OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,'DRAFT')
-            """,Long.class,v.horseCode(),v.name(),v.breed(),v.sex(),v.foaledDate(),v.countryOfOrigin(),v.registrationNo());
-        return Objects.requireNonNull(id);
+            VALUES(?,?,?,?,?,?,?,'DRAFT')
+            """, Statement.RETURN_GENERATED_KEYS);
+            statement.setString(1, v.horseCode());
+            statement.setString(2, v.name());
+            statement.setString(3, v.breed());
+            statement.setString(4, v.sex());
+            statement.setObject(5, v.foaledDate());
+            statement.setString(6, v.countryOfOrigin());
+            statement.setString(7, v.registrationNo());
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder);
     }
+    public int updateIdentity(long horseId, HorseIdentityRequest v) {
+        return jdbc.update("""
+            UPDATE dbo.horse
+            SET horse_code=?, name=?, breed=?, sex=?, foaled_date=?,
+                country_of_origin=?, registration_no=?, updated_at=?
+            WHERE id=?
+            """, v.horseCode(), v.name(), v.breed(), v.sex(), v.foaledDate(),
+                v.countryOfOrigin(), v.registrationNo(), LocalDateTime.now(Clock.systemUTC()), horseId);
+    }
+    public void updatePedigree(long horseId, PedigreeRequest request) {
+        jdbc.update("""
+            UPDATE dbo.horse
+            SET sire_horse_id=?, sire_name=?, dam_horse_id=?, dam_name=?, updated_at=?
+            WHERE id=?
+            """, request.sire().horseId(), normalized(request.sire().name()),
+                request.dam().horseId(), normalized(request.dam().name()),
+                LocalDateTime.now(Clock.systemUTC()), horseId);
+    }
+    private static String normalized(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+    public boolean ownerIsActiveHorseOwner(long userId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.app_user u
+                JOIN dbo.user_role ur ON ur.user_id=u.id
+                JOIN dbo.role r ON r.id=ur.role_id
+                WHERE u.id=? AND u.account_status='ACTIVE' AND r.role_code='HORSE_OWNER'
+            ) THEN 1 ELSE 0 END
+            """, Boolean.class, userId));
+    }
+    public long insertOwnership(long horseId, OwnershipRequest request) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+            INSERT INTO dbo.horse_ownership
+                (horse_id, owner_user_id, share_percentage, effective_from, is_managing_owner)
+            VALUES (?, ?, ?, ?, ?)
+            """, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, horseId);
+            statement.setLong(2, request.ownerUserId());
+            statement.setBigDecimal(3, request.sharePercentage());
+            statement.setObject(4, request.effectiveFrom());
+            statement.setBoolean(5, Boolean.TRUE.equals(request.isManagingOwner()));
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder);
+    }
+    private static long generatedId(KeyHolder keyHolder) {
+        return GeneratedIdentity.requireId(keyHolder);
+    }
+    public List<Map<String, Object>> ownershipHistory(long horseId) {
+        return jdbc.query("""
+            SELECT o.*,u.user_code,u.full_name FROM dbo.horse_ownership o
+            JOIN dbo.app_user u ON u.id=o.owner_user_id
+            WHERE o.horse_id=?
+            ORDER BY CASE WHEN o.effective_to IS NULL THEN 0 ELSE 1 END, o.effective_from DESC, o.id DESC
+            """, OWNERSHIP_ROW, horseId);
+    }
+    public record OpenStableAssignment(long id, LocalDate effectiveFrom, long stableBoxId) {}
+    public boolean stableBoxExists(long stableBoxId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box WHERE id=?) THEN 1 ELSE 0 END
+            """, Boolean.class, stableBoxId));
+    }
+    public Optional<OpenStableAssignment> openStableAssignment(long horseId) {
+        List<OpenStableAssignment> assignments = jdbc.query("""
+            SELECT id,effective_from,stable_box_id
+            FROM dbo.horse_stable_assignment
+            WHERE horse_id=? AND effective_to IS NULL
+            """, (r, n) -> new OpenStableAssignment(
+                r.getLong("id"), r.getDate("effective_from").toLocalDate(), r.getLong("stable_box_id")), horseId);
+        if (assignments.size() > 1) {
+            throw new IllegalStateException("The horse has more than one open stable assignment.");
+        }
+        return assignments.stream().findFirst();
+    }
+    public boolean hasOverlappingHorseAssignment(long horseId, Long excludedAssignmentId, LocalDate effectiveFrom) {
+        if (excludedAssignmentId == null) {
+            return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1 FROM dbo.horse_stable_assignment
+                    WHERE horse_id=? AND (effective_to IS NULL OR effective_to>=?)
+                ) THEN 1 ELSE 0 END
+                """, Boolean.class, horseId, effectiveFrom));
+        }
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.horse_stable_assignment
+                WHERE horse_id=?
+                  AND id<>?
+                  AND (effective_to IS NULL OR effective_to>=?)
+            ) THEN 1 ELSE 0 END
+            """, Boolean.class, horseId, excludedAssignmentId, effectiveFrom));
+    }
+    public boolean hasOverlappingBoxAssignment(long stableBoxId, LocalDate effectiveFrom) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.horse_stable_assignment
+                WHERE stable_box_id=?
+                  AND (effective_to IS NULL OR effective_to>=?)
+            ) THEN 1 ELSE 0 END
+            """, Boolean.class, stableBoxId, effectiveFrom));
+    }
+    public int closeOpenStableAssignment(long assignmentId, LocalDate effectiveTo) {
+        return jdbc.update("""
+            UPDATE dbo.horse_stable_assignment
+            SET effective_to=?,updated_at=?
+            WHERE id=? AND effective_to IS NULL
+            """, effectiveTo, LocalDateTime.now(Clock.systemUTC()), assignmentId);
+    }
+    public long insertStableAssignment(long horseId, StableAssignmentRequest request, long assignedByUserId) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO dbo.horse_stable_assignment
+                    (horse_id,stable_box_id,assigned_by_user_id,effective_from,reason)
+                VALUES (?,?,?,?,?)
+                """, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, horseId);
+            statement.setLong(2, request.stableBoxId());
+            statement.setLong(3, assignedByUserId);
+            statement.setObject(4, request.effectiveFrom());
+            statement.setString(5, normalized(request.reason()));
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder);
+    }
+    public List<Map<String,Object>> stableAssignmentHistory(long horseId) {
+        return jdbc.query("""
+            SELECT a.*,b.box_code,b.yard,u.user_code,u.full_name
+            FROM dbo.horse_stable_assignment a
+            JOIN dbo.stable_box b ON b.id=a.stable_box_id
+            JOIN dbo.app_user u ON u.id=a.assigned_by_user_id
+            WHERE a.horse_id=?
+            ORDER BY CASE WHEN a.effective_to IS NULL THEN 0 ELSE 1 END,
+                     a.effective_from DESC,a.id DESC
+            """, STABLE_ASSIGNMENT_ROW, horseId);
+    }
+    public Optional<Map<String,Object>> stableAssignment(long assignmentId) {
+        return jdbc.query("""
+            SELECT a.*,b.box_code,b.yard,u.user_code,u.full_name
+            FROM dbo.horse_stable_assignment a
+            JOIN dbo.stable_box b ON b.id=a.stable_box_id
+            JOIN dbo.app_user u ON u.id=a.assigned_by_user_id
+            WHERE a.id=?
+            """, STABLE_ASSIGNMENT_ROW, assignmentId).stream().findFirst();
+    }
+    private static final RowMapper<Map<String,Object>> STABLE_ASSIGNMENT_ROW=(r,n)->{
+        Map<String,Object> assignment=new LinkedHashMap<>();
+        assignment.put("id",r.getLong("id"));
+        assignment.put("stableBoxId",r.getLong("stable_box_id"));
+        assignment.put("boxCode",r.getString("box_code"));
+        assignment.put("yard",r.getString("yard"));
+        assignment.put("effectiveFrom",date(r,"effective_from"));
+        assignment.put("effectiveTo",date(r,"effective_to"));
+        assignment.put("reason",r.getString("reason"));
+        assignment.put("assignedBy",user(r.getLong("assigned_by_user_id"),r.getString("user_code"),r.getString("full_name")));
+        return assignment;
+    };
     public boolean exists(long id) { return Boolean.TRUE.equals(jdbc.queryForObject("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.horse WHERE id=?) THEN 1 ELSE 0 END",Boolean.class,id)); }
     private static String scope(Long trainer,List<Object> args) {
         if(trainer==null)return "";
@@ -58,7 +232,7 @@ public class HorseRepository {
         if(lifecycle!=null&&!lifecycle.isBlank()){where.append(" AND h.lifecycle=?");args.add(lifecycle);}
         if(health!=null&&!health.isBlank()){where.append(" AND h.health_status=?");args.add(health);}
         if(availability!=null&&!availability.isBlank()){where.append(" AND COALESCE(mr.restriction_level,'AVAILABLE')=?");args.add(availability);}
-        long total=Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT_BIG(*) "+FROM+where,Long.class,args.toArray()));
+        long total=Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT(*) "+FROM+where,Long.class,args.toArray()));
         args.add((long)page*size);args.add(size);
         List<Map<String,Object>> rows=jdbc.query(SELECT+where+" ORDER BY h.id DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",ROW,args.toArray());
         return new Page(rows,page,size,total,total/size+(total%size==0?0:1));
@@ -68,13 +242,14 @@ public class HorseRepository {
             SELECT o.*,u.user_code,u.full_name FROM dbo.horse_ownership o
             JOIN dbo.app_user u ON u.id=o.owner_user_id
             WHERE o.horse_id=? AND o.effective_to IS NULL ORDER BY o.id
-            """,(r,n)->{
-            Map<String,Object> o=new LinkedHashMap<>();o.put("id",r.getLong("id"));
-            o.put("owner",user(r.getLong("owner_user_id"),r.getString("user_code"),r.getString("full_name")));
-            o.put("sharePercentage",r.getBigDecimal("share_percentage"));o.put("effectiveFrom",date(r,"effective_from"));
-            o.put("effectiveTo",date(r,"effective_to"));o.put("isManagingOwner",r.getBoolean("is_managing_owner"));return o;
-        },id);
+            """, OWNERSHIP_ROW, id);
     }
+    private static final RowMapper<Map<String,Object>> OWNERSHIP_ROW=(r,n)->{
+        Map<String,Object> o=new LinkedHashMap<>();o.put("id",r.getLong("id"));
+        o.put("owner",user(r.getLong("owner_user_id"),r.getString("user_code"),r.getString("full_name")));
+        o.put("sharePercentage",r.getBigDecimal("share_percentage"));o.put("effectiveFrom",date(r,"effective_from"));
+        o.put("effectiveTo",date(r,"effective_to"));o.put("isManagingOwner",r.getBoolean("is_managing_owner"));return o;
+    };
     private static Map<String,Object> user(long id,String code,String name){Map<String,Object> u=new LinkedHashMap<>();u.put("id",id);u.put("userCode",code);u.put("fullName",name);return u;}
     private static Object date(ResultSet r,String field)throws SQLException {java.sql.Date d=r.getDate(field);return d==null?null:d.toLocalDate();}
     private static Object instant(ResultSet r,String field)throws SQLException {LocalDateTime t=r.getObject(field,LocalDateTime.class);return t==null?null:t.toInstant(ZoneOffset.UTC);}
