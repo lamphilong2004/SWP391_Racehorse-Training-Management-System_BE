@@ -113,7 +113,7 @@ The current tracker assigns CORE-026 and CORE-035 to Tiến (`Reassigned` status
 ### Current PR and live endpoints
 
 - Candidate branch `integration/api-wave1-review-20261020` was at `4a76a4511b395405d83d2652a1ddc168ee240866` at verification start, 69 commits ahead of `origin/dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`. The worktree was clean before this report update.
-- PR #25 is open, **not Draft**, unmerged, and has Tiến's `CHANGES_REQUESTED` review on `4a76a4511b395405d83d2652a1ddc168ee240866`. The `image` workflow completed successfully on that SHA. The PR description is stale and must be refreshed after this documentation update is pushed. Do not merge or claim ready.
+- PR #25 is open, **not Draft**, unmerged, and has Tiến's `CHANGES_REQUESTED` review on `4a76a4511b395405d83d2652a1ddc168ee240866`. The description was refreshed after report commit `8bda89f3e2191f17163181452db7f729ad457655`; the `image` workflow passed on that HEAD. Keep unmerged; do not claim ready.
 - Current fetched source PR heads are verified as ancestors for #17-24, #27, #30, and #31; combined PR #29 head `ab00863ba4369d7816820e5d4ec5f2820746619e` is also an ancestor. Standalone PR #26 head `43d50ae784780ad97ce0aae211c487863d97d962` and PR #28 head `86b0ed88d02172994332b2ea6cea2e9c481a0f60` are not direct ancestors. PR #29 is included, but #26/#28 have not been proven identical to it and must not be claimed superseded without an explicit source diff review.
 - Current remote refs observed: `dev` `5867f07ad521f2862eb80d5aa85c0bd615826855`; `main` `89991c1281edd8f2421b5ee57d6e1a283a70683`. Nothing was merged.
 - Render and Vercel live endpoint checks were not run in this validation phase. No deployment occurred.
