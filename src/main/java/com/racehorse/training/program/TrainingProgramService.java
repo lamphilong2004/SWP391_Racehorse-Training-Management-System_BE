@@ -100,25 +100,34 @@ public class TrainingProgramService {
         if(horse==null||horse==0)throw notFound("Horse was not found.");
         Integer version=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.template_version v JOIN dbo.training_program_template t ON t.id=v.training_program_template_id WHERE v.id=? AND t.status='ACTIVE'",Integer.class,templateVersionId);
         if(version==null||version==0)throw notFound("An active template version was not found.");
-        List<ProgramApi.SkillRef> required=jdbc.query("SELECT s.id,s.name FROM dbo.template_required_skill r JOIN dbo.skill s ON s.id=r.skill_id WHERE r.template_version_id=?",(rs,n)->new ProgramApi.SkillRef(rs.getLong("id"),rs.getString("name")),templateVersionId);
-        if(required.isEmpty())return new ProgramApi.CandidateList(List.of(),"The selected template version has no required skills for profile matching.");
+        List<String> required=requiredSkillNames(templateVersionId);
+        // EF-4: every ACTIVE Trainer is a candidate; a specialization mismatch is a warning the Head Trainer may acknowledge.
         String sql="""
-                SELECT u.id,u.user_code,u.full_name,u.experience_level,s.id AS skill_id,s.name AS skill_name
+                SELECT u.id,u.user_code,u.full_name,u.experience_level,s.name AS skill_name
                 FROM dbo.app_user u
                 JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role ro ON ro.id=ur.role_id AND ro.role_code='TRAINER'
-                JOIN dbo.user_skill us ON us.user_id=u.id JOIN dbo.skill s ON s.id=us.skill_id
-                JOIN dbo.template_required_skill rs ON rs.skill_id=s.id AND rs.template_version_id=?
-                WHERE u.account_status='ACTIVE' AND s.kind='TRAINER_SPECIALIZATION'
+                LEFT JOIN dbo.user_skill us ON us.user_id=u.id
+                LEFT JOIN dbo.skill s ON s.id=us.skill_id AND s.kind='TRAINER_SPECIALIZATION'
+                WHERE u.account_status='ACTIVE'
+                ORDER BY u.full_name,u.id,s.name
                 """;
-        Map<Long,Map<String,Object>> users=new LinkedHashMap<>();Map<Long,List<String>> matched=new LinkedHashMap<>();
-        jdbc.query(sql,rs->{long id=rs.getLong("id");users.putIfAbsent(id,row("id",id,"userCode",rs.getString("user_code"),"name",rs.getString("full_name"),"experience",rs.getString("experience_level")));matched.computeIfAbsent(id,k->new ArrayList<>()).add(rs.getString("skill_name"));},templateVersionId);
-        List<ProgramApi.RecommendationCandidate> candidates=new ArrayList<>();
-        for(var entry:users.entrySet()){Map<String,Object> u=entry.getValue();List<String> skills=List.copyOf(new java.util.LinkedHashSet<>(matched.get(entry.getKey())));
-            List<String> reasons=skills.stream().map(s->"Trainer specialization matches a required template skill: "+s+".").toList();
-            candidates.add(new ProgramApi.RecommendationCandidate(new UserRef(entry.getKey(),(String)u.get("userCode"),(String)u.get("name")),
-                    (String)u.get("experience"),skills,"SUITABLE",reasons,List.of(),null));}
-        String empty=candidates.isEmpty()?"No active Trainer has a profile matching the template's required skills.":null;
-        return new ProgramApi.CandidateList(List.copyOf(candidates),empty);
+        Map<Long,Map<String,Object>> users=new LinkedHashMap<>();Map<Long,List<String>> skillsByUser=new LinkedHashMap<>();
+        jdbc.query(sql,rs->{long id=rs.getLong("id");users.putIfAbsent(id,row("id",id,"userCode",rs.getString("user_code"),"name",rs.getString("full_name"),"experience",rs.getString("experience_level")));
+            List<String> skills=skillsByUser.computeIfAbsent(id,k->new ArrayList<>());String skill=rs.getString("skill_name");if(skill!=null&&!skills.contains(skill))skills.add(skill);});
+        List<ProgramApi.RecommendationCandidate> matched=new ArrayList<>(),warned=new ArrayList<>();
+        for(var entry:users.entrySet()){Map<String,Object> u=entry.getValue();List<String> skills=List.copyOf(skillsByUser.get(entry.getKey()));
+            UserRef user=new UserRef(entry.getKey(),(String)u.get("userCode"),(String)u.get("name"));
+            List<String> hits=skills.stream().filter(required::contains).toList();
+            if(required.isEmpty())matched.add(new ProgramApi.RecommendationCandidate(user,(String)u.get("experience"),skills,"SUITABLE",
+                    List.of("The template version lists no required specialization."),List.of(),null));
+            else if(!hits.isEmpty())matched.add(new ProgramApi.RecommendationCandidate(user,(String)u.get("experience"),skills,"SUITABLE",
+                    hits.stream().map(s->"Trainer specialization matches a required template skill: "+s+".").toList(),List.of(),null));
+            else warned.add(new ProgramApi.RecommendationCandidate(user,(String)u.get("experience"),skills,"NOT_RECOMMENDED",
+                    List.of(),List.of(skillMismatchWarning(required)),null));}
+        matched.addAll(warned);
+        String empty=matched.isEmpty()?"No active Trainer account exists."
+                :warned.size()==matched.size()?"No active Trainer has a profile matching the template's required skills.":null;
+        return new ProgramApi.CandidateList(List.copyOf(matched),empty);
     }
 
     @Transactional(readOnly = true)
@@ -228,7 +237,7 @@ public class TrainingProgramService {
         ActorContext actor = requireRole(RoleCode.HEAD_TRAINER);
         Map<String, Object> row = templateRow(id);
         if ("ARCHIVED".equals(row.get("status"))) throw conflict("Template is already archived.");
-        jdbc.update("UPDATE dbo.training_program_template SET status='ARCHIVED', updated_at=CURRENT_TIMESTAMP WHERE id=?", id);
+        jdbc.update("UPDATE dbo.training_program_template SET status='ARCHIVED', updated_at=SYSUTCDATETIME() WHERE id=?", id);
         audit(actor, "TEMPLATE_ARCHIVED", "TRAINING_PROGRAM_TEMPLATE", id, "Template archived.");
         return templateSummary(templateRow(id));
     }
@@ -274,6 +283,7 @@ public class TrainingProgramService {
                 request.templateVersionId());
         if (version == null || !"ACTIVE".equals(version.get("status"))) throw conflict("The selected template version is unavailable or archived.");
         validateTrainer(request.trainer().trainerUserId());
+        requireWarningsAcknowledged(request.templateVersionId(), request.trainer().trainerUserId(), request.trainer().warningsAcknowledged());
         requireNotLocked(request.horseId());
         validatePhases(request.phases(), request.periodStart(), request.periodEnd());
         for (ProgramPhaseInput phase : request.phases()) {
@@ -365,7 +375,7 @@ public class TrainingProgramService {
                 ||("PAUSED".equals(before)&&Set.of("ACTIVE","COMPLETED").contains(after));
         if(!valid) throw conflict("The requested program status transition is not allowed.");
         if("PAUSED".equals(before)&&"ACTIVE".equals(after)) requireNotLocked((Long)current.get("horse_id"));
-        jdbc.update("UPDATE dbo.horse_training_program SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",after,id);
+        jdbc.update("UPDATE dbo.horse_training_program SET status=?,updated_at=SYSUTCDATETIME() WHERE id=?",after,id);
         audit(actor,"PROGRAM_STATUS_CHANGED","TRAINING_PROGRAM",id,"Program status changed from "+before+" to "+after+(request.reason()==null?".":". "+request.reason()));
         return programDetailView(id);
     }
@@ -401,7 +411,7 @@ public class TrainingProgramService {
                 Integer belongs=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse_program_phase WHERE id=? AND horse_training_program_id=?",Integer.class,phase.id(),id);
                 if(belongs==null||belongs!=1) throw notFound("A supplied phase id is not part of this program.");
                 jdbc.update("""
-                        UPDATE dbo.horse_program_phase SET template_version_phase_id=?,phase_order=?,name=?,objective=?,start_date=?,end_date=?,intensity_min=?,intensity_max=?,workload=?,is_customized=1,updated_at=CURRENT_TIMESTAMP
+                        UPDATE dbo.horse_program_phase SET template_version_phase_id=?,phase_order=?,name=?,objective=?,start_date=?,end_date=?,intensity_min=?,intensity_max=?,workload=?,is_customized=1,updated_at=SYSUTCDATETIME()
                         WHERE id=? AND horse_training_program_id=?
                         """,phase.templateVersionPhaseId(),phase.phaseOrder(),phase.name(),phase.objective(),phase.startDate(),phase.endDate(),phase.intensityMin(),phase.intensityMax(),phase.workload(),phase.id(),id);
             }
@@ -415,17 +425,18 @@ public class TrainingProgramService {
         ActorContext actor = requireRole(RoleCode.HEAD_TRAINER);
         requirePositiveId(id, "id");
         if (request == null || request.trainerUserId() <= 0 || request.effectiveFrom() == null) throw validation("Trainer and effectiveFrom are required.");
-        Map<String, Object> program = jdbc.query("SELECT status FROM dbo.horse_training_program WITH (UPDLOCK, HOLDLOCK) WHERE id=?",
-                rs -> rs.next() ? row("status",rs.getString("status")) : null, id);
+        Map<String, Object> program = jdbc.query("SELECT status,template_version_id FROM dbo.horse_training_program WITH (UPDLOCK, HOLDLOCK) WHERE id=?",
+                rs -> rs.next() ? row("status",rs.getString("status"),"template_version_id",rs.getLong("template_version_id")) : null, id);
         if (program == null) throw notFound("Training program was not found.");
         validateTrainer(request.trainerUserId());
+        requireWarningsAcknowledged((Long) program.get("template_version_id"), request.trainerUserId(), request.warningsAcknowledged());
         Map<String, Object> active = jdbc.query("SELECT id,effective_from,trainer_user_id FROM dbo.trainer_assignment WITH (UPDLOCK, HOLDLOCK) WHERE horse_training_program_id=? AND effective_to IS NULL",
                 rs -> rs.next() ? row("id",rs.getLong("id"),"effective_from",rs.getDate("effective_from").toLocalDate(),"trainer_user_id",rs.getLong("trainer_user_id")) : null, id);
         if (active == null) throw conflict("The program has no active Trainer assignment.");
         if (Objects.equals(active.get("trainer_user_id"), request.trainerUserId())) throw conflict("The requested Trainer is already assigned.");
         LocalDate currentStart = (LocalDate) active.get("effective_from");
         if (!request.effectiveFrom().isAfter(currentStart)) throw conflict("The new assignment date must follow the current assignment start.");
-        jdbc.update("UPDATE dbo.trainer_assignment SET effective_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        jdbc.update("UPDATE dbo.trainer_assignment SET effective_to=?, updated_at=SYSUTCDATETIME() WHERE id=?",
                 request.effectiveFrom().minusDays(1), active.get("id"));
         jdbc.update("INSERT INTO dbo.trainer_assignment (horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from,reason) VALUES (?,?,?,?,?)",
                 id, request.trainerUserId(), actor.userId(), request.effectiveFrom(), request.reason());
@@ -583,6 +594,27 @@ public class TrainingProgramService {
             }
             previousEnd = p.endDate();
         }
+    }
+
+    private List<String> requiredSkillNames(long templateVersionId) {
+        return jdbc.queryForList("SELECT s.name FROM dbo.template_required_skill r JOIN dbo.skill s ON s.id=r.skill_id WHERE r.template_version_id=? ORDER BY s.name",
+                String.class, templateVersionId);
+    }
+
+    private static String skillMismatchWarning(List<String> required) {
+        return "No Trainer specialization matches the template's required skills: " + String.join(", ", required) + ".";
+    }
+
+    /** EF-4: assigning a Trainer without a required specialization is allowed only after the warning is acknowledged. */
+    private void requireWarningsAcknowledged(long templateVersionId, long trainerId, Boolean acknowledged) {
+        if (Boolean.TRUE.equals(acknowledged)) return;
+        List<String> required = requiredSkillNames(templateVersionId);
+        if (required.isEmpty()) return;
+        Integer hits = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM dbo.template_required_skill r JOIN dbo.user_skill us ON us.skill_id=r.skill_id
+                WHERE r.template_version_id=? AND us.user_id=?
+                """, Integer.class, templateVersionId, trainerId);
+        if (hits == null || hits == 0) throw validation(skillMismatchWarning(required) + " Acknowledge the Trainer warnings to assign this Trainer.");
     }
 
     private void validateTrainer(long trainerId) {

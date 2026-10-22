@@ -70,7 +70,7 @@ public class ThresholdRepository {
     }
 
     public int endInterval(long id, Instant effectiveTo) {
-        return jdbc.update("UPDATE dbo.horse_threshold_override SET effective_to=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND effective_to IS NULL",
+        return jdbc.update("UPDATE dbo.horse_threshold_override SET effective_to=?,updated_at=SYSUTCDATETIME() WHERE id=? AND effective_to IS NULL",
                 java.sql.Timestamp.from(effectiveTo), id);
     }
 

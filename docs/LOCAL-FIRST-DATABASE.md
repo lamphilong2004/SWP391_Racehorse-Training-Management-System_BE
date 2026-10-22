@@ -39,11 +39,15 @@ No password is passed in Java or sqlcmd command arguments.
 ```powershell
 # Choose a unique name once. Never point this at an existing database.
 $env:RH_DATABASE = 'racehorse_local_<member>_<unique_timestamp>'
-./scripts/db/Install-LocalDatabase.ps1
-# Optional, explicit test accounts; never production/demo transactional seed:
-./scripts/db/Seed-LocalDatabase.ps1
+./scripts/db/Install-LocalDatabase.ps1 -SeedTestAccounts -SeedReferenceData
 ./scripts/db/Verify-LocalDatabase.ps1
 ```
+
+`-SeedTestAccounts` runs `Seed-LocalDatabase.ps1` (seven role accounts, see below).
+`-SeedReferenceData` runs `Seed-LocalReferenceData.ps1`: 12 stable boxes and the trainer
+specialization / rider skill catalog. These rows have no management API, so without them a
+fresh database cannot complete Flow 1 stable assignment or Flow 2 recommendations. The
+reference seed is idempotent (insert-missing only) and can be rerun on its own.
 
 Apply order: DB with `SQL_Latin1_General_CP1_CI_AS` -> unchanged DB-01 (51 business
 tables /493 columns) -> unchanged V20261016_01 (registration_request,14 columns)
@@ -72,6 +76,22 @@ DPAPI file or commit credentials. Seed refuses existing users or credentials. Se
 failure does not change an already completed schema receipt into a test PASS.
 
 ## Run the real stack
+
+Quick path (same shell that holds the RH_* variables; verified 2026-10-22 on Long's machine):
+
+```powershell
+mvn -B -ntp -DskipTests package
+./scripts/local/Start-LocalBackend.ps1            # 127.0.0.1:8080, dev profile, strict TLS, JPA validate
+# second terminal, FE repository root: VITE_API_BASE_URL='/', VITE_API_PROXY_TARGET='http://127.0.0.1:8080',
+# npm ci; npm run build; node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5173 --strictPort
+# third terminal (Python 3 on PATH), same RH_* variables:
+./scripts/smoke/Run-FlowSmoke.ps1                 # Horse -> Training -> Medical real-API journey, prints FLOW_SMOKE_PASS
+```
+
+`Start-LocalBackend.ps1` generates a JWT key once and keeps it DPAPI-protected beside the install
+receipt. `Run-FlowSmoke.ps1` logs in the seeded accounts through the FE proxy and writes test
+horses/programs/sessions/cases into **your** new database; evidence JSON goes to
+`%LOCALAPPDATA%/Racehorse/smoke/<database>/<timestamp>/`. Never point it at a shared or demo DB.
 
 Build BE with `mvn -DskipTests package` during release Phases 1–2; run `mvn verify`
 in Phase 4. Build into an isolated output path when an existing demo is running.

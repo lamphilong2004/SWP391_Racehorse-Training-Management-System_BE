@@ -275,11 +275,11 @@ public class EvaluationService {
         return jdbc.query("SELECT id,user_code,full_name FROM dbo.app_user WHERE id=?",(rs,n)->new UserRef(rs.getLong(1),rs.getString(2),rs.getString(3)),userId).stream().findFirst().orElse(null);
     }
     private String availability(long horseId) {
-        List<String> levels=jdbc.queryForList("SELECT restriction_level FROM dbo.medical_restriction WHERE horse_id=? AND lifted_at IS NULL AND effective_from<=CURRENT_TIMESTAMP ORDER BY CASE restriction_level WHEN 'LOCKED' THEN 0 ELSE 1 END,id DESC",String.class,horseId);
+        List<String> levels=jdbc.queryForList("SELECT restriction_level FROM dbo.medical_restriction WHERE horse_id=? AND lifted_at IS NULL AND effective_from<=SYSUTCDATETIME() ORDER BY CASE restriction_level WHEN 'LOCKED' THEN 0 ELSE 1 END,id DESC",String.class,horseId);
         return levels.isEmpty()?"AVAILABLE":levels.getFirst();
     }
     private String restrictionReason(long horseId) {
-        List<String> reasons=jdbc.queryForList("SELECT reason FROM dbo.medical_restriction WHERE horse_id=? AND restriction_level='LOCKED' AND lifted_at IS NULL AND effective_from<=CURRENT_TIMESTAMP ORDER BY id DESC",String.class,horseId);
+        List<String> reasons=jdbc.queryForList("SELECT reason FROM dbo.medical_restriction WHERE horse_id=? AND restriction_level='LOCKED' AND lifted_at IS NULL AND effective_from<=SYSUTCDATETIME() ORDER BY id DESC",String.class,horseId);
         return reasons.isEmpty()?null:reasons.getFirst();
     }
     private Double duration(Session s) { return duration(s.actualStart(), s.actualEnd()); }
