@@ -5,6 +5,9 @@ import com.racehorse.TestJwtProperties;
 import com.racehorse.core035.MedicalDtos.*;
 import com.racehorse.core035.MedicalPorts.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -79,6 +82,63 @@ class MedicalServiceTest {
         sql.update("insert into dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from) values (5,4,21,?)", LocalDate.now(ZoneOffset.UTC));
         assertInstanceOf(CaseSummary.class, service.get(id));
         assertEquals(1, service.list(0, 20).totalElements());
+    }
+    @ParameterizedTest(name = "assignment start {0}, end {1}: accessible={2}")
+    @CsvSource(value = {"-2,NULL,true", "0,NULL,true", "-2,0,true", "-2,2,true", "-2,-1,false", "1,NULL,false", "1,2,false"}, nullValues = "NULL")
+    void trainerAssignmentDatesAlignListAndDetail(int fromDays, Integer toDays, boolean accessible) {
+        long id = opened().id();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        sql.update("insert into dbo.horse_training_program(id,horse_id) values (4,1)");
+        sql.update("insert into dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from,effective_to) values (5,4,21,?,?)",
+                today.plusDays(fromDays), toDays == null ? null : today.plusDays(toDays));
+        CURRENT.set(new Actor(21, Set.of(Role.TRAINER)));
+        Page<Object> listed = service.list(0, 20);
+        assertEquals(accessible ? 1 : 0, listed.totalElements());
+        assertEquals(accessible ? 1 : 0, listed.items().size());
+        if (accessible) {
+            CaseSummary detail = assertInstanceOf(CaseSummary.class, service.get(id));
+            assertEquals(id, detail.id());
+            assertEquals(detail, listed.items().getFirst());
+        } else fails(ErrorCode.FORBIDDEN, () -> service.get(id));
+    }
+    @Test void trainerScopePaginationAndRevocationRemainConsistent() {
+        long first = opened().id(), second = opened().id();
+        sql.update("update dbo.medical_case set opened_at=? where id=?", LocalDateTime.of(2026, 1, 1, 1, 0), first);
+        sql.update("update dbo.medical_case set opened_at=? where id=?", LocalDateTime.of(2026, 1, 2, 1, 0), second);
+        sql.update("insert into dbo.horse(id) values (2)");
+        long other = service.create(new CaseCreate(2L, "Other horse")).id();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        sql.update("insert into dbo.horse_training_program(id,horse_id) values (4,1),(6,1),(8,2)");
+        sql.update("insert into dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,effective_from,effective_to) values (5,4,21,?,?),(7,6,21,?,null),(9,8,22,?,null)",
+                today, today, today.minusDays(1), today.minusDays(1));
+        CURRENT.set(new Actor(21, Set.of(Role.TRAINER)));
+        Page<Object> page0 = service.list(0, 1), page1 = service.list(1, 1), page2 = service.list(2, 1);
+        assertEquals(2, page0.totalElements()); assertEquals(2, page1.totalElements()); assertEquals(2, page2.totalElements());
+        assertEquals(0, page0.page()); assertEquals(1, page1.page()); assertEquals(1, page0.size());
+        assertEquals(List.of(service.get(second)), page0.items());
+        assertEquals(List.of(service.get(first)), page1.items()); assertTrue(page2.items().isEmpty());
+        fails(ErrorCode.FORBIDDEN, () -> service.get(other));
+        sql.update("delete from dbo.trainer_assignment where trainer_user_id=21");
+        assertTrue(service.list(0, 1).items().isEmpty());
+        assertEquals(0, service.list(0, 1).totalElements());
+        fails(ErrorCode.FORBIDDEN, () -> service.get(first));
+        fails(ErrorCode.VALIDATION_ERROR, () -> service.list(-1, 1));
+        fails(ErrorCode.VALIDATION_ERROR, () -> service.list(0, 101));
+    }
+    @ParameterizedTest
+    @EnumSource(value = Role.class, names = {"GROOM", "WORK_RIDER", "HORSE_OWNER"})
+    void unauthorizedRolesCannotListOrReadCaseSummaries(Role role) {
+        long id = opened().id(); CURRENT.set(new Actor(21, Set.of(role)));
+        fails(ErrorCode.FORBIDDEN, () -> service.list(0, 20));
+        fails(ErrorCode.FORBIDDEN, () -> service.get(id));
+    }
+    @Test void missingActorAndMissingRoleFailClosedForBothReadPaths() {
+        long id = opened().id(); CURRENT.set(null);
+        fails(ErrorCode.UNAUTHORIZED, () -> service.list(0, 20));
+        fails(ErrorCode.UNAUTHORIZED, () -> service.get(id));
+        CURRENT.set(new Actor(21, Set.of()));
+        fails(ErrorCode.FORBIDDEN, () -> service.list(0, 20));
+        fails(ErrorCode.FORBIDDEN, () -> service.get(id));
     }
     @Test void examinationAndReexaminationPersistAndAreSeparateHistory() {
         long id = opened().id(); Instant stamp = Instant.parse("2026-10-13T08:11:00Z");

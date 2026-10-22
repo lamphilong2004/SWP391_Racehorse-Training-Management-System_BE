@@ -128,8 +128,9 @@ public class MedicalService {
         Actor actor = actor(); readRole(actor);
         if (page < 0 || size < 1 || size > 100) throw error(ErrorCode.VALIDATION_ERROR, "Invalid page or size.");
         boolean unrestricted = actor.has(Role.VETERINARIAN) || actor.has(Role.CLUB_MANAGER) || actor.has(Role.HEAD_TRAINER);
-        String where = unrestricted ? "" : " where exists (select 1 from dbo.horse_training_program p join dbo.trainer_assignment a on a.horse_training_program_id=p.id where p.horse_id=c.horse_id and a.trainer_user_id=? and a.effective_from<=? and a.effective_to is null)";
-        Object[] scope = unrestricted ? new Object[]{} : new Object[]{actor.id(), LocalDate.now(CLUB_ZONE)};
+        String where = unrestricted ? "" : " where exists (select 1 from dbo.horse_training_program p join dbo.trainer_assignment a on a.horse_training_program_id=p.id where p.horse_id=c.horse_id and a.trainer_user_id=? and a.effective_from<=? and (a.effective_to is null or a.effective_to>=?))";
+        LocalDate today = LocalDate.now(CLUB_ZONE);
+        Object[] scope = unrestricted ? new Object[]{} : new Object[]{actor.id(), today, today};
         long total = Objects.requireNonNull(sql.queryForObject("select count(*) from dbo.medical_case c" + where, Long.class, scope));
         Object[] args = Arrays.copyOf(scope, scope.length + 2); args[scope.length] = (long) page * size; args[scope.length + 1] = size;
         List<Long> ids = sql.queryForList("select c.id from dbo.medical_case c" + where + " order by c.opened_at desc,c.id desc offset ? rows fetch next ? rows only", Long.class, args);
