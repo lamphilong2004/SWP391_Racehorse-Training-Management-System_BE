@@ -44,11 +44,23 @@ Environment: Windows 11, SQL Server 16.0.1000.6, strict JDBC TLS, Java 21.0.12, 
    Source audit: FE session actions match the backend roles (Rider: start/complete/report-issue/feedback/metrics;
    Trainer Live Monitoring: pause/resume/stop). The Trainer stop UI always sends `medicallyRelevant: false`. The
    medical path from a ride is the Rider's report-issue.
-7. **Browser E2E: BLOCKED.** The agent's permission policy refuses to decrypt the seeded DPAPI passwords (and the
-   alternative of creating dedicated accounts through the reset outbox), even with the Leader's chat approval, and
-   pasting from the clipboard does not reach the in-app browser pane. To unblock: add a permission rule for that
-   PowerShell command, or sign in yourself in the browser pane (`runtime\Copy-RolePassword.ps1 -Role <ROLE>`,
-   then paste) and let the agent drive from there.
+7. **Browser E2E, Head Trainer: PASS** (FE #23 build on 5174 → BE 8081; Leader signs in, the agent drives; the
+   agent's policy blocks it from reading the DPAPI passwords). Template create (201 + list refresh) → 7-step
+   program wizard → `POST /api/training-programs` 201 → program 9 ACTIVE, confirmed in SQL (Trainer assignment,
+   phase LOW–MEDIUM) → Program Detail Overview/Progress/History → Program List → Training Calendar (local time,
+   BLOCKED/COMPLETED/INTERRUPTED). No console errors.
+   - **P0 found and fixed (BE, EF-4):** Trainer recommendations returned only skill-matched Trainers, and an empty
+     list for templates without required skills. The wizard only allows picking a listed candidate, so the Head
+     Trainer hit a dead end. Approved EF-4 (business-flows.md) allows force-assigning past a *warning*. Now every
+     ACTIVE Trainer is listed: matched ones as SUITABLE, unmatched ones as NOT_RECOMMENDED with a warning. Create
+     and reassign require `warningsAcknowledged` for an unmatched Trainer (400 otherwise). Verified in the browser:
+     warning shown → Continue blocked until acknowledged → created. BE tests 310/0/15.
+   - **Missing FE (approved Flow 2, BE APIs exist):** Program Adjustment Requests (Trainer submits; Head Trainer
+     reviews and approves/rejects, SCR-TRAIN-024), Head Trainer program pause/complete (`PATCH status`) and Trainer
+     reassignment (`PUT trainer-assignment`). Needs the Figma frames (Figma MCP needs `/mcp` auth) before building.
+   - Minor: duplicate-name horses get identical radio labels ("Select <name>"); wizard draft is lost on reload;
+     program-list summary cards show "Not provided" (no API). Template recommendations are empty unless the
+     template's "Suitable horse profile" matches the horse's breed/sex (by design).
 
 ## Changes on `feat/three-flow-closure-20261022`
 
