@@ -1,5 +1,11 @@
 # Backend main release candidate — 22 October 2026
 
+**Latest directive:** runnable local baseline takes priority over the earlier phase
+sequence. See `RUNNABLE-BASELINE-20261022.md` and its sanitized HTTP/SQL evidence.
+Main remains unchanged because independent review is still pending. Full suites
+and new feature implementation are deferred; current candidate runtime has been
+verified locally without waiting for128-operation acceptance.
+
 Phase 1 of the Leader-adopted five-phase main release directive. This candidate preserves PR25 ancestry and original authored commits. It does not dismiss its outstanding CHANGES_REQUESTED review.
 
 ## Sources and bounded changes

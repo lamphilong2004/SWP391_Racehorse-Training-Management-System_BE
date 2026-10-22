@@ -84,9 +84,10 @@ locally; never print or commit it. Use profile dev, not demo, and bind BE to127.
 Set FE `VITE_API_BASE_URL` to the loopback BE and CORS to the exact FE origin.
 Use API mode with role-test/sample flags disabled. Run FE from the existing official
 implementation, not a new demo app. Missing business APIs must remain honest errors.
-The existing `scripts/db/Test-LocalStack.ps1` provides scoped real
-JWT/me/401/403/readback/logout evidence. Verify browser login, workspace, refresh
-and logout on the same new stack during Phase 4.
+There is no `scripts/db/Test-LocalStack.ps1` in this release; do not rely on the old
+handoff reference. Use `docs/integration/RUNNABLE-BASELINE-20261022.md` for the actual
+startup commands and the recorded scoped JWT/me/401/403/readback/logout evidence.
+Authenticated browser login, workspace, refresh and logout remain a separate gate.
 H2/Maven test results must be reported separately from SQL Server/browser results.
 
 ## Team verification and rollback
