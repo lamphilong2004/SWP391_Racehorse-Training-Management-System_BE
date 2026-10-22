@@ -33,7 +33,7 @@ public class TrainingSessionController {
     }
 
     @GetMapping("/api/training-sessions/{id}")
-    @PreAuthorize("hasAnyRole('HEAD_TRAINER','TRAINER','WORK_RIDER','CLUB_MANAGER','VETERINARIAN')")
+    @PreAuthorize("hasAnyRole('HEAD_TRAINER','TRAINER','WORK_RIDER','CLUB_MANAGER','VETERINARIAN','GROOM')")
     public ApiResponse<SessionApi.Session> get(@PathVariable long id) { return ApiResponse.ok(service.get(id)); }
 
     @PatchMapping("/api/training-sessions/{id}")
@@ -44,8 +44,8 @@ public class TrainingSessionController {
 
     @PutMapping("/api/training-sessions/{id}/exercises")
     @PreAuthorize("hasRole('TRAINER')")
-    public ApiResponse<SessionApi.Session> exercises(@PathVariable long id,@Valid @RequestBody List<SessionApi.ExerciseInput> exercises) {
-        return ApiResponse.ok(service.replaceExercises(id,exercises));
+    public ApiResponse<SessionApi.Session> exercises(@PathVariable long id,@Valid @RequestBody SessionApi.ReplaceExercisesRequest request) {
+        return ApiResponse.ok(service.replaceExercises(id,request.exercises()));
     }
 
     @PostMapping("/api/training-sessions/suitability-check")
@@ -64,6 +64,33 @@ public class TrainingSessionController {
     @PreAuthorize("hasRole('TRAINER')")
     public ApiResponse<SessionApi.CandidateList> riders(@PathVariable long id) {
         return ApiResponse.ok(service.riderCandidatesForSession(id));
+    }
+
+    @GetMapping("/api/groom/sessions")
+    @PreAuthorize("hasRole('GROOM')")
+    public ApiResponse<List<SessionApi.Session>> groomSessions(
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        return ApiResponse.ok(service.groomSessions(date));
+    }
+
+    @GetMapping("/api/training-sessions/{id}/groom-candidates")
+    @PreAuthorize("hasRole('TRAINER')")
+    public ApiResponse<List<SessionApi.UserRef>> groomCandidates(@PathVariable long id) {
+        return ApiResponse.ok(service.groomCandidates(id));
+    }
+
+    @PostMapping("/api/training-sessions/{id}/groom-assignment")
+    @PreAuthorize("hasRole('TRAINER')")
+    public ApiResponse<SessionApi.Session> assignGroom(@PathVariable long id,
+            @Valid @RequestBody SessionApi.GroomAssignmentRequest request) {
+        return ApiResponse.ok(service.assignGroom(id,request.groomUserId()));
+    }
+
+    @PostMapping("/api/training-sessions/{id}/reduce-intensity")
+    @PreAuthorize("hasRole('TRAINER')")
+    public ApiResponse<SessionApi.Session> reduceIntensity(@PathVariable long id,
+            @Valid @RequestBody SessionApi.IntensityRequest request) {
+        return ApiResponse.ok(service.reduceIntensity(id,request.intensity()));
     }
 
     @PostMapping("/api/training-sessions/{id}/start")

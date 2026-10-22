@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +27,7 @@ import java.util.Optional;
 @Service
 public class MedicalRestrictionService {
 
+    private static final ZoneId CLUB_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private final JdbcMedicalRestrictionRepository repository;
     private final Optional<CurrentActorProvider> actorProvider;
     private final RestrictionExercisePolicy exercisePolicy = new RestrictionExercisePolicy();
@@ -135,7 +136,7 @@ public class MedicalRestrictionService {
             }
             trainerUserId = actor.userId();
         }
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(CLUB_ZONE);
         List<RestrictionRecord> restrictions = repository.findRestrictions(page, size, trainerUserId, today);
         boolean clinicalProjection = actor.roles().contains(RoleCode.VETERINARIAN);
         List<?> items = restrictions.stream()
@@ -180,7 +181,7 @@ public class MedicalRestrictionService {
                 RoleCode.GROOM)) {
             return;
         }
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(CLUB_ZONE);
         if (actor.roles().contains(RoleCode.TRAINER)
                 && repository.trainerAssignedToHorse(horseId, actor.userId(), today)) {
             return;

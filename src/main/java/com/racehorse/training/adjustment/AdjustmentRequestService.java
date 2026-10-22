@@ -1,5 +1,7 @@
 package com.racehorse.training.adjustment;
 
+import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
@@ -31,10 +33,12 @@ public class AdjustmentRequestService {
     private static final Set<String> REQUEST_TYPES = Set.of("SOURCE_TEMPLATE", "PRIMARY_GOAL", "PHASE_STRUCTURE",
             "PHASE_OBJECTIVE", "PHASE_WORKLOAD_INTENSITY", "PHASE_TIMELINE", "TOTAL_DURATION", "OTHER_STRUCTURAL");
     private final JdbcTemplate jdbc;
+    private final NotificationPublisher notifications;
     private final CurrentActorProvider actors;
     private final boolean sqlServer;
 
-    public AdjustmentRequestService(JdbcTemplate jdbc, CurrentActorProvider actors) {
+    public AdjustmentRequestService(JdbcTemplate jdbc, CurrentActorProvider actors, NotificationPublisher notifications) {
+        this.notifications = notifications;
         this.jdbc = jdbc; this.actors = actors;
         String databaseProduct = jdbc.execute(
                 (org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
@@ -67,11 +71,11 @@ public class AdjustmentRequestService {
         } catch (DataIntegrityViolationException ex) {
             throw conflict("The adjustment request could not be saved for this program.");
         }
-        jdbc.update("INSERT INTO dbo.notification (recipient_user_id,category,notification_type,title,message,target_type,target_id) " +
-                "SELECT u.id,'SCHEDULE','ADJUSTMENT_REQUEST_SUBMITTED','Program adjustment requested',?,'TRAINING_PROGRAM',? " +
-                "FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id " +
-                "WHERE u.account_status='ACTIVE' AND r.role_code='HEAD_TRAINER'",
-                "A Trainer requested an adjustment for program " + programId + ".", programId);
+        List<Long> recipients = jdbc.queryForList("SELECT u.id FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id " +
+                "JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='HEAD_TRAINER'", Long.class);
+        for (long recipient : recipients) notifications.persistAndPublish(recipient, Category.SCHEDULE,
+                "ADJUSTMENT_REQUEST_SUBMITTED", "Program adjustment requested",
+                "A Trainer requested an adjustment for program " + programId + ".", "TRAINING_PROGRAM", programId, false);
         return request(id);
     }
 
@@ -113,9 +117,9 @@ public class AdjustmentRequestService {
             throw conflict("Only a PENDING adjustment request can be decided.");
         }
         AdjustmentRequest result = request(id);
-        jdbc.update("INSERT INTO dbo.notification (recipient_user_id,category,notification_type,title,message,target_type,target_id) " +
-                "VALUES (?,'SCHEDULE','ADJUSTMENT_REQUEST_DECIDED','Program adjustment request decided',?,'TRAINING_PROGRAM',?)",
-                result.requestedBy().id(), "Your adjustment request for program " + result.programId() + " was " + targetStatus + ".", result.programId());
+        notifications.persistAndPublish(result.requestedBy().id(), Category.SCHEDULE, "ADJUSTMENT_REQUEST_DECIDED",
+                "Program adjustment request decided", "Your adjustment request for program " + result.programId() + " was " + targetStatus + ".",
+                "TRAINING_PROGRAM", result.programId(), false);
         return result;
     }
 

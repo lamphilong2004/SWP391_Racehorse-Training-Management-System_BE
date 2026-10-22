@@ -1,0 +1,17 @@
+{
+  "phase": "1/5",
+  "parent": "0fcba422f199cc3896d2dc4b6f660d6d76e06078",
+  "branch": "release/be-main-api128-20261022",
+  "package": "PASS",
+  "command": "mvn -B -ntp -DskipTests -Dracehorse.build.directory=<isolated-output> package",
+  "suites": "SKIPPED BY LEADER; no new test PASS claimed",
+  "jarSha256": "20af4c2e601061f8d2487ef6052e68a38ce7eae5564141661e340b3e23c8333c",
+  "sourcePackageDigest": "61a477064b1ee902ffdc25f98f259a9c37d9f054f274b5f931339cf218d4e5af",
+  "approvedFileChecksums": "PASS",
+  "boundedSecretSignatureScan": "PASS",
+  "secretScanLimit": "Signature/path scan only, not a proof of absence of every secret",
+  "selectedChangedFiles": 86,
+  "databaseMutations": "NONE IN PHASE 1",
+  "mainMerge": "BLOCKED: inherited PR25 CHANGES_REQUESTED + reviewer waiver/re-review outstanding",
+  "sourceAttribution": "All parent commits retained unchanged; new integration work uses configured genuine author."
+}

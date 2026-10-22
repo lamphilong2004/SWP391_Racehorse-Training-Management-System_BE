@@ -1,0 +1,82 @@
+openapi: 3.1.0
+info:
+  title: Racehorse local demo supporting operations
+  version: 2026.10.21
+  description: Leader-authorized explicit Groom assignment supporting the original three Main Flows. No email delivery or global Groom access.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /api/program-templates/trainer-specializations:
+    get:
+      operationId: listTemplateTrainerSpecializations
+      x-roles: [HEAD_TRAINER]
+      summary: Existing Trainer specialization catalog for template requirements
+      description: Read-only projection of skill records with kind TRAINER_SPECIALIZATION. Rider skills are excluded. Existing requirements remain pinned to their template version.
+      responses:
+        '200':
+          description: Canonical envelope with skill references in data.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean, const: true}
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id: {type: integer, format: int64, minimum: 1}
+                        name: {type: string}
+        '401': {description: Authentication required.}
+        '403': {description: Head Trainer role required.}
+  /api/training-sessions/{id}/groom-candidates:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      operationId: listSessionGroomCandidates
+      x-roles: [TRAINER]
+      summary: Active Groom references, assigned Trainer only
+      responses:
+        '200':
+          description: Canonical envelope with an array of UserRef in data.
+        '401': {description: Authentication required.}
+        '403': {description: Outside Trainer program assignment.}
+        '404': {description: Session not found.}
+  /api/training-sessions/{id}/groom-assignment:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      operationId: assignSessionGroom
+      x-roles: [TRAINER]
+      summary: Assign one ACTIVE Groom before the SCHEDULED session precheck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [groomUserId]
+              additionalProperties: false
+              properties:
+                groomUserId: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200': {description: Canonical envelope with SessionDetail and nullable groom UserRef.}
+        '400': {description: Groom must be ACTIVE with the GROOM role.}
+        '401': {description: Authentication required.}
+        '403': {description: Outside Trainer program assignment.}
+        '404': {description: Session not found.}
+        '409': {description: Only SCHEDULED sessions without a precheck allow assignment.}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}

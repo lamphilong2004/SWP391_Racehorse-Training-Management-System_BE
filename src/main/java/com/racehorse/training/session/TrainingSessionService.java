@@ -1,5 +1,7 @@
 package com.racehorse.training.session;
 
+import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
@@ -18,12 +20,15 @@ import java.util.*;
 
 @Service
 public class TrainingSessionService {
+    private static final java.time.ZoneId CLUB_ZONE=java.time.ZoneId.of("Asia/Ho_Chi_Minh");
     private static final Set<String> INTENSITIES=Set.of("LOW","MEDIUM","MEDIUM_HIGH","HIGH");
     private final JdbcTemplate jdbc;
+    private final NotificationPublisher notifications;
     private final TrainingSessionRepository repository;
     private final CurrentActorProvider actors;
 
-    public TrainingSessionService(JdbcTemplate jdbc,TrainingSessionRepository repository,CurrentActorProvider actors) {
+    public TrainingSessionService(JdbcTemplate jdbc,TrainingSessionRepository repository,CurrentActorProvider actors,NotificationPublisher notifications) {
+        this.notifications=notifications;
         this.jdbc=jdbc; this.repository=repository; this.actors=actors;
     }
 
@@ -96,6 +101,11 @@ public class TrainingSessionService {
         if(!"SCHEDULED".equals(row.get("status"))) throw business("Exercises can only be changed while SCHEDULED.");
         SessionApi.SuitabilityResult result=evaluate(longValue(row,"horse_program_phase_id"),(String)row.get("intensity"),exercises);
         if(result.sessionBlocked()) throw business("Training is locked by the Veterinarian: "+result.blockedMessage());
+        List<String> hardBlocks=new ArrayList<>();
+        for(int i=0;i<result.exercises().size();i++) if("A".equals(result.exercises().get(i).category()))
+            hardBlocks.add("exercises["+i+"]: "+String.join("; ",result.exercises().get(i).messages()));
+        if(!hardBlocks.isEmpty()) throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
+                "The session exercises cannot be changed.",hardBlockDetails(hardBlocks));
         validateExerciseInputs(exercises,result);
         repository.deleteExercises(id);
         for(int i=0;i<exercises.size();i++) repository.insertExercise(id,exercises.get(i),result.exercises().get(i).category());
@@ -105,7 +115,8 @@ public class TrainingSessionService {
 
     @Transactional(readOnly=true)
     public SessionApi.SuitabilityResult suitability(SessionApi.DraftRequest r) {
-        require(RoleCode.TRAINER); validateDraft(r);
+        ActorContext a=require(RoleCode.TRAINER); validateDraft(r);
+        ensureTrainerAssignment(r.horseProgramPhaseId(),a.userId(),r.scheduledStart());
         SessionApi.SuitabilityResult result=evaluate(r.horseProgramPhaseId(),r.intensity(),r.exercises());
         if(!result.sessionBlocked())validateExerciseInputs(r.exercises(),result);
         return result;
@@ -165,6 +176,79 @@ public class TrainingSessionService {
         if(repository.transition(id,"PAUSED","IN_PROGRESS")!=1) throw business("Session state changed; reload and try again.");
         repository.audit(a.userId(),"TRAINER","SESSION_RESUMED",id,"Session resumed after medical gate passed.");
         return detail(id,false);
+    }
+
+    @Transactional(readOnly=true)
+    public List<SessionApi.Session> groomSessions(LocalDate date) {
+        ActorContext a=require(RoleCode.GROOM);
+        if(date==null)throw validation("date is required.");
+        Instant from=date.atStartOfDay(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toInstant();
+        Instant to=date.plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toInstant();
+        return jdbc.queryForList("""
+                SELECT s.id FROM dbo.training_session s
+                JOIN dbo.training_session_groom_assignment ga ON ga.training_session_id=s.id
+                WHERE ga.groom_user_id=? AND s.scheduled_start>=? AND s.scheduled_start<?
+                  AND s.status='SCHEDULED' ORDER BY s.scheduled_start,s.id
+                """,a.userId(),timestamp(from),timestamp(to)).stream().map(r->detail(longValue(r,"id"),true)).toList();
+    }
+
+    @Transactional(readOnly=true)
+    public List<SessionApi.UserRef> groomCandidates(long id) {
+        ActorContext a=require(RoleCode.TRAINER);requireId(id);Map<String,Object> row=requiredSession(id);
+        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),Instant.now());
+        return jdbc.query("""
+                SELECT u.id,u.user_code,u.full_name FROM dbo.app_user u
+                WHERE u.account_status='ACTIVE' AND EXISTS (
+                  SELECT 1 FROM dbo.user_role ur JOIN dbo.role r ON r.id=ur.role_id
+                  WHERE ur.user_id=u.id AND r.role_code='GROOM') ORDER BY u.full_name,u.id
+                """,(rs,n)->new SessionApi.UserRef(rs.getLong(1),rs.getString(2),rs.getString(3)));
+    }
+
+    @Transactional(isolation=Isolation.SERIALIZABLE)
+    public SessionApi.Session assignGroom(long id,long groomId) {
+        ActorContext a=require(RoleCode.TRAINER);requireId(id);repository.lockSession(id);
+        Map<String,Object> row=requiredSession(id);
+        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),Instant.now());
+        if(!"SCHEDULED".equals(row.get("status"))||repository.precheckResult(id)!=null)
+            throw business("A Groom may be assigned only before a SCHEDULED session's pre-check.");
+        if(groomCandidates(id).stream().noneMatch(u->u.id()==groomId))throw validation("groomUserId must identify an ACTIVE Groom.");
+        SessionApi.UserRef current=groom(id);
+        if(current!=null&&current.id()==groomId)return detail(id,false);
+        if(current==null)jdbc.update("INSERT INTO dbo.training_session_groom_assignment(training_session_id,groom_user_id,assigned_by_user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)",id,groomId,a.userId());
+        else jdbc.update("UPDATE dbo.training_session_groom_assignment SET groom_user_id=?,assigned_by_user_id=?,assigned_at=CURRENT_TIMESTAMP WHERE training_session_id=?",groomId,a.userId(),id);
+        notifications.persistAndPublish(groomId,Category.SCHEDULE,"GROOM_PRECHECK_ASSIGNED","Pre-session check assigned",
+                "Pre-session check assigned for session "+row.get("session_code")+".","TRAINING_SESSION",id,false);
+        repository.audit(a.userId(),"TRAINER","SESSION_GROOM_ASSIGNED",id,"Explicit Groom assignment updated.");
+        return detail(id,false);
+    }
+
+    @Transactional(isolation=Isolation.SERIALIZABLE)
+    public SessionApi.Session reduceIntensity(long id,String intensity) {
+        ActorContext a=require(RoleCode.TRAINER);requireId(id);
+        if(intensity==null||!INTENSITIES.contains(intensity))throw validation("Unsupported intensity.");
+        repository.lockSession(id);Map<String,Object> row=requiredSession(id);
+        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),Instant.now());
+        if(!Set.of("IN_PROGRESS","PAUSED").contains(row.get("status")))throw business("Only IN_PROGRESS or PAUSED sessions allow an intensity reduction.");
+        List<String> order=List.of("LOW","MEDIUM","MEDIUM_HIGH","HIGH");
+        int previous=order.indexOf(row.get("intensity"));
+        if(previous<0||order.indexOf(intensity)>=previous)throw validation("The new intensity must be strictly lower than the current intensity.");
+        if(!"ACTIVE".equals(row.get("program_status"))||!"ALL_NORMAL".equals(repository.precheckResult(id)))
+            throw business("The active program and ALL_NORMAL pre-check gates must still pass.");
+        List<SessionApi.ExerciseInput> exercises=repository.exercises(id).stream().map(e->new SessionApi.ExerciseInput(e.exerciseDefinitionId(),e.exerciseOrder(),e.distanceM(),e.durationMin(),e.repetitions(),e.restIntervalMin(),e.intensity(),e.surface(),e.acknowledgementNote())).toList();
+        SessionApi.SuitabilityResult result=evaluate(longValue(row,"horse_program_phase_id"),intensity,exercises);
+        if(result.sessionBlocked()||!result.sessionIssues().isEmpty()||result.exercises().stream().anyMatch(e->"A".equals(e.category())))
+            throw business("Current medical restrictions and phase intensity bounds must pass.");
+        if(jdbc.update("UPDATE dbo.training_session SET intensity=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND intensity=? AND status IN ('IN_PROGRESS','PAUSED')",intensity,id,row.get("intensity"))!=1)
+            throw business("Session changed concurrently; reload before reducing intensity.");
+        repository.audit(a.userId(),"TRAINER","SESSION_INTENSITY_REDUCED",id,"Session intensity reduced from "+row.get("intensity")+" to "+intensity+".");
+        return detail(id,false);
+    }
+
+    private SessionApi.UserRef groom(long id) {
+        return jdbc.query("""
+                SELECT u.id,u.user_code,u.full_name FROM dbo.training_session_groom_assignment ga
+                JOIN dbo.app_user u ON u.id=ga.groom_user_id WHERE ga.training_session_id=?
+                """,(rs,n)->new SessionApi.UserRef(rs.getLong(1),rs.getString(2),rs.getString(3)),id).stream().findFirst().orElse(null);
     }
 
     private SessionApi.CandidateList candidates(Instant start,Instant end,Long except) {
@@ -228,11 +312,11 @@ public class TrainingSessionService {
         if(!"ACTIVE".equals(p.get("program_status")))throw business("The training program is not ACTIVE.");
         if(!"ACTIVE".equals(p.get("lifecycle")))throw business("The horse is not ACTIVE.");
         if(start==null||end!=null&&end.isBefore(start))throw validation("scheduledEnd must be at or after scheduledStart.");
-        LocalDate date=start.atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate date=start.atZone(CLUB_ZONE).toLocalDate();
         if(date.isBefore(localDate(p.get("start_date")))||date.isAfter(localDate(p.get("end_date"))))throw business("scheduledStart must be inside the selected phase dates.");
         if(date.isBefore(localDate(p.get("period_start")))||date.isAfter(localDate(p.get("period_end"))))throw business("scheduledStart must be inside the program period.");
         if(end!=null) {
-            LocalDate endDate=end.atZone(ZoneOffset.UTC).toLocalDate();
+            LocalDate endDate=end.atZone(CLUB_ZONE).toLocalDate();
             if(endDate.isBefore(localDate(p.get("start_date")))||endDate.isAfter(localDate(p.get("end_date"))))throw business("scheduledEnd must be inside the selected phase dates.");
             if(endDate.isBefore(localDate(p.get("period_start")))||endDate.isAfter(localDate(p.get("period_end"))))throw business("scheduledEnd must be inside the program period.");
         }
@@ -247,7 +331,7 @@ public class TrainingSessionService {
         if(!"ACTIVE".equals(p.get("program_status")))throw business("The training program is not ACTIVE.");
         if(!"ACTIVE".equals(p.get("lifecycle")))throw business("The horse is not ACTIVE.");
         if(r.scheduledEnd()!=null&&r.scheduledEnd().isBefore(r.scheduledStart()))throw validation("scheduledEnd must be at or after scheduledStart.");
-        LocalDate startDate=r.scheduledStart().atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate startDate=r.scheduledStart().atZone(CLUB_ZONE).toLocalDate();
         if(startDate.isBefore(localDate(p.get("start_date")))||startDate.isAfter(localDate(p.get("end_date")))
                 ||startDate.isBefore(localDate(p.get("period_start")))||startDate.isAfter(localDate(p.get("period_end"))))throw business("scheduledStart must be inside the active phase and program periods.");
         if(r.intensity()!=null&&!INTENSITIES.contains(r.intensity()))throw validation("Unsupported intensity.");
@@ -258,7 +342,7 @@ public class TrainingSessionService {
         Integer n=jdbc.queryForObject("""
                 SELECT COUNT(*) FROM dbo.horse_program_phase p JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=p.horse_training_program_id
                 WHERE p.id=? AND ta.trainer_user_id=? AND ta.effective_from<=? AND (ta.effective_to IS NULL OR ta.effective_to>=?)
-                """,Integer.class,phaseId,trainerId,on.atZone(ZoneOffset.UTC).toLocalDate(),on.atZone(ZoneOffset.UTC).toLocalDate());
+                """,Integer.class,phaseId,trainerId,on.atZone(CLUB_ZONE).toLocalDate(),on.atZone(CLUB_ZONE).toLocalDate());
         if(n==null||n==0)throw forbidden();
     }
 
@@ -283,11 +367,16 @@ public class TrainingSessionService {
                 instant(row.get("scheduled_end")),(String)row.get("status"),rider,trainer,check,!blocks.isEmpty(),blocks,blockedMessage,
                 longValue(row,"horse_program_phase_id"),(String)row.get("surface"),(String)row.get("focus"),(String)row.get("intensity"),
                 instant(row.get("actual_start")),instant(row.get("actual_end")),(String)row.get("interruption_reason"),(String)row.get("availability"),
-                exercises,repository.precheck(id),repository.linkedIncidentIds(id),repository.hasRiderFeedback(id),repository.hasEvaluation(id),creator);
+                exercises,repository.precheck(id),repository.linkedIncidentIds(id),repository.hasRiderFeedback(id),repository.hasEvaluation(id),creator,groom(id));
     }
 
     private Map<String,Object> requiredSession(long id) { Map<String,Object> row=repository.lockedSession(id); if(row==null)throw notFound("Training session was not found.");return row; }
     private void authorize(Map<String,Object> row,ActorContext actor) {
+        if(actor.roles().contains(RoleCode.GROOM)) {
+            SessionApi.UserRef assigned=groom(longValue(row,"id"));
+            if(assigned!=null&&assigned.id()==actor.userId())return;
+            throw forbidden();
+        }
         if(actor.roles().contains(RoleCode.HEAD_TRAINER)||actor.roles().contains(RoleCode.CLUB_MANAGER)||actor.roles().contains(RoleCode.VETERINARIAN))return;
         if(actor.roles().contains(RoleCode.WORK_RIDER)&&longValue(row,"work_rider_user_id")==actor.userId())return;
         if(actor.roles().contains(RoleCode.TRAINER)&&row.get("trainer_user_id")!=null&&longValue(row,"trainer_user_id")==actor.userId())return;

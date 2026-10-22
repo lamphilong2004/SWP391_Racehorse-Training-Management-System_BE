@@ -1,5 +1,7 @@
 package com.racehorse.training.program;
 
+import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.common.jdbc.GeneratedIdentity;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
@@ -47,9 +49,11 @@ public class TrainingProgramService {
     private static final Set<String> INTENSITIES = Set.of("LOW", "MEDIUM", "MEDIUM_HIGH", "HIGH");
 
     private final JdbcTemplate jdbc;
+    private final NotificationPublisher notifications;
     private final CurrentActorProvider actorProvider;
 
-    public TrainingProgramService(JdbcTemplate jdbc, CurrentActorProvider actorProvider) {
+    public TrainingProgramService(JdbcTemplate jdbc, CurrentActorProvider actorProvider, NotificationPublisher notifications) {
+        this.notifications = notifications;
         this.jdbc = jdbc;
         this.actorProvider = actorProvider;
     }
@@ -115,6 +119,13 @@ public class TrainingProgramService {
                     (String)u.get("experience"),skills,"SUITABLE",reasons,List.of(),null));}
         String empty=candidates.isEmpty()?"No active Trainer has a profile matching the template's required skills.":null;
         return new ProgramApi.CandidateList(List.copyOf(candidates),empty);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProgramApi.SkillRef> trainerSpecializations() {
+        requireRole(RoleCode.HEAD_TRAINER);
+        return jdbc.query("SELECT id,name FROM dbo.skill WHERE kind='TRAINER_SPECIALIZATION' ORDER BY name,id",
+                (rs,n)->new ProgramApi.SkillRef(rs.getLong("id"),rs.getString("name")));
     }
 
     @Transactional(readOnly = true)
@@ -587,8 +598,8 @@ public class TrainingProgramService {
     }
 
     private void notifyTrainer(long trainerId, long programId, String programName) {
-        jdbc.update("INSERT INTO dbo.notification (recipient_user_id,category,notification_type,title,message,target_type,target_id) VALUES (?,'SCHEDULE','PROGRAM_ASSIGNED',?,?,?,?)",
-                trainerId, "Training program assigned", "You have been assigned to " + programName + ".", "TRAINING_PROGRAM", programId);
+        notifications.persistAndPublish(trainerId, Category.SCHEDULE, "PROGRAM_ASSIGNED", "Training program assigned",
+                "You have been assigned to " + programName + ".", "TRAINING_PROGRAM", programId, false);
     }
 
     private void audit(ActorContext actor, String action, String type, long id, String summary) {
@@ -621,7 +632,13 @@ public class TrainingProgramService {
 
     private void bindInsertArguments(PreparedStatement statement, Object[] args) throws java.sql.SQLException {
         for (int i = 0; i < args.length; i++) {
-            statement.setObject(i + 1, args[i]);
+            if (args[i] instanceof LocalDate date) {
+                statement.setDate(i + 1, java.sql.Date.valueOf(date));
+            } else if (args[i] instanceof Instant instant) {
+                statement.setTimestamp(i + 1, java.sql.Timestamp.from(instant));
+            } else {
+                statement.setObject(i + 1, args[i]);
+            }
         }
     }
 

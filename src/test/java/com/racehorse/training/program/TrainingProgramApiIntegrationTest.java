@@ -180,6 +180,22 @@ class TrainingProgramApiIntegrationTest {
     }
 
     @Test
+    void onlyHeadTrainerCanReadTrainerSpecializationsWithoutRiderSkills() throws Exception {
+        jdbc.update("INSERT INTO dbo.skill(id,name,kind) VALUES (9001,'Conditioning','TRAINER_SPECIALIZATION'),(9002,'Race riding','RIDER_SKILL')");
+        String path="/api/program-templates/trainer-specializations";
+        mockMvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(path).header("Authorization","Bearer "+login(createUser(RoleCode.TRAINER))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(path).header("Authorization","Bearer "+login(createUser(RoleCode.CLUB_MANAGER))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(path).header("Authorization","Bearer "+login(createUser(RoleCode.HEAD_TRAINER))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id").value(org.hamcrest.Matchers.hasItem(9001)))
+                .andExpect(jsonPath("$.data[*].id").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(9002))))
+                .andExpect(jsonPath("$.data[?(@.id == 9001)].name").value(org.hamcrest.Matchers.contains("Conditioning")));
+    }
+
+    @Test
     void recommendationsUseOnlyExistingProfileMatchesAndReturnNoScores() throws Exception {
         long head=createUser(RoleCode.HEAD_TRAINER);String token=login(head);
         long horse=createHorse();jdbc.update("ALTER TABLE dbo.horse ADD COLUMN IF NOT EXISTS breed NVARCHAR(100)");jdbc.update("ALTER TABLE dbo.horse ADD COLUMN IF NOT EXISTS sex NVARCHAR(20)");

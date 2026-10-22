@@ -51,6 +51,7 @@ class Core026ApiIntegrationTest {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(SecurityMockMvcConfigurers.springSecurity()).build();
         createTables();
         jdbc.update("DELETE FROM dbo.incident");jdbc.update("DELETE FROM dbo.pre_session_check");jdbc.update("DELETE FROM dbo.notification");
+        jdbc.update("DELETE FROM dbo.training_session_groom_assignment");
         jdbc.update("DELETE FROM dbo.training_session");jdbc.update("DELETE FROM dbo.horse_program_phase");jdbc.update("DELETE FROM dbo.trainer_assignment");
         jdbc.update("DELETE FROM dbo.horse_training_program");jdbc.update("DELETE FROM dbo.horse");jdbc.update("DELETE FROM dbo.medical_case");
         jdbc.update("DELETE FROM dbo.user_role");jdbc.update("DELETE FROM dbo.app_user");jdbc.update("DELETE FROM dbo.role");
@@ -125,7 +126,10 @@ class Core026ApiIntegrationTest {
         mvc.perform(get("/api/incidents").header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
     }
 
-    private void notice(long groom,long session){jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) VALUES (?,'SCHEDULE','SESSION_ASSIGNED','Precheck','Session precheck','TRAINING_SESSION',?)",groom,session);}
+    private void notice(long groom,long session){
+        jdbc.update("INSERT INTO dbo.training_session_groom_assignment(training_session_id,groom_user_id,assigned_by_user_id) VALUES (?,?,260001)",session,groom);
+        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) VALUES (?,'SCHEDULE','GROOM_PRECHECK_ASSIGNED','Precheck','Session precheck','TRAINING_SESSION',?)",groom,session);
+    }
     private String checklist(String result){return "{\"checks\":{\"GENERAL_CONDITION\":{\"result\":\""+result+"\"},\"APPETITE_BEHAVIOUR\":{\"result\":\"NORMAL\"},\"LEGS_HOOVES\":{\"result\":\"NORMAL\"},\"MOVEMENT\":{\"result\":\"NORMAL\"},\"TEMPERATURE\":{\"result\":\"NORMAL\"}}}";}
     private long addUser(RoleCode role){long id=IDS.incrementAndGet();String email="core026-"+id+"@test.invalid";jdbc.update("INSERT INTO dbo.app_user(id,user_code,full_name,email,password_hash,account_status) VALUES (?,?,?, ?,?,'ACTIVE')",id,"U"+id,"Core026 User",email,encoder.encode(PASSWORD));jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (?,?,?)",id,id,role.ordinal()+1);return id;}
     private String login(long id,RoleCode role)throws Exception{Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.app_user WHERE id=?",Integer.class,id);if(count==null||count==0){String email="core026-"+id+"@test.invalid";jdbc.update("INSERT INTO dbo.app_user(id,user_code,full_name,email,password_hash,account_status) VALUES (?,?,?, ?,?,'ACTIVE')",id,"U"+id,"Core026 User",email,encoder.encode(PASSWORD));jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (?,?,?)",id,id,role.ordinal()+1);}String email="core026-"+id+"@test.invalid";String body=json.writeValueAsString(Map.of("email",email,"password",PASSWORD));String raw=mvc.perform(post("/api/auth/login").contentType("application/json").content(body)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();JsonNode node=json.readTree(raw);return node.path("data").path("accessToken").stringValue();}

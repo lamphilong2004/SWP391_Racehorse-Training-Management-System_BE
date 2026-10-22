@@ -237,6 +237,17 @@ public class HorseRepository {
         List<Map<String,Object>> rows=jdbc.query(SELECT+where+" ORDER BY h.id DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",ROW,args.toArray());
         return new Page(rows,page,size,total,total/size+(total%size==0?0:1));
     }
+    public Map<String,Object> latestWeight(long horseId) {
+        return jdbc.query("""
+            SELECT weight, measured_at FROM dbo.weight_record WHERE horse_id=?
+            ORDER BY measured_at DESC, id DESC OFFSET 0 ROWS FETCH NEXT 1 ROW ONLY
+            """, (r,n) -> {
+                Map<String,Object> point=new LinkedHashMap<>();
+                point.put("weightKg",r.getBigDecimal("weight"));
+                point.put("recordedAt",instant(r,"measured_at"));
+                return point;
+            },horseId).stream().findFirst().orElse(null);
+    }
     public List<Map<String,Object>> ownerships(long id) {
         return jdbc.query("""
             SELECT o.*,u.user_code,u.full_name FROM dbo.horse_ownership o

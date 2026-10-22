@@ -15,6 +15,7 @@ import java.util.*;
 
 @Service
 public class MedicalService {
+    private static final ZoneId CLUB_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private final MedicalCases cases;
     private final ExaminationStore exams;
     private final Injuries injuries;
@@ -32,6 +33,19 @@ public class MedicalService {
     }
 
     static BusinessException error(ErrorCode code, String message) { return new BusinessException(code, message); }
+    @Transactional(readOnly=true)
+    public HerdHealthOverview herdHealth() {
+        vet();
+        return sql.queryForObject("""
+                SELECT COUNT(*) AS total,
+                  COALESCE(SUM(CASE WHEN health_status='FIT' THEN 1 ELSE 0 END),0) AS fit,
+                  COALESCE(SUM(CASE WHEN health_status='MONITORING' THEN 1 ELSE 0 END),0) AS monitoring,
+                  COALESCE(SUM(CASE WHEN health_status='INJURED' THEN 1 ELSE 0 END),0) AS injured,
+                  COALESCE(SUM(CASE WHEN health_status='QUARANTINED' THEN 1 ELSE 0 END),0) AS quarantined,
+                  COALESCE(SUM(CASE WHEN health_status IS NULL THEN 1 ELSE 0 END),0) AS unassessed
+                FROM dbo.horse
+                """,(rs,n)->new HerdHealthOverview(rs.getLong("total"),rs.getLong("fit"),rs.getLong("monitoring"),rs.getLong("injured"),rs.getLong("quarantined"),rs.getLong("unassessed")));
+    }
     private Actor actor() {
         ActorResolver resolver = actors.getIfAvailable();
         if (resolver == null) throw error(ErrorCode.UNAUTHORIZED, "Authentication integration is unavailable.");
@@ -66,7 +80,7 @@ public class MedicalService {
         return Boolean.TRUE.equals(sql.queryForObject("select case when exists(select 1 from dbo.horse where id=?) then 1 else 0 end", Integer.class, horseId) == 1);
     }
     private boolean trainerAssigned(Actor actor, long horseId) {
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(CLUB_ZONE);
         Integer count = sql.queryForObject("select count(*) from dbo.trainer_assignment a join dbo.horse_training_program p on p.id=a.horse_training_program_id where p.horse_id=? and a.trainer_user_id=? and a.effective_from<=? and (a.effective_to is null or a.effective_to>=?)", Integer.class, horseId, actor.id(), today, today);
         return count != null && count > 0;
     }
@@ -115,7 +129,7 @@ public class MedicalService {
         if (page < 0 || size < 1 || size > 100) throw error(ErrorCode.VALIDATION_ERROR, "Invalid page or size.");
         boolean unrestricted = actor.has(Role.VETERINARIAN) || actor.has(Role.CLUB_MANAGER) || actor.has(Role.HEAD_TRAINER);
         String where = unrestricted ? "" : " where exists (select 1 from dbo.horse_training_program p join dbo.trainer_assignment a on a.horse_training_program_id=p.id where p.horse_id=c.horse_id and a.trainer_user_id=? and a.effective_from<=? and a.effective_to is null)";
-        Object[] scope = unrestricted ? new Object[]{} : new Object[]{actor.id(), LocalDate.now(ZoneOffset.UTC)};
+        Object[] scope = unrestricted ? new Object[]{} : new Object[]{actor.id(), LocalDate.now(CLUB_ZONE)};
         long total = Objects.requireNonNull(sql.queryForObject("select count(*) from dbo.medical_case c" + where, Long.class, scope));
         Object[] args = Arrays.copyOf(scope, scope.length + 2); args[scope.length] = (long) page * size; args[scope.length + 1] = size;
         List<Long> ids = sql.queryForList("select c.id from dbo.medical_case c" + where + " order by c.opened_at desc,c.id desc offset ? rows fetch next ? rows only", Long.class, args);
@@ -299,7 +313,7 @@ public class MedicalService {
         return new VetTaskView(t.id, t.horseId, caseId, t.treatmentPlanId,
                 t.instructionSnapshot, t.taskDate, t.scheduledSlot,
                 t.completedAt == null ? "PENDING" : "COMPLETED",
-                instant(t.completedAt), t.completedByUserId);
+                instant(t.completedAt), t.completedByUserId, t.assignedGroomUserId);
     }
     private static <T> Page<T> page(List<T> items, int page, int size) {
         if (page < 0 || size < 1 || size > 100) throw error(ErrorCode.VALIDATION_ERROR, "Invalid page or size.");

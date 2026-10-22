@@ -32,6 +32,12 @@ public class TrainingProgramController {
         return ApiResponse.ok(service.listTemplates(status, q, page, size));
     }
 
+    @GetMapping("/api/program-templates/trainer-specializations")
+    @PreAuthorize("hasRole('HEAD_TRAINER')")
+    public ApiResponse<java.util.List<ProgramApi.SkillRef>> trainerSpecializations() {
+        return ApiResponse.ok(service.trainerSpecializations());
+    }
+
     @PostMapping("/api/program-templates")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('HEAD_TRAINER')")

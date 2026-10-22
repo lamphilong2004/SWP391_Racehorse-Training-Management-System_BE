@@ -83,6 +83,40 @@ class SwaggerRuntimeSmokeTest {
         assertOperation(api, "/api/adjustment-requests/{id}/reject", "post", "rejectAdjustmentRequest");
     }
 
+    @Test
+    void all128RequiredContractOperationsAreMappedAndEnforceAuthentication() throws Exception {
+        HttpClient client=HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+        URI base=URI.create("http://localhost:"+port);
+        java.util.Map<?,?> api=jsonMapper.readValue(get(client,base.resolve("/v3/api-docs")).body(),java.util.Map.class);
+        java.util.Map<?,?> paths=(java.util.Map<?,?>)api.get("paths");
+        java.util.Set<String> mapped=new java.util.HashSet<>();
+        for(var entry:paths.entrySet()) {
+            var methods=(java.util.Map<?,?>)entry.getValue();
+            for(Object verb:methods.keySet())mapped.add(verb+" "+entry.getKey().toString().replaceAll("\\{[^}]+}","{}"));
+        }
+        java.util.Set<String> required=new java.util.HashSet<>();
+        for(String file:java.util.List.of("flow1-horse.openapi.yaml","flow2-training.openapi.yaml","flow3-medical.openapi.yaml","shared.openapi.yaml","local-demo-extensions.openapi.yaml")) {
+            String path=null;
+            for(String line:java.nio.file.Files.readAllLines(java.nio.file.Path.of("docs/api",file))) {
+                if(line.matches("  /api/[^:]+:"))path=line.strip().replaceAll(":$","");
+                if(path==null||!line.matches("    (get|post|put|patch|delete):"))continue;
+                String verb=line.strip().replace(":","");
+                String key=verb+" "+path.replaceAll("\\{[^}]+}","{}");
+                assertTrue(required.add(key),"Duplicate required operation "+key);
+                assertTrue(mapped.contains(key),"Missing implementation mapping "+key);
+                String concrete=path.replaceAll("\\{[^}]+}","999999999");
+                boolean publicAuth=java.util.Set.of("/api/auth/login","/api/auth/register","/api/auth/forgot-password","/api/auth/reset-password").contains(path);
+                var body=java.util.Set.of("get","delete").contains(verb)?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString("{}");
+                var request=HttpRequest.newBuilder(base.resolve(concrete)).header("Content-Type","application/json")
+                        .method(verb.toUpperCase(java.util.Locale.ROOT),body).build();
+                var response=client.send(request,HttpResponse.BodyHandlers.ofString());
+                assertEquals(publicAuth?400:401,response.statusCode(),key+" authentication boundary");
+                assertTrue(!jsonMapper.readTree(response.body()).get("success").asBoolean(),key+" error envelope");
+            }
+        }
+        assertEquals(128,required.size(),"Update the approved inventory explicitly, never silently drop operations.");
+    }
+
     private void assertOperation(JsonNode api, String path, String method, String operationId) {
         assertEquals(operationId,
                 api.at("/paths/" + path.replace("/", "~1") + "/" + method + "/operationId").asText(),

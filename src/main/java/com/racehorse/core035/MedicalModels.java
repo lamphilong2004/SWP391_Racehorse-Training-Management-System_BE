@@ -64,6 +64,7 @@ class TreatmentTaskEntity {
     @Column(name = "nutrition_plan_item_id") Long nutritionPlanItemId;
     @Column(name = "treatment_plan_id") Long treatmentPlanId;
     @Column(name = "completed_by_user_id") Long completedByUserId;
+    @Column(name = "assigned_groom_user_id") Long assignedGroomUserId;
     @Column(name = "task_date", nullable = false) LocalDate taskDate;
     @Column(name = "scheduled_slot", length = 50, columnDefinition = "nvarchar(50)") String scheduledSlot;
     @Column(name = "instruction_snapshot", length = 2000, columnDefinition = "nvarchar(2000)") String instructionSnapshot;

@@ -34,7 +34,8 @@ public class CurrentAccountStatusFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return ("POST".equals(request.getMethod()) && "/api/auth/login".equals(request.getServletPath()))
+        return ("POST".equals(request.getMethod()) && java.util.Set.of("/api/auth/login", "/api/auth/register",
+                        "/api/auth/forgot-password", "/api/auth/reset-password").contains(request.getServletPath()))
                 || ("GET".equals(request.getMethod()) && "/api/health".equals(request.getServletPath()));
     }
 

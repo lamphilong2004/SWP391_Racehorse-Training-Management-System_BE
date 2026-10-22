@@ -56,7 +56,7 @@ info:
     | AF-5 | suitability-check returns category A per exercise; PUT …/exercises to remove or replace |
     | EF-1 | 409 BUSINESS_RULE_VIOLATION on POST /api/training-programs and POST /api/training-sessions |
     | EF-2 | `blocked` + `blockedReasons` on session reads; 409 on start; notification SESSION_BLOCKED |
-    | EF-3 | POST /api/monitoring-alerts/{id}/acknowledge (ACKNOWLEDGE / REDUCE_INTENSITY / PAUSE / STOP); proposed POST /api/training-sessions/{id}/reduce-intensity (signature needs confirmation); escalation to Vet |
+    | EF-3 | POST /api/monitoring-alerts/{id}/acknowledge (ACKNOWLEDGE / REDUCE_INTENSITY / PAUSE / STOP); Leader-authorized POST /api/training-sessions/{id}/reduce-intensity with explicit lower intensity; escalation to Vet |
     | EF-4 | recommendation lists with warnings; `riderWarningAcknowledged` on session create |
     | EF-5 | replaced by the Groom pre-session check gate (DEC-007): POST /api/training-sessions/{id}/pre-session-check |
     | EF-6 | POST /api/training-sessions/{id}/report-issue, POST …/stop; rider feedback and evaluation still allowed |
@@ -1042,13 +1042,12 @@ paths:
     post:
       tags: [Sessions]
       operationId: reduceSessionIntensity
-      summary: "PROPOSED — NEEDS CONFIRMATION: reduce session intensity"
+      summary: Reduce session intensity (Leader authorized 2026-10-21)
       description: |
-        PROPOSED — NEEDS CONFIRMATION. This candidate uses POST, this path, an `intensity` request body, and applies only
-        to IN_PROGRESS or PAUSED sessions. The proposed value must be lower than the current session intensity according
-        to LOW < MEDIUM < MEDIUM_HIGH < HIGH. The approved requirement is that a Trainer has an operation to reduce
-        intensity; the method, path, request body and applicable session states have not been found in an approved source.
-        This candidate is the REST operation for the REDUCE_INTENSITY response suggested by a monitoring alert.
+        Leader-authorized implementation decision DEC-LOCAL-DEMO-20261021: assigned Trainer only, IN_PROGRESS or PAUSED,
+        with a strictly lower intensity according to LOW < MEDIUM < MEDIUM_HIGH < HIGH. Transaction and session lock
+        protect persisted state; current program, ALL_NORMAL precheck, phase bounds and medical gates still apply.
+        Alert action REDUCE_INTENSITY uses this same operation atomically with acknowledgement.
       x-roles: [TRAINER]
       requestBody:
         required: true
@@ -1166,9 +1165,9 @@ paths:
       operationId: listGroomSessions
       summary: Sessions needing a pre-session check (SCR-DASH-004 Groom Today)
       description: |
-        SCHEDULED sessions on the date assigned/notified to the signed-in Groom, with their pre-check state. Only the
-        assigned/notified Groom may view or check a session. The current contract branch has no approved persistence
-        mapping for Groom assignment; this is a model gap and must not be relaxed to club-wide access.
+        SCHEDULED sessions on the Vietnam calendar date explicitly assigned to the signed-in Groom, including check state.
+        The technical training_session_groom_assignment table is the authorization source. Notifications do not grant access.
+        Leader-authorized DEC-LOCAL-DEMO-20261021 defines assignment and reassignment before the first check.
       x-roles: [GROOM]
       parameters:
         - { name: date, in: query, required: true, schema: { type: string, format: date } }
@@ -2225,6 +2224,7 @@ components:
       required: [action]
       properties:
         action: { $ref: '#/components/schemas/AlertAction' }
+        intensity: { $ref: '#/components/schemas/Intensity', description: Required for REDUCE_INTENSITY; strictly lower than current intensity. }
         stopReason: { type: [string, 'null'], maxLength: 1000, description: Required when action = STOP. }
         medicallyRelevant: { type: boolean, default: false, description: "With STOP, creates an incident for Vet review." }
 

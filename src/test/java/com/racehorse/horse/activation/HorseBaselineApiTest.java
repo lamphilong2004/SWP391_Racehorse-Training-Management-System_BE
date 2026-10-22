@@ -58,6 +58,12 @@ class HorseBaselineApiTest extends HorseActivationTestSupport {
                 "SELECT health_status FROM dbo.horse WHERE id = ?", String.class, horseId));
         assertNotNull(result.getResponse().getContentAsString());
 
+        mvc.perform(get("/api/horses/{id}", horseId)
+                        .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.latestWeight.weightKg").value(501.25))
+                .andExpect(jsonPath("$.data.latestWeight.recordedAt").isNotEmpty());
+
         mvc.perform(post("/api/horses/{horseId}/baseline-examinations", horseId)
                         .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId))
                         .contentType("application/json")
@@ -93,6 +99,11 @@ class HorseBaselineApiTest extends HorseActivationTestSupport {
         long horseId = createHorse("Weight Test Horse");
         long veterinarianId = createAccount(RoleCode.VETERINARIAN);
         Instant recordedAt = Instant.parse("2026-10-01T09:30:00Z");
+
+        mvc.perform(get("/api/horses/{id}", horseId)
+                        .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.latestWeight").isEmpty());
 
         mvc.perform(post("/api/horses/{horseId}/weights", horseId)
                         .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId))

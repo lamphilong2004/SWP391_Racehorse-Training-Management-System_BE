@@ -1,8 +1,10 @@
+> RELEASE CANDIDATE — 22 October 2026: byte handling, ordered migration execution and the versioned structural snapshot are reconciled in this candidate. Full fresh-install verification after the SQL Server batch fix remains a Phase 4 gate. The prior new test database was resumed after an installer failure; this is not proof of a fresh install from this release. Never install/seed over an existing database.
+
 # Racehorse local-first database handoff — release candidate
 
 Leader approved DB-01 and the CORE-007 technical migration on 2026-10-18.
 This package is pending clean-install evidence and Leader approval before team rollout.
-Source baseline: BE `6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04`.
+Release source: `release/be-main-api128-20261022`; use the exact reviewed commit from its PR, not a moving branch for a team rollout.
 CORE-001/011 ownership and original contribution history remain Dung's. This work
 reuses the CORE-007 seed SQL and BCrypt generator; it does not replace the demo seeder.
 
@@ -44,8 +46,10 @@ $env:RH_DATABASE = 'racehorse_local_<member>_<unique_timestamp>'
 ```
 
 Apply order: DB with `SQL_Latin1_General_CP1_CI_AS` -> unchanged DB-01 (51 business
-tables /493 columns) -> unchanged V20261016_01 (registration_request,14 columns).
-The result is52 tables/507 columns,105 FK,97 CHECK. The normalized email column
+tables /493 columns) -> unchanged V20261016_01 (registration_request,14 columns)
+-> V20261020_01 (nullable care-task Groom assignment) -> V20261021_01 (session Groom assignment).
+The expected result is 53 tables/512 columns, verified against the versioned structural
+snapshot pinned by `database/migrations/manifest.json`. The normalized email column
 retains `Latin1_General_100_BIN2`; currency CHECK expressions retain their binary
 collation. Optional modules' tables remain in the canonical51; no optional feature
 implementation or sample business records are added.
@@ -69,7 +73,9 @@ failure does not change an already completed schema receipt into a test PASS.
 
 ## Run the real stack
 
-Build BE with `mvn verify` and package it normally. Set DB_URL to the exact new DB,
+Build BE with `mvn -DskipTests package` during release Phases 1–2; run `mvn verify`
+in Phase 4. Build into an isolated output path when an existing demo is running.
+Set DB_URL to the exact new DB,
 `encrypt=true;trustServerCertificate=false`, the certificate hostname and auth mode.
 Pass truststore path/password through Hikari data-source environment properties from
 the template. Keep `spring.jpa.hibernate.ddl-auto=validate`. Generate JWT signing key
@@ -78,9 +84,9 @@ locally; never print or commit it. Use profile dev, not demo, and bind BE to127.
 Set FE `VITE_API_BASE_URL` to the loopback BE and CORS to the exact FE origin.
 Use API mode with role-test/sample flags disabled. Run FE from the existing official
 implementation, not a new demo app. Missing business APIs must remain honest errors.
-After CORE-012 is on dev, `scripts/db/Test-LocalStack.ps1` (added with CORE-012) provides real
-JWT/me/401/403/readback/logout evidence. Until then, verify browser login, workspace, refresh
-and logout on the same new stack.
+The existing `scripts/db/Test-LocalStack.ps1` provides scoped real
+JWT/me/401/403/readback/logout evidence. Verify browser login, workspace, refresh
+and logout on the same new stack during Phase 4.
 H2/Maven test results must be reported separately from SQL Server/browser results.
 
 ## Team verification and rollback

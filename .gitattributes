@@ -12,3 +12,9 @@ database/schema.sql.sha256 -text
 *.xml text eol=lf
 *.md text eol=lf
 *.ps1 text eol=crlf
+
+# Checksum-pinned package files must retain the approved Git blob bytes on Windows.
+database/migrations/*.sql -text
+database/verification/*.sql -text
+database/verification/*.json -text
+database/seeds/*.sql -text

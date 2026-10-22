@@ -85,7 +85,8 @@ public class HorseService {
         Map<String,Object> horse=repository.find(id,trainer).orElseThrow(()->new BusinessException(
             trainer!=null&&repository.exists(id)?ErrorCode.FORBIDDEN:ErrorCode.NOT_FOUND,
             trainer!=null&&repository.exists(id)?"This horse is outside your assigned programs.":"Horse not found."));
-        horse.put("currentOwnerships",repository.ownerships(id));return horse;
+        horse.put("currentOwnerships",repository.ownerships(id));
+        horse.put("latestWeight",repository.latestWeight(id));return horse;
     }
     @Transactional(readOnly=true)
     public HorseRepository.Page list(String q,String lifecycle,String health,String availability,int page,int size) {

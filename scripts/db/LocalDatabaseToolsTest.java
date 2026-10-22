@@ -8,6 +8,9 @@ class LocalDatabaseToolsTest {
         if(!LocalDatabase.json("a\"b\\c/\n").equals("\"a\\\"b\\\\c\\/\\n\""))throw new AssertionError("JSON escaping");
         Map<String,Object> row=new LinkedHashMap<>();row.put("name","horse");row.put("nullable",false);row.put("ordinal",12);
         if(!LocalDatabase.json(List.of(row)).equals("[{\"name\":\"horse\",\"nullable\":false,\"ordinal\":12}]"))throw new AssertionError("Metadata types/order");
+        var plan=LocalDatabase.migrationPlan();
+        if(plan.size()!=3||!plan.get(2).get("version").equals("V20261021_01")||!plan.get(2).get("order").equals(3))throw new AssertionError("Groom migration omitted or unordered");
+        if(args.length==2&&args[0].equals("--package"))LocalDatabase.verifyPackage(java.nio.file.Path.of(args[1]));
         int[] phase={0},closed={0};
         ResultSet rs=(ResultSet)Proxy.newProxyInstance(LocalDatabaseToolsTest.class.getClassLoader(),new Class[]{ResultSet.class},(p,m,a)->{
             if(m.getName().equals("next"))return false;
@@ -23,7 +26,7 @@ class LocalDatabaseToolsTest {
         });
         LocalDatabase.executeBatch(s,"approved multi-statement batch");
         if(phase[0]!=2||closed[0]!=1)throw new AssertionError("Batch not fully consumed before next operation");
-        System.out.println("LOCAL_TOOL_UNIT_PASS 3 assertions; zero database connections");
+        System.out.println("LOCAL_TOOL_UNIT_PASS 4 assertions; zero database connections");
         if(args.length==2&&args[0].equals("--live-readonly")) {
             try(Connection c=LocalDatabase.connect(LocalDatabase.database());Statement batch=c.createStatement()) {
                 batch.setQueryTimeout(20);

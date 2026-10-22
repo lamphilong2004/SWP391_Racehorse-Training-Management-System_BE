@@ -25,3 +25,20 @@ function Invoke-LocalJdbc([string]$Operation,[string]$InputFile='') {
 function Get-LocalReceiptPath {
     Join-Path $env:LOCALAPPDATA ('Racehorse/LocalDb/'+$env:RH_DATABASE+'/receipt.json')
 }
+
+function Assert-LocalDatabasePackage([object]$Manifest) {
+    if($Manifest.schema -cne 'database/schema.sql' -or $Manifest.collation -cne 'SQL_Latin1_General_CP1_CI_AS'){throw 'CANONICAL_PACKAGE_IDENTITY_MISMATCH'}
+    $seen=@{}
+    foreach($file in $Manifest.files){
+        if($seen.ContainsKey($file.path) -or $file.path -notmatch '^(database/|scripts/db/)[A-Za-z0-9_./-]+$' -or $file.path.Contains('..')){throw 'PACKAGE_PATH_INVALID_OR_DUPLICATED'}
+        $seen[$file.path]=$file.sha256
+        if((Get-FileHash -LiteralPath (Join-Path $LocalDbRoot $file.path) -Algorithm SHA256).Hash -ine $file.sha256){throw 'PACKAGE_CHECKSUM_MISMATCH'}
+    }
+    $plan=@(((Invoke-LocalJdbc 'plan') -join '')|ConvertFrom-Json)
+    if(@($Manifest.migrations).Count -ne $plan.Count){throw 'MIGRATION_PLAN_COUNT_MISMATCH'}
+    for($i=0;$i -lt $plan.Count;$i++){
+        $actual=$Manifest.migrations[$i];$expected=$plan[$i]
+        if($actual.order -ne $expected.order -or $actual.version -cne $expected.version -or $actual.path -cne $expected.path -or $seen[$actual.path] -ine $expected.sha256){throw 'MIGRATION_PLAN_MISMATCH'}
+    }
+    if($Manifest.verification.path -cne 'database/verification/expected-schema-v20261021.json' -or $seen[$Manifest.verification.path] -ine $Manifest.verification.sha256){throw 'VERIFICATION_MANIFEST_MISMATCH'}
+}

@@ -55,12 +55,18 @@ public class Core026Repository {
 
     public boolean hasGroomSessionNotice(long groomId, long sessionId) {
         return jdbc.queryForObject("""
-                SELECT COUNT(*) FROM dbo.notification n
-                JOIN dbo.user_role ur ON ur.user_id=n.recipient_user_id
+                SELECT COUNT(*) FROM dbo.training_session_groom_assignment ga
+                JOIN dbo.app_user u ON u.id=ga.groom_user_id AND u.account_status='ACTIVE'
+                JOIN dbo.user_role ur ON ur.user_id=ga.groom_user_id
                 JOIN dbo.role r ON r.id=ur.role_id
-                WHERE n.recipient_user_id=? AND r.role_code='GROOM' AND n.category='SCHEDULE'
-                  AND n.target_type='TRAINING_SESSION' AND n.target_id=?
+                WHERE ga.groom_user_id=? AND r.role_code='GROOM' AND ga.training_session_id=?
                 """, Integer.class, groomId, sessionId)>0;
+    }
+
+    public void lockSession(long id) {
+        if(databaseProduct.toLowerCase(java.util.Locale.ROOT).contains("sql server"))
+            jdbc.queryForList("SELECT id FROM dbo.training_session WITH (UPDLOCK,ROWLOCK) WHERE id=?",id);
+        else jdbc.queryForList("SELECT id FROM dbo.training_session WHERE id=? FOR UPDATE",id);
     }
 
     public boolean trainerAssigned(long programId, long trainerId) {

@@ -27,20 +27,22 @@ public final class SessionApi {
     public record UpdateRequest(Instant scheduledStart, Instant scheduledEnd, @Size(max=50) String surface,
                                 @Size(max=200) String focus, String intensity, @Positive Long workRiderUserId,
                                 Boolean riderWarningAcknowledged) {}
+    public record ReplaceExercisesRequest(@NotEmpty List<@Valid ExerciseInput> exercises) {}
     public record Exercise(long id, long exerciseDefinitionId, String exerciseName, String exerciseType,
                           int exerciseOrder, Double distanceM, Double durationMin, Integer repetitions,
                           Double restIntervalMin, String intensity, String surface, String suitabilityCategory,
                           String acknowledgementNote) {}
     public record UserRef(long id,String userCode,String fullName) {}
+    public record IntensityRequest(@NotNull String intensity) {}
+    public record GroomAssignmentRequest(@Positive long groomUserId) {}
     public record HorseRef(long id,String horseCode,String name) {}
-    public record PreSessionCheck(long id,UserRef performedBy,Instant performedAt,String observations,String overallResult) {}
     public record Session(long id, String sessionCode, HorseRef horse, long programId, String phaseName,
                           Instant scheduledStart, Instant scheduledEnd, String status, UserRef workRider,
                           UserRef trainer, String preCheckResult, boolean blocked, List<String> blockedReasons,
                           String blockedMessage, long horseProgramPhaseId, String surface, String focus, String intensity,
                           Instant actualStart, Instant actualEnd, String interruptionReason,
-                          String trainingAvailability, List<Exercise> exercises, PreSessionCheck preSessionCheck,
-                          List<Long> linkedIncidentIds, boolean hasRiderFeedback, boolean hasEvaluation, UserRef createdBy) {}
+                          String trainingAvailability, List<Exercise> exercises, com.racehorse.medical.incident.IncidentApi.PreSessionCheck preSessionCheck,
+                          List<Long> linkedIncidentIds, boolean hasRiderFeedback, boolean hasEvaluation, UserRef createdBy, UserRef groom) {}
     public record SuitabilityItem(int exerciseOrder, long exerciseDefinitionId, String category,
                                   List<String> messages, List<String> allowedActions) {}
     public record SessionIssue(String category, String field, String message) {}

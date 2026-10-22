@@ -9,6 +9,28 @@ class LocalDatabase {
     static final String SCHEMA = "416eb579e59f926e01c08bdfb25af6db5bc9376e87ec93eb7b6aa35d512a9141";
     static final String CORE007_MIGRATION = "431c6d0b0f84309b2820e2697e26dd52ab6072fdd664d0eef9d850abcc98b34c";
     static final String CORE045_MIGRATION = "decb437690c9e8e4249caba168c6095f1c21bb627bfd575c4b14f6fa2f736488";
+    record Migration(String version, String path, String sha256) {}
+    static final List<Migration> MIGRATIONS = List.of(
+        new Migration("V20261016_01", "database/migrations/V20261016_01__create_registration_request.sql", CORE007_MIGRATION),
+        new Migration("V20261020_01", "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql", CORE045_MIGRATION),
+        new Migration("V20261021_01", "database/migrations/V20261021_01__training_session_groom_assignment.sql", "79c4098f5635e521b2f8e9ca81a21df36e5c5cdaa618094dccc9ac851ab00222"));
+    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261021.json";
+    static final String EXPECTED_SCHEMA_HASH = "41045e70a8970bfbad9589c9567766f17d5eb6483f1c0546e9ed38dea8a391ad";
+    static List<Map<String,Object>> migrationPlan() {
+        List<Map<String,Object>> plan=new ArrayList<>();
+        for(int i=0;i<MIGRATIONS.size();i++) {
+            Migration migration=MIGRATIONS.get(i);
+            Map<String,Object> step=new LinkedHashMap<>();step.put("version",migration.version());
+            step.put("order",i+1);step.put("path",migration.path());step.put("sha256",migration.sha256());plan.add(step);
+        }
+        return plan;
+    }
+    static void verifyPackage(Path root) throws Exception {
+        require(hash(Files.readAllBytes(root.resolve("database/schema.sql"))).equals(SCHEMA),"CANONICAL_SCHEMA_CHECKSUM_MISMATCH");
+        for(Migration migration:MIGRATIONS)
+            require(hash(Files.readAllBytes(root.resolve(migration.path()))).equals(migration.sha256()),"MIGRATION_CHECKSUM_MISMATCH_"+migration.version());
+        require(hash(Files.readAllBytes(root.resolve(EXPECTED_SCHEMA))).equals(EXPECTED_SCHEMA_HASH),"EXPECTED_SCHEMA_CHECKSUM_MISMATCH");
+    }
     static String env(String key) { String v=System.getenv(key); require(v!=null&&!v.isBlank(), "ENV_REQUIRED_"+key); return v; }
     static void require(boolean ok,String code) { if(!ok) throw new IllegalStateException(code); }
     static String hash(byte[] bytes) throws Exception { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
@@ -32,7 +54,7 @@ class LocalDatabase {
                 require(r.next()&&db.equals(r.getString(1))&&machine().equalsIgnoreCase(r.getString(2)),"LOCAL_SQL_IDENTITY_MISMATCH");
                 require(r.getInt(3)>=16,"SQL_SERVER_2022_OR_NEWER_REQUIRED");
             }
-            try(ResultSet r=s.executeQuery("SELECT encrypt_option,net_transport FROM sys.dm_exec_connections WHERE session_id=@@SPID")) {
+            try(ResultSet r=s.executeQuery("SELECT encrypt_option,net_transport FROM sys.dm_exec_connections WHERE session_id=@@SPID OPTION (MAXDOP 1, RECOMPILE)")) {
                 require(r.next()&&"TRUE".equalsIgnoreCase(r.getString(1))&&"TCP".equalsIgnoreCase(r.getString(2)),"ENCRYPTED_TCP_REQUIRED");
             }
         } catch(Exception e) {c.close();throw e;}
@@ -71,8 +93,17 @@ class LocalDatabase {
             result=s.getMoreResults(Statement.CLOSE_CURRENT_RESULT);
         }
     }
+    static void executeMigration(Statement statement, Path root, Migration migration) throws Exception {
+        if (migration.version().equals("V20261020_01")) {
+            // SQL Server compiles the approved CREATE INDEX before its earlier ALTER ADD.
+            // Pre-add the same approved nullable column in a separate batch, within the caller transaction.
+            executeBatch(statement,"IF COL_LENGTH(N'dbo.care_task',N'assigned_groom_user_id') IS NULL "
+                    +"ALTER TABLE dbo.care_task ADD assigned_groom_user_id BIGINT NULL;");
+        }
+        executeBatch(statement,Files.readString(root.resolve(migration.path()),StandardCharsets.UTF_8));
+    }
     static void verify(Connection c,Path root) throws Exception {
-        String actual=snapshot(c,root),expected=Files.readString(root.resolve("database/verification/expected-schema.json")).strip();
+        String actual=snapshot(c,root),expected=Files.readString(root.resolve(EXPECTED_SCHEMA)).strip();
         require(actual.equals(expected),"SCHEMA_DRIFT_DETECTED");
     }
     public static void main(String[] args) {
@@ -86,21 +117,25 @@ class LocalDatabase {
     }
     static void run(String[] args) throws Exception {
         require(args.length>=2,"OPERATION_AND_REPOSITORY_REQUIRED");
-        String op=args[0],db=database(); Path root=Path.of(args[1]).toAbsolutePath();
-        require(hash(Files.readAllBytes(root.resolve("database/schema.sql"))).equals(SCHEMA),"CANONICAL_SCHEMA_CHECKSUM_MISMATCH");
-        require(hash(Files.readAllBytes(root.resolve("database/migrations/V20261016_01__create_registration_request.sql"))).equals(CORE007_MIGRATION),"CORE007_MIGRATION_CHECKSUM_MISMATCH");
-        require(hash(Files.readAllBytes(root.resolve("database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"))).equals(CORE045_MIGRATION),"CORE045_MIGRATION_CHECKSUM_MISMATCH");
+        String op=args[0]; Path root=Path.of(args[1]).toAbsolutePath();
+        verifyPackage(root);
+        if(op.equals("plan")){System.out.println(json(migrationPlan()));return;}
+        String db=database();
         if(op.equals("install")) {
             // A master connection checks local identity and strict TLS BEFORE any CREATE.
             try(Connection c=connect("master");PreparedStatement q=c.prepareStatement("SELECT DB_ID(?)")) {
                 q.setString(1,db);try(ResultSet r=q.executeQuery()){r.next();require(r.getObject(1)==null,"DATABASE_ALREADY_EXISTS_NO_OVERWRITE");}
                 try(Statement s=c.createStatement()){s.setQueryTimeout(60);s.execute("CREATE DATABASE ["+db+"] COLLATE SQL_Latin1_General_CP1_CI_AS");}
             }
-            try(Connection c=connect(db);Statement s=c.createStatement()) {
-                s.setQueryTimeout(60);
-                executeBatch(s,Files.readString(root.resolve("database/schema.sql"),StandardCharsets.UTF_8));
-                executeBatch(s,Files.readString(root.resolve("database/migrations/V20261016_01__create_registration_request.sql"),StandardCharsets.UTF_8));
-                executeBatch(s,Files.readString(root.resolve("database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"),StandardCharsets.UTF_8));
+            try(Connection c=connect(db)) {
+                c.setAutoCommit(false);
+                try(Statement s=c.createStatement()) {
+                    s.setQueryTimeout(60);
+                    executeBatch(s,Files.readString(root.resolve("database/schema.sql"),StandardCharsets.UTF_8));
+                    for(Migration migration:MIGRATIONS)executeMigration(s,root,migration);
+                    verify(c,root);
+                    c.commit();
+                } catch(Exception failure) {c.rollback();throw failure;}
             }
             try(Connection fresh=connect(db)){verify(fresh,root);}
             System.out.println("INSTALL_AND_STRUCTURAL_VERIFY_PASS"); return;

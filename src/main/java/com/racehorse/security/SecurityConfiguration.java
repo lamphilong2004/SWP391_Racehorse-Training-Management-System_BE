@@ -62,7 +62,8 @@ public class SecurityConfiguration {
                         .accessDeniedHandler(securityHandlers))
                 .authorizeHttpRequests(authorize -> {
                     authorize.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
-                    authorize.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll();
+                    authorize.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register",
+                            "/api/auth/forgot-password", "/api/auth/reset-password").permitAll();
                     authorize.requestMatchers(HttpMethod.GET, "/api/health").permitAll();
                     authorize.requestMatchers("/ws", "/ws/**").permitAll();
                     authorize.requestMatchers(photoProperties.resourceHandlerPattern())

@@ -11,4 +11,5 @@ app:
       public-base-url: ${HORSE_PHOTO_PUBLIC_BASE_URL:/local-media/horse-photos}
   realtime:
     simulator:
-      enabled: true
+      # Explicit opt-in only: normal local API mode must never manufacture telemetry.
+      enabled: ${REALTIME_SIMULATOR_ENABLED:false}

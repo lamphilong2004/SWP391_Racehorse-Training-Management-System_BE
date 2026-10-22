@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.security.access.AccessDeniedException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -45,6 +46,8 @@ class Core030ApiIntegrationTest {
     @Autowired WebApplicationContext context;@Autowired JdbcTemplate jdbc;@Autowired PasswordEncoder encoder;@Autowired JsonMapper json;
     @MockitoBean PendingRegistrationRepository pendingRegistrationRepository;MockMvc mvc;
     @Autowired Core030StompInterceptor stompInterceptor;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean org.springframework.messaging.simp.SimpMessagingTemplate broker;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r){TestJwtProperties.register(r);r.add("spring.datasource.url",()->"jdbc:h2:mem:racehorse_core030_api;MODE=MSSQLServer;DB_CLOSE_DELAY=-1");r.add("app.medical.thresholds.heart-rate-critical",()->"180");r.add("app.medical.thresholds.heart-rate-warning",()->"150");r.add("app.realtime.simulator.enabled",()->"true");}
     @BeforeEach void setup(){mvc=MockMvcBuilders.webAppContextSetup(context).apply(SecurityMockMvcConfigurers.springSecurity()).build();tables();
         for(String t:new String[]{"monitoring_alert","training_metric_sample","horse_threshold_override","trainer_assignment","training_session","horse_program_phase","horse_training_program","horse","notification","user_role","app_user","role"})jdbc.update("DELETE FROM dbo."+t);
@@ -86,6 +89,37 @@ class Core030ApiIntegrationTest {
         assertEquals("INTERRUPTED",jdbc.queryForObject("SELECT status FROM dbo.training_session WHERE id=?",String.class,session));
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.incident WHERE training_session_id=? AND status='REPORTED'",Integer.class,session));
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.user_role WHERE user_id=?",Integer.class,other));
+    }
+
+    @Test void failedAlertReductionDoesNotAcknowledgeOrChangeIntensity() throws Exception {
+        long trainer=user(RoleCode.TRAINER),rider=user(RoleCode.WORK_RIDER);
+        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (1,1,?,?,?)",trainer,trainer,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
+        long session=session(rider,"IN_PROGRESS","S-REDUCE");
+        jdbc.update("UPDATE dbo.training_session SET intensity='HIGH' WHERE id=?",session);
+        metric(login(rider),session,185,"CRITICAL");long alert=latestAlert(session);
+        String trainerToken=login(trainer);
+        mvc.perform(post("/api/monitoring-alerts/{id}/acknowledge",alert).header("Authorization","Bearer "+trainerToken)
+                .contentType("application/json").content("{\"action\":\"REDUCE_INTENSITY\"}"))
+                .andExpect(status().isBadRequest());
+        assertNull(jdbc.queryForObject("SELECT acknowledged_at FROM dbo.monitoring_alert WHERE id=?",java.sql.Timestamp.class,alert));
+        assertEquals("HIGH",jdbc.queryForObject("SELECT intensity FROM dbo.training_session WHERE id=?",String.class,session));
+        jdbc.update("INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,overall_result) VALUES (?,?,CURRENT_TIMESTAMP,'ALL_NORMAL')",session,rider);
+        mvc.perform(post("/api/monitoring-alerts/{id}/acknowledge",alert).header("Authorization","Bearer "+trainerToken)
+                .contentType("application/json").content("{\"action\":\"REDUCE_INTENSITY\",\"intensity\":\"MEDIUM\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.actionTaken").value("REDUCE_INTENSITY"));
+        assertEquals("MEDIUM",jdbc.queryForObject("SELECT intensity FROM dbo.training_session WHERE id=?",String.class,session));
+    }
+
+    @Test void rolledBackMetricNeverPublishesToTheBroker() throws Exception {
+        long rider=user(RoleCode.WORK_RIDER),session=session(rider,"IN_PROGRESS","S-ROLLBACK");
+        String token=login(rider);
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            try {metric(token,session,95,"NORMAL");}catch(Exception e){throw new RuntimeException(e);}
+            org.mockito.Mockito.verify(broker,org.mockito.Mockito.never()).convertAndSend(org.mockito.ArgumentMatchers.eq("/topic/sessions/"+session+"/metrics"),org.mockito.ArgumentMatchers.any(Object.class));
+            status.setRollbackOnly();
+        });
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.training_metric_sample WHERE training_session_id=?",Integer.class,session));
+        org.mockito.Mockito.verify(broker,org.mockito.Mockito.never()).convertAndSend(org.mockito.ArgumentMatchers.eq("/topic/sessions/"+session+"/metrics"),org.mockito.ArgumentMatchers.any(Object.class));
     }
 
     @Test void trainerCanRunAndStopSimulatorOnlyForAssignedActiveSession() throws Exception {
@@ -132,6 +166,12 @@ class Core030ApiIntegrationTest {
     private long user(RoleCode r){long id=IDS.incrementAndGet();String email="core030-"+id+"@test.invalid";jdbc.update("INSERT INTO dbo.app_user(id,user_code,full_name,email,password_hash,account_status) VALUES (?,?,?, ?,?,'ACTIVE')",id,"U"+id,"Core030 User",email,encoder.encode(PASSWORD));jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (?,?,?)",id,id,r.ordinal()+1);return id;}
     private String login(long id)throws Exception{String raw=mvc.perform(post("/api/auth/login").contentType("application/json").content(json.writeValueAsString(Map.of("email","core030-"+id+"@test.invalid","password",PASSWORD)))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();JsonNode node=json.readTree(raw);return node.path("data").path("accessToken").stringValue();}
     private void tables(){
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.pre_session_check(id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,training_session_id BIGINT UNIQUE,performed_by_user_id BIGINT,performed_at TIMESTAMP,observations NVARCHAR(4000),overall_result VARCHAR(20))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.session_exercise(id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,training_session_id BIGINT,exercise_definition_id BIGINT,exercise_order SMALLINT,distance DECIMAL(9,2),duration DECIMAL(7,2),repetitions SMALLINT,rest_interval DECIMAL(7,2),intensity NVARCHAR(30),surface NVARCHAR(50),suitability_category CHAR(1),acknowledgement_note NVARCHAR(1000))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.exercise_definition(id BIGINT PRIMARY KEY,name NVARCHAR(150),exercise_type NVARCHAR(50))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.medical_restriction(id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,horse_id BIGINT,restriction_level VARCHAR(20),reason NVARCHAR(1000),lifted_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.restriction_exercise_rule(id BIGINT PRIMARY KEY,medical_restriction_id BIGINT,exercise_definition_id BIGINT,rule_type VARCHAR(20),exercise_type_note NVARCHAR(200))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.rider_feedback(id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,training_session_id BIGINT)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.role(id BIGINT PRIMARY KEY,role_code VARCHAR(30) UNIQUE)");jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.app_user(id BIGINT PRIMARY KEY,user_code VARCHAR(20),full_name NVARCHAR(150),email NVARCHAR(254),password_hash VARCHAR(255),account_status VARCHAR(20),last_login_at TIMESTAMP)");jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.user_role(id BIGINT PRIMARY KEY,user_id BIGINT,role_id BIGINT,assigned_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse(id BIGINT PRIMARY KEY,horse_code VARCHAR(20),name NVARCHAR(150),lifecycle VARCHAR(20))");jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_training_program(id BIGINT PRIMARY KEY,horse_id BIGINT,template_version_id BIGINT,created_by_user_id BIGINT,name NVARCHAR(150),status VARCHAR(20),period_start DATE,period_end DATE,activated_at TIMESTAMP)");jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_program_phase(id BIGINT PRIMARY KEY,horse_training_program_id BIGINT,name NVARCHAR(150),phase_order SMALLINT,start_date DATE,end_date DATE)");jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.trainer_assignment(id BIGINT PRIMARY KEY,horse_training_program_id BIGINT,trainer_user_id BIGINT,assigned_by_user_id BIGINT,effective_from DATE,effective_to DATE)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.training_session(id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,session_code VARCHAR(20),horse_program_phase_id BIGINT,created_by_user_id BIGINT,work_rider_user_id BIGINT,scheduled_start TIMESTAMP,status VARCHAR(20),actual_start TIMESTAMP,actual_end TIMESTAMP,interruption_reason NVARCHAR(1000),updated_at TIMESTAMP)");

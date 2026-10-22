@@ -1,5 +1,7 @@
 package com.racehorse.training.session;
 
+import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -15,8 +17,12 @@ import java.util.Map;
 @Repository
 public class TrainingSessionRepository {
     private final JdbcTemplate jdbc;
+    private final NotificationPublisher notifications;
+    private final tools.jackson.databind.json.JsonMapper json;
     private final String databaseProduct;
-    public TrainingSessionRepository(JdbcTemplate jdbc) {
+    public TrainingSessionRepository(JdbcTemplate jdbc, tools.jackson.databind.json.JsonMapper json, NotificationPublisher notifications) {
+        this.notifications = notifications;
+        this.json = json;
         this.jdbc = jdbc;
         this.databaseProduct = jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<String>) c -> c.getMetaData().getDatabaseProductName());
     }
@@ -136,7 +142,7 @@ public class TrainingSessionRepository {
                   AND (? IS NULL OR pr.id=?) AND (? IS NULL OR s.status=?)
                   AND (? IS NULL OR ta.trainer_user_id=?) AND (? IS NULL OR s.work_rider_user_id=?)
                 ORDER BY s.scheduled_start,s.id
-                """,from,to,trainerId,trainerId,horseId,horseId,programId,programId,status,status,
+                """,timestamp(from),timestamp(to),trainerId,trainerId,horseId,horseId,programId,programId,status,status,
                 trainerScope,trainerScope,riderScope,riderScope);
     }
 
@@ -195,14 +201,15 @@ public class TrainingSessionRepository {
         List<String> rows=jdbc.query("SELECT overall_result FROM dbo.pre_session_check WHERE training_session_id=?",(rs,n)->rs.getString(1),sessionId);
         return rows.isEmpty()?null:rows.getFirst();
     }
-    public SessionApi.PreSessionCheck precheck(long sessionId) {
-        List<SessionApi.PreSessionCheck> rows=jdbc.query("""
+    public com.racehorse.medical.incident.IncidentApi.PreSessionCheck precheck(long sessionId) {
+        List<com.racehorse.medical.incident.IncidentApi.PreSessionCheck> rows=jdbc.query("""
                 SELECT c.id,c.performed_at,c.observations,c.overall_result,u.id AS user_id,u.user_code,u.full_name
                 FROM dbo.pre_session_check c JOIN dbo.app_user u ON u.id=c.performed_by_user_id
                 WHERE c.training_session_id=?
-                """,(rs,n)->new SessionApi.PreSessionCheck(rs.getLong("id"),
-                new SessionApi.UserRef(rs.getLong("user_id"),rs.getString("user_code"),rs.getString("full_name")),
-                rs.getTimestamp("performed_at").toInstant(),rs.getString("observations"),rs.getString("overall_result")),sessionId);
+                """,(rs,n)->new com.racehorse.medical.incident.IncidentApi.PreSessionCheck(rs.getLong("id"),sessionId,
+                rs.getString("observations")==null?Map.of():json.readValue(rs.getString("observations"),new tools.jackson.core.type.TypeReference<Map<String,com.racehorse.medical.incident.IncidentApi.CheckItem>>(){}),
+                rs.getString("overall_result"),new com.racehorse.medical.incident.IncidentApi.UserRef(rs.getLong("user_id"),rs.getString("full_name")),
+                rs.getTimestamp("performed_at").toInstant().atOffset(java.time.ZoneOffset.UTC)),sessionId);
         return rows.isEmpty()?null:rows.getFirst();
     }
     public List<Long> linkedIncidentIds(long sessionId) {
@@ -218,10 +225,8 @@ public class TrainingSessionRepository {
     }
 
     public void notifyRider(long riderId,long sessionId,String code) {
-        jdbc.update("""
-                INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id)
-                VALUES (?,'SCHEDULE','SESSION_ASSIGNED','Training session assigned',?,'TRAINING_SESSION',?)
-                """,riderId,"Session "+code+" has been assigned to you.",sessionId);
+        notifications.persistAndPublish(riderId,Category.SCHEDULE,"SESSION_ASSIGNED","Training session assigned",
+                "Session "+code+" has been assigned to you.","TRAINING_SESSION",sessionId,false);
     }
 
     public void audit(long actorId,String role,String action,long sessionId,String summary) {

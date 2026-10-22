@@ -20,6 +20,8 @@
     <properties>
         <!-- Compile for the Java 21 LTS so every team member can build; runs on newer JDKs. -->
         <java.version>21</java.version>
+        <!-- Override for concurrent verification without overwriting the running local demo artifact. -->
+        <racehorse.build.directory>${project.basedir}/target</racehorse.build.directory>
         <springdoc.version>3.1.1</springdoc.version>
     </properties>
 
@@ -87,6 +89,7 @@
     </dependencies>
 
     <build>
+        <directory>${racehorse.build.directory}</directory>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

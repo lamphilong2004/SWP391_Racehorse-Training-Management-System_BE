@@ -60,6 +60,9 @@ class MedicalRestrictionSecurityIntegrationTest {
     @Autowired
     private JsonMapper objectMapper;
 
+    @Autowired
+    private com.racehorse.medical.threshold.ThresholdRepository thresholdRepository;
+
     @MockitoBean
     private PendingRegistrationRepository pendingRegistrationRepository;
 
@@ -174,6 +177,31 @@ class MedicalRestrictionSecurityIntegrationTest {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/horses/2/training-availability").header("Authorization", "Bearer " + trainerToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void trainerAssignmentStartsOnVietnamDateBeforeSevenAmAndFutureAssignmentStaysDenied() throws Exception {
+        long trainerId=createUser(RoleCode.TRAINER);
+        String token=login(trainerId);
+        LocalDate clubDay=LocalDate.of(2026,10,21),utcDay=clubDay.minusDays(1);
+        java.time.ZoneId clubZone=java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        java.time.Instant beforeSeven=java.time.Instant.parse("2026-10-20T21:00:00Z");
+        java.sql.Date assignmentDay=java.sql.Date.valueOf(clubDay),futureDay=java.sql.Date.valueOf(clubDay.plusDays(1));
+        jdbcTemplate.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (41,1,?,?,?)",
+                trainerId,trainerId,assignmentDay);
+        try(org.mockito.MockedStatic<LocalDate> dates=org.mockito.Mockito.mockStatic(LocalDate.class,org.mockito.Mockito.CALLS_REAL_METHODS)) {
+            dates.when(()->LocalDate.now(java.time.ZoneOffset.UTC)).thenReturn(utcDay);
+            dates.when(()->LocalDate.now(clubZone)).thenReturn(clubDay);
+            mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization","Bearer "+token))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.availability").value("AVAILABLE"));
+            org.junit.jupiter.api.Assertions.assertTrue(thresholdRepository.trainerAssignedToHorse(1,trainerId,beforeSeven));
+            org.junit.jupiter.api.Assertions.assertFalse(thresholdRepository.trainerAssignedToHorse(1,trainerId,
+                    java.time.Instant.parse("2026-10-20T16:59:00Z")));
+            jdbcTemplate.update("UPDATE dbo.trainer_assignment SET effective_from=? WHERE id=41",futureDay);
+            mockMvc.perform(get("/api/horses/1/training-availability").header("Authorization","Bearer "+token))
+                    .andExpect(status().isForbidden());
+            org.junit.jupiter.api.Assertions.assertFalse(thresholdRepository.trainerAssignedToHorse(1,trainerId,beforeSeven));
+        }
     }
 
     @Test

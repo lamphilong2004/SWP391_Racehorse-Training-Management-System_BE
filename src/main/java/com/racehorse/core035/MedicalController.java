@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.*;
 public class MedicalController {
     private final MedicalService service;
     public MedicalController(MedicalService service) { this.service = service; }
+    @GetMapping("/api/medical/herd-health")
+    @Operation(operationId="getHerdHealthOverview")
+    public ApiResponse<HerdHealthOverview> herdHealth() { return ApiResponse.ok(service.herdHealth()); }
 
     @PostMapping("/api/medical/cases")
     @Operation(operationId = "createMedicalCase")

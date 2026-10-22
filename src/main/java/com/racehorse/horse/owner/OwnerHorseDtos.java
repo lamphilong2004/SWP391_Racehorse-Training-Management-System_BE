@@ -91,6 +91,8 @@ public final class OwnerHorseDtos {
             @Schema(nullable = true) String countryOfOrigin,
             @Schema(nullable = true) String registrationNo,
             @Schema(nullable = true) Instant activatedAt,
+            @Schema(nullable = true) String currentBoxCode,
+            @Schema(nullable = true) LocalDate stableEffectiveFrom,
             Pedigree pedigree,
             Ownership myOwnership) {
     }

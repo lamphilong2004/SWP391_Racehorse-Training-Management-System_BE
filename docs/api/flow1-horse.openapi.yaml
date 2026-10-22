@@ -1067,6 +1067,8 @@ components:
         horse: { $ref: '#/components/schemas/OwnerHorseCard' }
         countryOfOrigin: { type: [string, 'null'] }
         registrationNo: { type: [string, 'null'] }
+        currentBoxCode: { type: [string, 'null'], description: 'Non-clinical current stable box, scoped to this owner’s horse.' }
+        stableEffectiveFrom: { type: [string, 'null'], format: date }
         activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
         pedigree: { $ref: '#/components/schemas/Pedigree' }
         myOwnership:

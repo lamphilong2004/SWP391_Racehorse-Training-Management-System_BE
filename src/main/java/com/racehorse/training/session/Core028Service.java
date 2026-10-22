@@ -1,5 +1,7 @@
 package com.racehorse.training.session;
 
+import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.common.jdbc.GeneratedIdentity;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
@@ -33,7 +35,8 @@ public class Core028Service {
     private static final Set<String> FEEDBACK_FIELDS=Set.of("horseResponse","balance","breathing","strideFeeling","abnormalBehavior","preInterruptionDescription","notes");
     private final JdbcTemplate jdbc;private final CurrentActorProvider actors;private final JsonMapper json;
     private final String databaseProduct;
-    public Core028Service(JdbcTemplate jdbc,CurrentActorProvider actors,JsonMapper json){this.jdbc=jdbc;this.actors=actors;this.json=json;
+    private final NotificationPublisher notifications;
+    public Core028Service(JdbcTemplate jdbc,CurrentActorProvider actors,JsonMapper json,NotificationPublisher notifications){this.jdbc=jdbc;this.actors=actors;this.json=json;this.notifications=notifications;
         this.databaseProduct=jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<String>) connection -> connection.getMetaData().getDatabaseProductName());}
 
     @Transactional(readOnly=true)
@@ -87,8 +90,9 @@ public class Core028Service {
     private long insertIncident(Session s,long id,long actor,String code,String type,String severity,String description,Instant observed){return insertId("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,'REPORTED')",ps->{ps.setString(1,code);ps.setLong(2,s.horseId());ps.setLong(3,actor);ps.setLong(4,id);ps.setTimestamp(5,Timestamp.from(observed));ps.setString(6,type);ps.setString(7,severity);ps.setString(8,description);});}
 
     private void notifyIncident(Session s,long id,String code){String message="Incident "+code+" was reported for session "+s.code()+".";
-        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) SELECT u.id,'MEDICAL','INCIDENT_REPORTED','Training incident reported',?,'TRAINING_SESSION',? FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'",message,id);
-        jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) SELECT DISTINCT ta.trainer_user_id,'MEDICAL','INCIDENT_REPORTED','Training incident reported',?,'TRAINING_SESSION',? FROM dbo.horse_program_phase ph JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=ph.horse_training_program_id WHERE ph.id=? AND ta.effective_from<=CAST(CURRENT_TIMESTAMP AS DATE) AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(CURRENT_TIMESTAMP AS DATE))",message,id,s.phaseId());}
+        List<Long> recipients=new ArrayList<>(jdbc.queryForList("SELECT u.id FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'",Long.class));
+        recipients.addAll(jdbc.queryForList("SELECT DISTINCT ta.trainer_user_id FROM dbo.horse_program_phase ph JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=ph.horse_training_program_id WHERE ph.id=? AND ta.effective_from<=CAST(CURRENT_TIMESTAMP AS DATE) AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(CURRENT_TIMESTAMP AS DATE))",Long.class,s.phaseId()));
+        for(long recipient:recipients)notifications.persistAndPublish(recipient,Category.MEDICAL,"INCIDENT_REPORTED","Training incident reported",message,"TRAINING_SESSION",id,false);}
 
     private Map<String,Object> summary(long id){List<Map<String,Object>> r=jdbc.query(summarySql()+" WHERE s.id=?",(rs,n)->summary(rs),id);if(r.isEmpty())throw notFound("Training session was not found.");return r.getFirst();}
     private Map<String,Object> summary(java.sql.ResultSet rs)throws java.sql.SQLException{String status=rs.getString("status"),availability=rs.getString("availability"),pre=rs.getString("precheck");List<String> blocked=new ArrayList<>();if("LOCKED".equals(availability))blocked.add("AVAILABILITY_LOCKED");if(pre==null)blocked.add("PRE_CHECK_MISSING");else if("ABNORMAL".equals(pre))blocked.add("PRE_CHECK_ABNORMAL");if(!"ACTIVE".equals(rs.getString("program_status")))blocked.add("PROGRAM_NOT_ACTIVE");boolean canStart="SCHEDULED".equals(status)&&!Timestamp.from(Instant.now()).before(rs.getTimestamp("scheduled_start"))&&blocked.isEmpty();

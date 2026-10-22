@@ -10,12 +10,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public class ThresholdRepository {
+    private static final ZoneId CLUB_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private final JdbcTemplate jdbc;
 
     public ThresholdRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
@@ -25,7 +26,7 @@ public class ThresholdRepository {
     }
 
     public boolean trainerAssignedToHorse(long horseId, long trainerId, Instant at) {
-        java.sql.Date assignmentDate = java.sql.Date.valueOf(LocalDate.ofInstant(at, ZoneOffset.UTC));
+        java.sql.Date assignmentDate = java.sql.Date.valueOf(LocalDate.ofInstant(at, CLUB_ZONE));
         return jdbc.queryForObject("""
                 SELECT COUNT(*) FROM dbo.horse_training_program p
                 JOIN dbo.trainer_assignment ta ON ta.horse_training_program_id=p.id

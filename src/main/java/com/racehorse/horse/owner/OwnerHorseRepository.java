@@ -88,7 +88,7 @@ public class OwnerHorseRepository {
                        h.sire_horse_id, h.sire_name, sire.horse_code AS sire_horse_code,
                        h.dam_horse_id, h.dam_name, dam.horse_code AS dam_horse_code,
                        ho.share_percentage, ho.effective_from AS ownership_effective_from,
-                       ho.is_managing_owner
+                       ho.is_managing_owner, b.box_code, a.effective_from AS stable_effective_from
                 FROM dbo.horse h
                 JOIN dbo.horse_ownership ho
                   ON ho.horse_id = h.id
@@ -98,6 +98,8 @@ public class OwnerHorseRepository {
                   ON mr.horse_id = h.id AND mr.lifted_at IS NULL
                 LEFT JOIN dbo.horse sire ON sire.id = h.sire_horse_id
                 LEFT JOIN dbo.horse dam ON dam.id = h.dam_horse_id
+                LEFT JOIN dbo.horse_stable_assignment a ON a.horse_id=h.id AND a.effective_to IS NULL
+                LEFT JOIN dbo.stable_box b ON b.id=a.stable_box_id
                 WHERE h.id = ?
                 """;
         List<HorseProfile> profiles = jdbcTemplate.query(sql, (rs, rowNum) -> {
@@ -119,6 +121,8 @@ public class OwnerHorseRepository {
                     rs.getString("country_of_origin"),
                     rs.getString("registration_no"),
                     instant(rs, "activated_at"),
+                    rs.getString("box_code"),
+                    rs.getObject("stable_effective_from", LocalDate.class),
                     new Pedigree(sire, dam),
                     ownership);
         }, ownerUserId, horseId);

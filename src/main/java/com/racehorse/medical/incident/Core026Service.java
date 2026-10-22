@@ -36,6 +36,7 @@ public class Core026Service {
     @Transactional(isolation=Isolation.SERIALIZABLE)
     public PreSessionCheck submitPrecheck(long sessionId,PreSessionCheckRequest request){
         ActorContext actor=requireRole(RoleCode.GROOM);
+        repository.lockSession(sessionId);
         var session=repository.session(sessionId).orElseThrow(()->notFound("Training session was not found."));
         if(!"SCHEDULED".equals(session.status()))throw conflict("Pre-session checks are accepted only for SCHEDULED sessions.");
         if(!repository.hasGroomSessionNotice(actor.userId(),sessionId))throw forbidden("This Groom is not assigned or notified for this session.");

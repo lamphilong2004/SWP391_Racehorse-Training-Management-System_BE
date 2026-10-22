@@ -49,6 +49,13 @@ class MedicalServiceTest {
         assertEquals(10L, sql.queryForObject("select opened_by_user_id from dbo.medical_case where id=?", Long.class, c.id()));
         assertEquals("Left foreleg tenderness", service.get(c.id()) instanceof CaseDetail d ? d.reason() : null);
     }
+    @Test void herdCountsKeepUnassessedSeparateAndRejectOtherRoles() {
+        sql.update("INSERT INTO dbo.horse(id,health_status) VALUES (2,'FIT'),(3,'INJURED')");
+        HerdHealthOverview overview=service.herdHealth();
+        assertEquals(3,overview.totalHorses());assertEquals(1,overview.fit());assertEquals(1,overview.injured());assertEquals(1,overview.unassessed());
+        CURRENT.set(new Actor(20,Set.of(Role.HEAD_TRAINER)));
+        fails(ErrorCode.FORBIDDEN,()->service.herdHealth());
+    }
     @Test void missingHorseAndIncidentBoundary() {
         fails(ErrorCode.NOT_FOUND, () -> service.create(new CaseCreate(99L, "Concern")));
         assertEquals(0, sql.queryForObject("select count(*) from dbo.medical_case", Integer.class));

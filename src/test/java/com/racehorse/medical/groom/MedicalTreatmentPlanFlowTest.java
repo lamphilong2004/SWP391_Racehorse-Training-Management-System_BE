@@ -96,6 +96,7 @@ class MedicalTreatmentPlanFlowTest {
         authenticate(10, RoleCode.VETERINARIAN);
         medical.putPlan(caseId, new PlanPut("Medication B", "Rest", "Updated care", List.of(first, second), today.plusDays(3)));
         assertEquals(2, taskCount(planId));
+        assertEquals(20L, medical.caseTasks(caseId,0,20).items().getFirst().assignedGroomUserId());
         assertEquals("COMPLETED", jdbc.queryForObject("SELECT CASE WHEN completed_at IS NOT NULL AND completed_by_user_id=20 THEN 'COMPLETED' ELSE 'PENDING' END FROM dbo.care_task WHERE id=?", String.class, firstTaskId));
 
         BusinessException removal = assertThrows(BusinessException.class,

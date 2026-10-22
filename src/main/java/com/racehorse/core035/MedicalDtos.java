@@ -9,6 +9,7 @@ import java.util.*;
 
 public final class MedicalDtos {
     private MedicalDtos() {}
+    public record HerdHealthOverview(long totalHorses,long fit,long monitoring,long injured,long quarantined,long unassessed) {}
     public record CaseCreate(@NotNull @Positive Long horseId,
             @NotBlank @Size(max = 2000) String reason) {
         @JsonAnySetter public void unknown(String name, Object value) { throw new IllegalArgumentException("Unsupported field: " + name); }
@@ -61,5 +62,5 @@ public final class MedicalDtos {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record VetTaskView(long id, long horseId, long caseId, long treatmentPlanId,
             String instruction, LocalDate taskDate, String scheduledSlot, String status,
-            Instant completedAt, Long completedByUserId) {}
+            Instant completedAt, Long completedByUserId, Long assignedGroomUserId) {}
 }

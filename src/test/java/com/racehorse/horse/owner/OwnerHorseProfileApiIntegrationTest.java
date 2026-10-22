@@ -64,4 +64,25 @@ class OwnerHorseProfileApiIntegrationTest extends OwnerApiIntegrationTestSupport
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void exposesOnlyTheOwnedHorsesCurrentBoxWithoutStaffAssignmentDetails() throws Exception {
+        long ownerId=createUser();
+        long horseId=createHorse("Stable profile", "FIT", null, null, null, null);
+        addOwnership(horseId,ownerId,"100.00",true);
+        long boxId=ownerId;
+        jdbcTemplate.update("INSERT INTO dbo.stable_box(id,box_code) VALUES(?,?)",boxId,"OWNER-"+horseId);
+        try {
+            jdbcTemplate.update("INSERT INTO dbo.horse_stable_assignment(horse_id,stable_box_id,assigned_by_user_id,effective_from) VALUES(?,?,?,'2026-10-21')",horseId,boxId,ownerId);
+            mockMvc.perform(get("/api/owner/horses/{id}/profile",horseId)
+                            .header("Authorization","Bearer "+bearerToken(ownerId,RoleCode.HORSE_OWNER)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.currentBoxCode").value("OWNER-"+horseId))
+                    .andExpect(jsonPath("$.data.stableEffectiveFrom").value("2026-10-21"))
+                    .andExpect(jsonPath("$.data.assignedBy").doesNotExist());
+        } finally {
+            jdbcTemplate.update("DELETE FROM dbo.horse_stable_assignment WHERE horse_id=?",horseId);
+            jdbcTemplate.update("DELETE FROM dbo.stable_box WHERE id=?",boxId);
+        }
+    }
 }
