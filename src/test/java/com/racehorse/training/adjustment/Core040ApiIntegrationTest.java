@@ -49,6 +49,8 @@ class Core040ApiIntegrationTest {
     @BeforeEach void setup() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(SecurityMockMvcConfigurers.springSecurity()).build();
         tables();
+        // Adjustment requests/decisions are audited; remove rows that reference the users deleted below.
+        jdbc.update("DELETE FROM dbo.audit_log WHERE actor_user_id IN (SELECT id FROM dbo.app_user)");
         for (String table : new String[]{"program_adjustment_request", "trainer_assignment", "horse_program_phase",
                 "horse_training_program", "horse", "notification", "user_role", "app_user", "role"}) {
             jdbc.update("DELETE FROM dbo." + table);
@@ -90,6 +92,8 @@ class Core040ApiIntegrationTest {
         mvc.perform(post("/api/adjustment-requests/{id}/approve", requestId).header("Authorization", "Bearer " + headToken))
                 .andExpect(status().isConflict());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE notification_type='ADJUSTMENT_REQUEST_DECIDED'", Integer.class));
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.audit_log WHERE target_type='TRAINING_PROGRAM' AND target_id=1 "
+                + "AND action IN ('ADJUSTMENT_REQUESTED','ADJUSTMENT_APPROVED')", Integer.class));
     }
 
     @Test void trainerCannotWriteUnassignedProgramOrSeeAnotherTrainersRequests() throws Exception {

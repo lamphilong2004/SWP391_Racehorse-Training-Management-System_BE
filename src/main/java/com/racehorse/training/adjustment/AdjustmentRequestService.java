@@ -71,6 +71,7 @@ public class AdjustmentRequestService {
         } catch (DataIntegrityViolationException ex) {
             throw conflict("The adjustment request could not be saved for this program.");
         }
+        audit(actor, "ADJUSTMENT_REQUESTED", programId, "Adjustment requested: " + request.requestType() + ".");
         List<Long> recipients = jdbc.queryForList("SELECT u.id FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id " +
                 "JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='HEAD_TRAINER'", Long.class);
         for (long recipient : recipients) notifications.persistAndPublish(recipient, Category.SCHEDULE,
@@ -117,6 +118,8 @@ public class AdjustmentRequestService {
             throw conflict("Only a PENDING adjustment request can be decided.");
         }
         AdjustmentRequest result = request(id);
+        audit(actor, approve ? "ADJUSTMENT_APPROVED" : "ADJUSTMENT_REJECTED", result.programId(),
+                "Adjustment request " + targetStatus.toLowerCase(java.util.Locale.ROOT) + ": " + result.requestType() + ".");
         notifications.persistAndPublish(result.requestedBy().id(), Category.SCHEDULE, "ADJUSTMENT_REQUEST_DECIDED",
                 "Program adjustment request decided", "Your adjustment request for program " + result.programId() + " was " + targetStatus + ".",
                 "TRAINING_PROGRAM", result.programId(), false);
@@ -167,6 +170,12 @@ public class AdjustmentRequestService {
         return count != null && count > 0;
     }
     private boolean exists(long id) { Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.program_adjustment_request WHERE id=?", Integer.class, id); return count != null && count > 0; }
+    /** MF-20: program history (TRAINING_PROGRAM audit trail) lists adjustment requests and decisions. */
+    private void audit(ActorContext actor, String action, long programId, String summary) {
+        jdbc.update("INSERT INTO dbo.audit_log (actor_user_id,actor_role,action,target_type,target_id,safe_summary,source) VALUES (?,?,?,?,?,?,?)",
+                actor.userId(), actor.roles().stream().findFirst().map(Enum::name).orElse(null), action, "TRAINING_PROGRAM", programId, summary, "API");
+    }
+
     private long insertId(String sql, PreparedStatementSetter binder) {
         if (sqlServer) {
             String output = sql.replaceFirst("(?i)\\bVALUES\\b", "OUTPUT INSERTED.id VALUES");
