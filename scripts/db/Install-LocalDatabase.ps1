@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$SeedTestAccounts)
+param([switch]$SeedTestAccounts,[switch]$SeedReferenceData)
 . (Join-Path $PSScriptRoot 'LocalDatabase.Common.ps1')
 Initialize-LocalJdbc
 $receiptPath=Get-LocalReceiptPath
@@ -13,4 +13,5 @@ $receipt=[ordered]@{formatVersion=2;status='INSTALLED_AND_VERIFIED';database=$en
 New-Item -ItemType Directory -Path (Split-Path $receiptPath) -Force|Out-Null
 $receipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $receiptPath -Encoding utf8
 if($SeedTestAccounts){& (Join-Path $PSScriptRoot 'Seed-LocalDatabase.ps1');if($LASTEXITCODE -ne 0){throw 'OPTIONAL_SEED_FAILED'}}
+if($SeedReferenceData){& (Join-Path $PSScriptRoot 'Seed-LocalReferenceData.ps1');if($LASTEXITCODE -ne 0){throw 'OPTIONAL_REFERENCE_SEED_FAILED'}}
 'LOCAL_INSTALL_PASS; receipt stored outside repository; existing databases untouched'

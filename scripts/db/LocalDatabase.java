@@ -160,6 +160,12 @@ class LocalDatabase {
                     try(Statement s=c.createStatement()){s.setQueryTimeout(20);executeBatch(s,Files.readString(Path.of(args[2]),StandardCharsets.UTF_8));}
                     System.out.println("OPTIONAL_AUTH_SEED_PASS");
                 }
+                case "reference" -> {
+                    verify(c,root);
+                    require(args.length==3,"RENDERED_REFERENCE_SEED_REQUIRED");
+                    try(Statement s=c.createStatement()){s.setQueryTimeout(20);executeBatch(s,Files.readString(Path.of(args[2]),StandardCharsets.UTF_8));}
+                    System.out.println("LOCAL_REFERENCE_SEED_PASS");
+                }
                 case "account" -> {
                     try(PreparedStatement q=c.prepareStatement("SELECT id,account_status,last_login_at,(SELECT COUNT_BIG(*) FROM dbo.audit_log WHERE actor_user_id=u.id AND action='USER_LOGGED_OUT'),(SELECT COUNT_BIG(*) FROM dbo.stable_box) FROM dbo.app_user u WHERE email=?")) {
                         q.setString(1,env("RH_ACCOUNT_EMAIL"));try(ResultSet r=q.executeQuery()) {
