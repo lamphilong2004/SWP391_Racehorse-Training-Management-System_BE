@@ -1,0 +1,3772 @@
+{
+  "testedCode": {
+    "fe": "e48f8383c19464d01d2d45fc288d8a393ec52bc4",
+    "be": "23cd849d0a88b22cc6d969ca760427e5b6f2505c"
+  },
+  "definitions": {
+    "WORKING": "Observed positive real HTTP path only; not exhaustive API COMPLETE",
+    "PARTIAL": "Implementation and consumer references present; current runtime acceptance incomplete",
+    "API_ONLY": "BE implementation present; no consumer reference in the existing inventory",
+    "UI_ONLY": "UI present without implemented API",
+    "MISSING": "Confirmed absent source",
+    "BLOCKED": "Named dependency or review prevents the particular action"
+  },
+  "counts": {
+    "WORKING": 18,
+    "PARTIAL": 110
+  },
+  "verifiedComplete": 0,
+  "operations": [
+    {
+      "operationId": "listHorses",
+      "method": "GET",
+      "endpoint": "/api/horses",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts",
+        "src\\features\\medical\\horseRead.ts",
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\restrictions\\RestrictionsPage.tsx"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/horses?q=RB-3BAC3DBB6D",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createHorse",
+      "method": "POST",
+      "endpoint": "/api/horses",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts",
+        "src\\features\\medical\\horseRead.ts",
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\restrictions\\RestrictionsPage.tsx"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "POST",
+          "path": "/api/horses",
+          "status": 201,
+          "expected": 201,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getHorse",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts",
+        "src\\features\\medical\\horseRead.ts",
+        "src\\features\\medical\\summaryService.ts",
+        "src\\features\\baseline\\BaselinePage.tsx",
+        "src\\features\\program-creation\\ProgramProfile.tsx"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/horses/2",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/horses/2",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "updateHorse",
+      "method": "PUT",
+      "endpoint": "/api/horses/{id}",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts",
+        "src\\features\\medical\\horseRead.ts",
+        "src\\features\\medical\\summaryService.ts",
+        "src\\features\\baseline\\BaselinePage.tsx",
+        "src\\features\\program-creation\\ProgramProfile.tsx"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "setPedigree",
+      "method": "PUT",
+      "endpoint": "/api/horses/{id}/pedigree",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listOwnerships",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/ownerships",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "addOwnership",
+      "method": "POST",
+      "endpoint": "/api/horses/{id}/ownerships",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listHorsePhotos",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/photos",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/photo/HorsePhoto.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoController.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoRepository.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoResourceAuthorizationInterceptor.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoService.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoStorageConfiguration.java",
+        "src/main/java/com/racehorse/horse/photo/LocalHorsePhotoProperties.java",
+        "src/main/java/com/racehorse/horse/photo/LocalHorsePhotoStorage.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "uploadHorsePhoto",
+      "method": "POST",
+      "endpoint": "/api/horses/{id}/photos",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/photo/HorsePhoto.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoController.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoRepository.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoResourceAuthorizationInterceptor.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoService.java",
+        "src/main/java/com/racehorse/horse/photo/HorsePhotoStorageConfiguration.java",
+        "src/main/java/com/racehorse/horse/photo/LocalHorsePhotoProperties.java",
+        "src/main/java/com/racehorse/horse/photo/LocalHorsePhotoStorage.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getHorseTimeline",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/timeline",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/timeline/HorseTimelineController.java",
+        "src/main/java/com/racehorse/horse/timeline/HorseTimelineService.java",
+        "src/main/java/com/racehorse/horse/timeline/TimelineEvent.java",
+        "src/main/java/com/racehorse/horse/timeline/TimelineEventType.java",
+        "src/main/java/com/racehorse/horse/timeline/TimelinePage.java",
+        "src/main/java/com/racehorse/horse/timeline/TimelineRepository.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listStableBoxes",
+      "method": "GET",
+      "endpoint": "/api/stable-boxes",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/stable/BoxStatus.java",
+        "src/main/java/com/racehorse/horse/stable/StableBoxController.java",
+        "src/main/java/com/racehorse/horse/stable/StableBoxMethodSecurityConfiguration.java",
+        "src/main/java/com/racehorse/horse/stable/StableBoxReadRepository.java",
+        "src/main/java/com/racehorse/horse/stable/StableBoxResponse.java",
+        "src/main/java/com/racehorse/horse/stable/StableBoxService.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/stable-boxes",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listStableAssignments",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/stable-assignments",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "assignStableBox",
+      "method": "POST",
+      "endpoint": "/api/horses/{id}/stable-assignments",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-012"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/HorseController.java",
+        "src/main/java/com/racehorse/horse/HorseIdentityRequest.java",
+        "src/main/java/com/racehorse/horse/HorseRepository.java",
+        "src/main/java/com/racehorse/horse/HorseService.java",
+        "src/main/java/com/racehorse/horse/OwnershipRequest.java",
+        "src/main/java/com/racehorse/horse/ParentReference.java",
+        "src/main/java/com/racehorse/horse/PedigreeRequest.java",
+        "src/main/java/com/racehorse/horse/StableAssignmentRequest.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listPendingActivation",
+      "method": "GET",
+      "endpoint": "/api/horses/pending-activation",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER, VETERINARIAN]",
+      "core": [
+        "CORE-016"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/activation/ActivationChecklistItem.java",
+        "src/main/java/com/racehorse/horse/activation/ActivationPage.java",
+        "src/main/java/com/racehorse/horse/activation/ActivationStatus.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationController.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationRepository.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationService.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getActivationStatus",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/activation-status",
+      "role": "[CLUB_MANAGER, HEAD_TRAINER, VETERINARIAN]",
+      "core": [
+        "CORE-016"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/activation/ActivationChecklistItem.java",
+        "src/main/java/com/racehorse/horse/activation/ActivationPage.java",
+        "src/main/java/com/racehorse/horse/activation/ActivationStatus.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationController.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationRepository.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationService.java"
+      ],
+      "feSource": [
+        "src\\features\\horses\\api\\horsesApi.ts",
+        "src\\features\\baseline\\BaselinePage.tsx"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "acknowledgeReadinessReview",
+      "method": "POST",
+      "endpoint": "/api/horses/{id}/readiness-review",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-016"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/activation/ActivationChecklistItem.java",
+        "src/main/java/com/racehorse/horse/activation/ActivationPage.java",
+        "src/main/java/com/racehorse/horse/activation/ActivationStatus.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationController.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationRepository.java",
+        "src/main/java/com/racehorse/horse/activation/HorseActivationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listMyHorses",
+      "method": "GET",
+      "endpoint": "/api/owner/horses",
+      "role": "[HORSE_OWNER]",
+      "core": [
+        "CORE-055"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseController.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseDtos.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseRepository.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseService.java"
+      ],
+      "feSource": [
+        "src\\features\\owner\\ownerApi.ts"
+      ],
+      "evidence": [
+        {
+          "role": "HORSE_OWNER",
+          "method": "GET",
+          "path": "/api/owner/horses",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getMyHorseProfile",
+      "method": "GET",
+      "endpoint": "/api/owner/horses/{id}/profile",
+      "role": "[HORSE_OWNER]",
+      "core": [
+        "CORE-055"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseController.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseDtos.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseRepository.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseService.java"
+      ],
+      "feSource": [
+        "src\\features\\owner\\ownerApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getMyHorseHealthSummary",
+      "method": "GET",
+      "endpoint": "/api/owner/horses/{id}/health-summary",
+      "role": "[HORSE_OWNER]",
+      "core": [
+        "CORE-055"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseController.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseDtos.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseRepository.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseService.java"
+      ],
+      "feSource": [
+        "src\\features\\owner\\ownerApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getMyHorseTrainingSummary",
+      "method": "GET",
+      "endpoint": "/api/owner/horses/{id}/training-summary",
+      "role": "[HORSE_OWNER]",
+      "core": [
+        "CORE-055"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseController.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseDtos.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseRepository.java",
+        "src/main/java/com/racehorse/horse/owner/OwnerHorseService.java"
+      ],
+      "feSource": [
+        "src\\features\\owner\\ownerApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listProgramTemplates",
+      "method": "GET",
+      "endpoint": "/api/program-templates",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER]",
+      "core": [
+        "CORE-021",
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\program-creation\\templateLibraryApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createProgramTemplate",
+      "method": "POST",
+      "endpoint": "/api/program-templates",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-021",
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\program-creation\\templateLibraryApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getProgramTemplate",
+      "method": "GET",
+      "endpoint": "/api/program-templates/{id}",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER]",
+      "core": [
+        "CORE-021"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "saveTemplateVersion",
+      "method": "POST",
+      "endpoint": "/api/program-templates/{id}/versions",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\templateLibraryApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "duplicateProgramTemplate",
+      "method": "POST",
+      "endpoint": "/api/program-templates/{id}/duplicate",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\templateLibraryApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "archiveProgramTemplate",
+      "method": "POST",
+      "endpoint": "/api/program-templates/{id}/archive",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\templateLibraryApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getTemplateRecommendations",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/template-recommendations",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-021"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listTrainingPrograms",
+      "method": "GET",
+      "endpoint": "/api/training-programs",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER, VETERINARIAN, GROOM]",
+      "core": [
+        "CORE-021"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\evaluation\\performanceHorses.ts",
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\trainer-session\\sessionApi.ts",
+        "src\\features\\training\\assigned\\supportingApi.ts"
+      ],
+      "evidence": [
+        {
+          "role": "HEAD_TRAINER",
+          "method": "GET",
+          "path": "/api/training-programs",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createTrainingProgram",
+      "method": "POST",
+      "endpoint": "/api/training-programs",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-021"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\evaluation\\performanceHorses.ts",
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\trainer-session\\sessionApi.ts",
+        "src\\features\\training\\assigned\\supportingApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getTrainingProgram",
+      "method": "GET",
+      "endpoint": "/api/training-programs/{id}",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER, VETERINARIAN, GROOM]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programApi.ts",
+        "src\\features\\program-creation\\programDetailApi.ts",
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getProgramProgress",
+      "method": "GET",
+      "endpoint": "/api/training-programs/{id}/progress",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programDetailApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getProgramHistory",
+      "method": "GET",
+      "endpoint": "/api/training-programs/{id}/history",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programDetailApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "setProgramStatus",
+      "method": "PATCH",
+      "endpoint": "/api/training-programs/{id}/status",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "reassignTrainer",
+      "method": "PUT",
+      "endpoint": "/api/training-programs/{id}/trainer-assignment",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "adjustProgramPhases",
+      "method": "PUT",
+      "endpoint": "/api/training-programs/{id}/phases",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getTrainerRecommendations",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/trainer-recommendations",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-021"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\programApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createAdjustmentRequest",
+      "method": "POST",
+      "endpoint": "/api/training-programs/{id}/adjustment-requests",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentApi.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestController.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listAdjustmentRequests",
+      "method": "GET",
+      "endpoint": "/api/adjustment-requests",
+      "role": "[HEAD_TRAINER, TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentApi.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestController.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "approveAdjustmentRequest",
+      "method": "POST",
+      "endpoint": "/api/adjustment-requests/{id}/approve",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentApi.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestController.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "rejectAdjustmentRequest",
+      "method": "POST",
+      "endpoint": "/api/adjustment-requests/{id}/reject",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "CORE-040"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentApi.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestController.java",
+        "src/main/java/com/racehorse/training/adjustment/AdjustmentRequestService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listExercises",
+      "method": "GET",
+      "endpoint": "/api/exercises",
+      "role": "[HEAD_TRAINER, TRAINER, WORK_RIDER, VETERINARIAN, CLUB_MANAGER]",
+      "core": [
+        "CORE-043"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/exercise/ExerciseController.java",
+        "src/main/java/com/racehorse/exercise/ExerciseInput.java",
+        "src/main/java/com/racehorse/exercise/ExerciseRepository.java",
+        "src/main/java/com/racehorse/exercise/ExerciseResponse.java",
+        "src/main/java/com/racehorse/exercise/ExerciseService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        {
+          "role": "TRAINER",
+          "method": "GET",
+          "path": "/api/exercises",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createExercise",
+      "method": "POST",
+      "endpoint": "/api/exercises",
+      "role": "[HEAD_TRAINER, TRAINER]",
+      "core": [
+        "CORE-043"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/exercise/ExerciseController.java",
+        "src/main/java/com/racehorse/exercise/ExerciseInput.java",
+        "src/main/java/com/racehorse/exercise/ExerciseRepository.java",
+        "src/main/java/com/racehorse/exercise/ExerciseResponse.java",
+        "src/main/java/com/racehorse/exercise/ExerciseService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getExercise",
+      "method": "GET",
+      "endpoint": "/api/exercises/{id}",
+      "role": "[HEAD_TRAINER, TRAINER, WORK_RIDER, VETERINARIAN, CLUB_MANAGER]",
+      "core": [
+        "CORE-043"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/exercise/ExerciseController.java",
+        "src/main/java/com/racehorse/exercise/ExerciseInput.java",
+        "src/main/java/com/racehorse/exercise/ExerciseRepository.java",
+        "src/main/java/com/racehorse/exercise/ExerciseResponse.java",
+        "src/main/java/com/racehorse/exercise/ExerciseService.java"
+      ],
+      "feSource": [
+        "src\\features\\training\\assigned\\supportingApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "updateExercise",
+      "method": "PUT",
+      "endpoint": "/api/exercises/{id}",
+      "role": "[HEAD_TRAINER, TRAINER]",
+      "core": [
+        "CORE-043"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/exercise/ExerciseController.java",
+        "src/main/java/com/racehorse/exercise/ExerciseInput.java",
+        "src/main/java/com/racehorse/exercise/ExerciseRepository.java",
+        "src/main/java/com/racehorse/exercise/ExerciseResponse.java",
+        "src/main/java/com/racehorse/exercise/ExerciseService.java"
+      ],
+      "feSource": [
+        "src\\features\\training\\assigned\\supportingApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listTrainingSessions",
+      "method": "GET",
+      "endpoint": "/api/training-sessions",
+      "role": "[HEAD_TRAINER, TRAINER, WORK_RIDER, CLUB_MANAGER, VETERINARIAN]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts",
+        "src\\features\\training\\assigned\\supportingApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createTrainingSession",
+      "method": "POST",
+      "endpoint": "/api/training-sessions",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts",
+        "src\\features\\training\\assigned\\supportingApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getTrainingSession",
+      "method": "GET",
+      "endpoint": "/api/training-sessions/{id}",
+      "role": "[HEAD_TRAINER, TRAINER, WORK_RIDER, GROOM, CLUB_MANAGER, VETERINARIAN]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\precheck\\api.ts",
+        "src\\features\\rider\\api.ts",
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        {
+          "role": "TRAINER",
+          "method": "GET",
+          "path": "/api/training-sessions/1",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "TRAINER",
+          "method": "GET",
+          "path": "/api/training-sessions/2",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "updateSessionBasics",
+      "method": "PATCH",
+      "endpoint": "/api/training-sessions/{id}",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\precheck\\api.ts",
+        "src\\features\\rider\\api.ts",
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "replaceSessionExercises",
+      "method": "PUT",
+      "endpoint": "/api/training-sessions/{id}/exercises",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "checkSessionSuitability",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/suitability-check",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "recommendWorkRidersForDraft",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/work-rider-recommendations",
+      "role": "[TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "recommendWorkRiders",
+      "method": "GET",
+      "endpoint": "/api/training-sessions/{id}/work-rider-recommendations",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "startSession",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/start",
+      "role": "[WORK_RIDER, TRAINER]",
+      "core": [
+        "CORE-028"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "pauseSession",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/pause",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-024"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "reduceSessionIntensity",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/reduce-intensity",
+      "role": "[TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "resumeSession",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/resume",
+      "role": "[TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "stopSession",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/stop",
+      "role": "[TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "completeSession",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/complete",
+      "role": "[WORK_RIDER]",
+      "core": [
+        "CORE-028"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "reportSessionIssue",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/report-issue",
+      "role": "[WORK_RIDER, TRAINER]",
+      "core": [
+        "CORE-028"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listGroomSessions",
+      "method": "GET",
+      "endpoint": "/api/groom/sessions",
+      "role": "[GROOM]",
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\precheck\\api.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "submitPreSessionCheck",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/pre-session-check",
+      "role": "[GROOM]",
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/incident/Core026Controller.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Repository.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Service.java",
+        "src/main/java/com/racehorse/medical/incident/IncidentApi.java"
+      ],
+      "feSource": [
+        "src\\features\\precheck\\api.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listMyAssignments",
+      "method": "GET",
+      "endpoint": "/api/work-rider/assignments",
+      "role": "[WORK_RIDER]",
+      "core": [
+        "CORE-028"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listMyRidingHistory",
+      "method": "GET",
+      "endpoint": "/api/work-rider/history",
+      "role": "[WORK_RIDER]",
+      "core": [
+        "CORE-028"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\rider\\api.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "submitRiderFeedback",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/rider-feedback",
+      "role": "[WORK_RIDER]",
+      "core": [
+        "CORE-028"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "submitMetricSample",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/metrics",
+      "role": "[WORK_RIDER]",
+      "core": [
+        "CORE-030"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/realtime/Core030Api.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Controller.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Service.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Simulator.java",
+        "src/main/java/com/racehorse/training/realtime/Core030WebSocketConfiguration.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "startSimulator",
+      "method": "POST",
+      "endpoint": "/api/simulator/sessions/{id}/start",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-030"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/realtime/Core030Api.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Controller.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Service.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Simulator.java",
+        "src/main/java/com/racehorse/training/realtime/Core030WebSocketConfiguration.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "stopSimulator",
+      "method": "POST",
+      "endpoint": "/api/simulator/sessions/{id}/stop",
+      "role": "[TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/realtime/Core030Api.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Controller.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Service.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Simulator.java",
+        "src/main/java/com/racehorse/training/realtime/Core030WebSocketConfiguration.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "acknowledgeAlert",
+      "method": "POST",
+      "endpoint": "/api/monitoring-alerts/{id}/acknowledge",
+      "role": "[TRAINER, VETERINARIAN]",
+      "core": [
+        "CORE-030"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/realtime/Core030Api.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Controller.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Service.java",
+        "src/main/java/com/racehorse/training/realtime/Core030Simulator.java",
+        "src/main/java/com/racehorse/training/realtime/Core030WebSocketConfiguration.java"
+      ],
+      "feSource": [
+        "src\\features\\live-monitoring\\LiveMonitoringPage.tsx"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "submitEvaluation",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/evaluation",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-032"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/evaluation/EvaluationApi.java",
+        "src/main/java/com/racehorse/training/evaluation/EvaluationController.java",
+        "src/main/java/com/racehorse/training/evaluation/EvaluationService.java"
+      ],
+      "feSource": [
+        "src\\features\\evaluation\\api.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getSessionResult",
+      "method": "GET",
+      "endpoint": "/api/training-sessions/{id}/result",
+      "role": "[HEAD_TRAINER, TRAINER, WORK_RIDER, CLUB_MANAGER, VETERINARIAN]",
+      "core": [
+        "CORE-032"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/evaluation/EvaluationApi.java",
+        "src/main/java/com/racehorse/training/evaluation/EvaluationController.java",
+        "src/main/java/com/racehorse/training/evaluation/EvaluationService.java"
+      ],
+      "feSource": [
+        "src\\features\\evaluation\\api.ts",
+        "src\\features\\rider\\api.ts",
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getHorsePerformance",
+      "method": "GET",
+      "endpoint": "/api/horses/{id}/performance",
+      "role": "[HEAD_TRAINER, TRAINER, CLUB_MANAGER, VETERINARIAN]",
+      "core": [
+        "CORE-032"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/evaluation/EvaluationApi.java",
+        "src/main/java/com/racehorse/training/evaluation/EvaluationController.java",
+        "src/main/java/com/racehorse/training/evaluation/EvaluationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "recordBaselineExamination",
+      "method": "POST",
+      "endpoint": "/api/horses/{horseId}/baseline-examinations",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/baseline/BaselineExamination.java",
+        "src/main/java/com/racehorse/horse/baseline/BaselineExaminationRequest.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineController.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineRepository.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineService.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseHealthStatus.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecord.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecordRequest.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecordsPage.java"
+      ],
+      "feSource": [
+        "src\\features\\baseline\\baselineApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listHorseWeightRecords",
+      "method": "GET",
+      "endpoint": "/api/horses/{horseId}/weights",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "VETERINARIAN",
+        "GROOM"
+      ],
+      "core": [
+        "CORE-014"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/baseline/BaselineExamination.java",
+        "src/main/java/com/racehorse/horse/baseline/BaselineExaminationRequest.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineController.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineRepository.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineService.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseHealthStatus.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecord.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecordRequest.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecordsPage.java"
+      ],
+      "feSource": [
+        "src\\features\\baseline\\baselineApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "recordHorseWeight",
+      "method": "POST",
+      "endpoint": "/api/horses/{horseId}/weights",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "CORE-014"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/horse/baseline/BaselineExamination.java",
+        "src/main/java/com/racehorse/horse/baseline/BaselineExaminationRequest.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineController.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineRepository.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseBaselineService.java",
+        "src/main/java/com/racehorse/horse/baseline/HorseHealthStatus.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecord.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecordRequest.java",
+        "src/main/java/com/racehorse/horse/baseline/WeightRecordsPage.java"
+      ],
+      "feSource": [
+        "src\\features\\baseline\\baselineApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "reportIncident",
+      "method": "POST",
+      "endpoint": "/api/incidents",
+      "role": [
+        "HEAD_TRAINER",
+        "TRAINER",
+        "WORK_RIDER",
+        "GROOM"
+      ],
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/incident/Core026Controller.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Repository.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Service.java",
+        "src/main/java/com/racehorse/medical/incident/IncidentApi.java"
+      ],
+      "feSource": [
+        "src\\features\\core046\\client.ts",
+        "src\\features\\medical\\incidentService.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listIncidents",
+      "method": "GET",
+      "endpoint": "/api/incidents",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "WORK_RIDER",
+        "VETERINARIAN",
+        "GROOM"
+      ],
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/incident/Core026Controller.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Repository.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Service.java",
+        "src/main/java/com/racehorse/medical/incident/IncidentApi.java"
+      ],
+      "feSource": [
+        "src\\features\\core046\\client.ts",
+        "src\\features\\medical\\incidentService.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getIncident",
+      "method": "GET",
+      "endpoint": "/api/incidents/{incidentId}",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "WORK_RIDER",
+        "VETERINARIAN",
+        "GROOM"
+      ],
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/incident/Core026Controller.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Repository.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Service.java",
+        "src/main/java/com/racehorse/medical/incident/IncidentApi.java"
+      ],
+      "feSource": [
+        "src\\features\\core046\\client.ts",
+        "src\\features\\medical\\incidentService.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "reviewIncident",
+      "method": "POST",
+      "endpoint": "/api/incidents/{incidentId}/review",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/incident/Core026Controller.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Repository.java",
+        "src/main/java/com/racehorse/medical/incident/Core026Service.java",
+        "src/main/java/com/racehorse/medical/incident/IncidentApi.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createMedicalCase",
+      "method": "POST",
+      "endpoint": "/api/medical/cases",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "src\\features\\medical\\service.ts",
+        "src\\features\\medical\\summaryService.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listMedicalCases",
+      "method": "GET",
+      "endpoint": "/api/medical/cases",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "src\\features\\medical\\service.ts",
+        "src\\features\\medical\\summaryService.ts"
+      ],
+      "evidence": [
+        {
+          "role": "VETERINARIAN",
+          "method": "GET",
+          "path": "/api/medical/cases",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getMedicalCase",
+      "method": "GET",
+      "endpoint": "/api/medical/cases/{caseId}",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "VETERINARIAN",
+          "method": "GET",
+          "path": "/api/medical/cases/1",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createMedicalExamination",
+      "method": "POST",
+      "endpoint": "/api/medical/cases/{caseId}/examinations",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createInjury",
+      "method": "POST",
+      "endpoint": "/api/medical/cases/{caseId}/injuries",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createReexamination",
+      "method": "POST",
+      "endpoint": "/api/medical/cases/{caseId}/re-examinations",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "closeMedicalCase",
+      "method": "POST",
+      "endpoint": "/api/medical/cases/{caseId}/close",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getTreatmentPlan",
+      "method": "GET",
+      "endpoint": "/api/medical/cases/{caseId}/treatment-plan",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "putTreatmentPlan",
+      "method": "PUT",
+      "endpoint": "/api/medical/cases/{caseId}/treatment-plan",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listTreatmentCaseTasks",
+      "method": "GET",
+      "endpoint": "/api/medical/cases/{caseId}/treatment-tasks",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getMyTreatmentTasks",
+      "method": "GET",
+      "endpoint": "/api/groom/treatment-tasks",
+      "role": [
+        "GROOM"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/groom/GroomTaskDatabaseSupport.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTask.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskAssignmentRepository.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskController.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskMaterializer.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskService.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTasksPage.java"
+      ],
+      "feSource": [
+        "src\\features\\core046\\client.ts",
+        "src\\features\\medical\\groomService.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "completeTreatmentTask",
+      "method": "POST",
+      "endpoint": "/api/groom/treatment-tasks/{taskId}/complete",
+      "role": [
+        "GROOM"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/groom/GroomTaskDatabaseSupport.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTask.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskAssignmentRepository.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskController.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskMaterializer.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTaskService.java",
+        "src/main/java/com/racehorse/medical/groom/GroomTreatmentTasksPage.java"
+      ],
+      "feSource": [
+        "src\\features\\core046\\client.ts",
+        "src\\features\\medical\\groomService.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getHorseTrainingAvailability",
+      "method": "GET",
+      "endpoint": "/api/horses/{horseId}/training-availability",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "WORK_RIDER",
+        "VETERINARIAN",
+        "GROOM"
+      ],
+      "core": [
+        "CORE-019"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionController.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionCreateRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionLiftRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ReplaceExerciseRulesRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionsPageResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionSummaryResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/TrainingAvailabilityResponse.java"
+      ],
+      "feSource": [
+        "src\\features\\medical\\service.ts",
+        "src\\features\\medical\\summaryService.ts",
+        "src\\features\\restrictions\\restrictionApi.ts",
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listMedicalRestrictions",
+      "method": "GET",
+      "endpoint": "/api/medical/restrictions",
+      "role": [
+        "CLUB_MANAGER",
+        "HEAD_TRAINER",
+        "TRAINER",
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionController.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionCreateRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionLiftRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ReplaceExerciseRulesRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionsPageResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionSummaryResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/TrainingAvailabilityResponse.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\restrictionApi.ts"
+      ],
+      "evidence": [
+        {
+          "role": "VETERINARIAN",
+          "method": "GET",
+          "path": "/api/medical/restrictions",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createMedicalRestriction",
+      "method": "POST",
+      "endpoint": "/api/horses/{horseId}/medical-restrictions",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionController.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionCreateRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionLiftRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ReplaceExerciseRulesRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionsPageResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionSummaryResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/TrainingAvailabilityResponse.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\restrictionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "liftMedicalRestriction",
+      "method": "POST",
+      "endpoint": "/api/medical/restrictions/{restrictionId}/lift",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionController.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionCreateRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionLiftRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ReplaceExerciseRulesRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionsPageResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionSummaryResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/TrainingAvailabilityResponse.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\restrictionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listGlobalMedicalThresholds",
+      "method": "GET",
+      "endpoint": "/api/medical/thresholds",
+      "role": [
+        "HEAD_TRAINER",
+        "TRAINER",
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/threshold/ThresholdApi.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdController.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdRepository.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getHorseThresholdOverrides",
+      "method": "GET",
+      "endpoint": "/api/horses/{horseId}/medical-thresholds",
+      "role": [
+        "HEAD_TRAINER",
+        "TRAINER",
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/threshold/ThresholdApi.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdController.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdRepository.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdService.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\thresholdApi.ts",
+        "src\\features\\live-monitoring\\LiveMonitoringPage.tsx"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "setHorseThresholdOverride",
+      "method": "PUT",
+      "endpoint": "/api/horses/{horseId}/medical-thresholds",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/threshold/ThresholdApi.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdController.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdRepository.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdService.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\thresholdApi.ts",
+        "src\\features\\live-monitoring\\LiveMonitoringPage.tsx"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getHerdHealthOverview",
+      "method": "GET",
+      "endpoint": "/api/medical/herd-health",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "CORE-035"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/core035/ExaminationStore.java",
+        "src/main/java/com/racehorse/core035/MedicalActorResolver.java",
+        "src/main/java/com/racehorse/core035/MedicalController.java",
+        "src/main/java/com/racehorse/core035/MedicalDtos.java",
+        "src/main/java/com/racehorse/core035/MedicalModels.java",
+        "src/main/java/com/racehorse/core035/MedicalPorts.java",
+        "src/main/java/com/racehorse/core035/MedicalRepositories.java",
+        "src/main/java/com/racehorse/core035/MedicalService.java"
+      ],
+      "feSource": [
+        "src\\features\\medical\\service.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "replaceRestrictionExerciseRules",
+      "method": "PUT",
+      "endpoint": "/api/medical/restrictions/{restrictionId}/exercise-rules",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ExerciseRuleResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionController.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionCreateRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionLiftRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/MedicalRestrictionResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/ReplaceExerciseRulesRequest.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionsPageResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/RestrictionSummaryResponse.java",
+        "src/main/java/com/racehorse/medical/restriction/api/TrainingAvailabilityResponse.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\restrictionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "endHorseThresholdOverride",
+      "method": "POST",
+      "endpoint": "/api/horses/{horseId}/medical-thresholds/end",
+      "role": [
+        "VETERINARIAN"
+      ],
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/medical/threshold/ThresholdApi.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdController.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdRepository.java",
+        "src/main/java/com/racehorse/medical/threshold/ThresholdService.java"
+      ],
+      "feSource": [
+        "src\\features\\restrictions\\thresholdApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "login",
+      "method": "POST",
+      "endpoint": "/api/auth/login",
+      "role": "[PUBLIC]",
+      "core": [
+        "CORE-007"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/auth/AccountStatus.java",
+        "src/main/java/com/racehorse/auth/ActorContext.java",
+        "src/main/java/com/racehorse/auth/AuthController.java",
+        "src/main/java/com/racehorse/auth/AuthenticationService.java",
+        "src/main/java/com/racehorse/auth/AuthRepository.java",
+        "src/main/java/com/racehorse/auth/CurrentActorProvider.java",
+        "src/main/java/com/racehorse/auth/CurrentUser.java",
+        "src/main/java/com/racehorse/auth/EmailAddressNormalizer.java",
+        "src/main/java/com/racehorse/auth/JwtSettings.java",
+        "src/main/java/com/racehorse/auth/JwtTokenService.java",
+        "src/main/java/com/racehorse/auth/LoginRateLimiter.java",
+        "src/main/java/com/racehorse/auth/LoginRequest.java",
+        "src/main/java/com/racehorse/auth/LoginResponse.java",
+        "src/main/java/com/racehorse/auth/PendingRegistrationRepository.java",
+        "src/main/java/com/racehorse/auth/RoleCode.java",
+        "src/main/java/com/racehorse/auth/SqlServerPendingRegistrationRepository.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "",
+          "method": "POST",
+          "path": "/api/auth/login",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getCurrentUser",
+      "method": "GET",
+      "endpoint": "/api/auth/me",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-007"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/auth/AccountStatus.java",
+        "src/main/java/com/racehorse/auth/ActorContext.java",
+        "src/main/java/com/racehorse/auth/AuthController.java",
+        "src/main/java/com/racehorse/auth/AuthenticationService.java",
+        "src/main/java/com/racehorse/auth/AuthRepository.java",
+        "src/main/java/com/racehorse/auth/CurrentActorProvider.java",
+        "src/main/java/com/racehorse/auth/CurrentUser.java",
+        "src/main/java/com/racehorse/auth/EmailAddressNormalizer.java",
+        "src/main/java/com/racehorse/auth/JwtSettings.java",
+        "src/main/java/com/racehorse/auth/JwtTokenService.java",
+        "src/main/java/com/racehorse/auth/LoginRateLimiter.java",
+        "src/main/java/com/racehorse/auth/LoginRequest.java",
+        "src/main/java/com/racehorse/auth/LoginResponse.java",
+        "src/main/java/com/racehorse/auth/PendingRegistrationRepository.java",
+        "src/main/java/com/racehorse/auth/RoleCode.java",
+        "src/main/java/com/racehorse/auth/SqlServerPendingRegistrationRepository.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "HEAD_TRAINER",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "TRAINER",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "WORK_RIDER",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "VETERINARIAN",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "GROOM",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "HORSE_OWNER",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        },
+        {
+          "role": "GROOM",
+          "method": "GET",
+          "path": "/api/auth/me",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "logout",
+      "method": "POST",
+      "endpoint": "/api/auth/logout",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-007"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/auth/AccountStatus.java",
+        "src/main/java/com/racehorse/auth/ActorContext.java",
+        "src/main/java/com/racehorse/auth/AuthController.java",
+        "src/main/java/com/racehorse/auth/AuthenticationService.java",
+        "src/main/java/com/racehorse/auth/AuthRepository.java",
+        "src/main/java/com/racehorse/auth/CurrentActorProvider.java",
+        "src/main/java/com/racehorse/auth/CurrentUser.java",
+        "src/main/java/com/racehorse/auth/EmailAddressNormalizer.java",
+        "src/main/java/com/racehorse/auth/JwtSettings.java",
+        "src/main/java/com/racehorse/auth/JwtTokenService.java",
+        "src/main/java/com/racehorse/auth/LoginRateLimiter.java",
+        "src/main/java/com/racehorse/auth/LoginRequest.java",
+        "src/main/java/com/racehorse/auth/LoginResponse.java",
+        "src/main/java/com/racehorse/auth/PendingRegistrationRepository.java",
+        "src/main/java/com/racehorse/auth/RoleCode.java",
+        "src/main/java/com/racehorse/auth/SqlServerPendingRegistrationRepository.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        },
+        {
+          "role": "HEAD_TRAINER",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        },
+        {
+          "role": "TRAINER",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        },
+        {
+          "role": "WORK_RIDER",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        },
+        {
+          "role": "VETERINARIAN",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        },
+        {
+          "role": "GROOM",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        },
+        {
+          "role": "HORSE_OWNER",
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "status": 204,
+          "expected": 204,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "register",
+      "method": "POST",
+      "endpoint": "/api/auth/register",
+      "role": "[PUBLIC]",
+      "core": [
+        "CORE-047"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/registration/RegistrationController.java",
+        "src/main/java/com/racehorse/registration/RegistrationDtos.java",
+        "src/main/java/com/racehorse/registration/RegistrationRateLimiter.java",
+        "src/main/java/com/racehorse/registration/RegistrationRepository.java",
+        "src/main/java/com/racehorse/registration/RegistrationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "forgotPassword",
+      "method": "POST",
+      "endpoint": "/api/auth/forgot-password",
+      "role": "[PUBLIC]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "resetPassword",
+      "method": "POST",
+      "endpoint": "/api/auth/reset-password",
+      "role": "[PUBLIC]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getMyAccount",
+      "method": "GET",
+      "endpoint": "/api/account",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "updateMyAccount",
+      "method": "PUT",
+      "endpoint": "/api/account",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "changeMyPassword",
+      "method": "PUT",
+      "endpoint": "/api/account/password",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listUsers",
+      "method": "GET",
+      "endpoint": "/api/admin/users",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/management/ManagementSummaryController.java",
+        "src/main/java/com/racehorse/management/ManagementSummaryService.java",
+        "src/main/java/com/racehorse/management/UserDirectoryController.java",
+        "src/main/java/com/racehorse/management/UserDirectoryService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/admin/users",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "createUser",
+      "method": "POST",
+      "endpoint": "/api/admin/users",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getUser",
+      "method": "GET",
+      "endpoint": "/api/admin/users/{id}",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "updateUser",
+      "method": "PUT",
+      "endpoint": "/api/admin/users/{id}",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "setUserStatus",
+      "method": "PATCH",
+      "endpoint": "/api/admin/users/{id}/status",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listSkills",
+      "method": "GET",
+      "endpoint": "/api/admin/skills",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listRoles",
+      "method": "GET",
+      "endpoint": "/api/admin/roles",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-049"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/account/AccountController.java",
+        "src/main/java/com/racehorse/account/AccountModels.java",
+        "src/main/java/com/racehorse/account/AccountService.java",
+        "src/main/java/com/racehorse/account/DevPasswordOutbox.java",
+        "src/main/java/com/racehorse/account/PasswordResetService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listRegistrations",
+      "method": "GET",
+      "endpoint": "/api/admin/registrations",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-047"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/registration/RegistrationController.java",
+        "src/main/java/com/racehorse/registration/RegistrationDtos.java",
+        "src/main/java/com/racehorse/registration/RegistrationRateLimiter.java",
+        "src/main/java/com/racehorse/registration/RegistrationRepository.java",
+        "src/main/java/com/racehorse/registration/RegistrationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "approveRegistration",
+      "method": "POST",
+      "endpoint": "/api/admin/registrations/{id}/approve",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-047"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/registration/RegistrationController.java",
+        "src/main/java/com/racehorse/registration/RegistrationDtos.java",
+        "src/main/java/com/racehorse/registration/RegistrationRateLimiter.java",
+        "src/main/java/com/racehorse/registration/RegistrationRepository.java",
+        "src/main/java/com/racehorse/registration/RegistrationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "rejectRegistration",
+      "method": "POST",
+      "endpoint": "/api/admin/registrations/{id}/reject",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-047"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/registration/RegistrationController.java",
+        "src/main/java/com/racehorse/registration/RegistrationDtos.java",
+        "src/main/java/com/racehorse/registration/RegistrationRateLimiter.java",
+        "src/main/java/com/racehorse/registration/RegistrationRepository.java",
+        "src/main/java/com/racehorse/registration/RegistrationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listAuditLog",
+      "method": "GET",
+      "endpoint": "/api/admin/audit-log",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-051"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/management/audit/AuditQueryController.java",
+        "src/main/java/com/racehorse/management/audit/AuditQueryService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/admin/audit-log?size=10",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getClubManagerDashboard",
+      "method": "GET",
+      "endpoint": "/api/dashboard/club-manager",
+      "role": "[CLUB_MANAGER]",
+      "core": [
+        "CORE-051"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/management/ManagementSummaryController.java",
+        "src/main/java/com/racehorse/management/ManagementSummaryService.java",
+        "src/main/java/com/racehorse/management/UserDirectoryController.java",
+        "src/main/java/com/racehorse/management/UserDirectoryService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "CLUB_MANAGER",
+          "method": "GET",
+          "path": "/api/dashboard/club-manager",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listNotifications",
+      "method": "GET",
+      "endpoint": "/api/notifications",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-053"
+      ],
+      "status": "WORKING",
+      "beSource": [
+        "src/main/java/com/racehorse/notification/NotificationApi.java",
+        "src/main/java/com/racehorse/notification/NotificationController.java",
+        "src/main/java/com/racehorse/notification/NotificationPublisher.java",
+        "src/main/java/com/racehorse/notification/NotificationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        {
+          "role": "GROOM",
+          "method": "GET",
+          "path": "/api/notifications",
+          "status": 200,
+          "expected": 200,
+          "pass": true
+        }
+      ],
+      "blocker": "None for observed request only; exhaustive business/RBAC/transaction acceptance remains unverified",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "getUnreadNotificationCount",
+      "method": "GET",
+      "endpoint": "/api/notifications/unread-count",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-053"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/notification/NotificationApi.java",
+        "src/main/java/com/racehorse/notification/NotificationController.java",
+        "src/main/java/com/racehorse/notification/NotificationPublisher.java",
+        "src/main/java/com/racehorse/notification/NotificationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "markNotificationRead",
+      "method": "PATCH",
+      "endpoint": "/api/notifications/{id}/read",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-053"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/notification/NotificationApi.java",
+        "src/main/java/com/racehorse/notification/NotificationController.java",
+        "src/main/java/com/racehorse/notification/NotificationPublisher.java",
+        "src/main/java/com/racehorse/notification/NotificationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "markAllNotificationsRead",
+      "method": "POST",
+      "endpoint": "/api/notifications/read-all",
+      "role": "[ALL_AUTHENTICATED]",
+      "core": [
+        "CORE-053"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/notification/NotificationApi.java",
+        "src/main/java/com/racehorse/notification/NotificationController.java",
+        "src/main/java/com/racehorse/notification/NotificationPublisher.java",
+        "src/main/java/com/racehorse/notification/NotificationService.java"
+      ],
+      "feSource": [
+        "Consumer trace NOT VERIFIED"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listTemplateTrainerSpecializations",
+      "method": "GET",
+      "endpoint": "/api/program-templates/trainer-specializations",
+      "role": "[HEAD_TRAINER]",
+      "core": [
+        "MANUAL_TRACE_REQUIRED"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/program/ProgramApi.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramController.java",
+        "src/main/java/com/racehorse/training/program/TrainingProgramService.java"
+      ],
+      "feSource": [
+        "src\\features\\program-creation\\templateLibraryApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "listSessionGroomCandidates",
+      "method": "GET",
+      "endpoint": "/api/training-sessions/{id}/groom-candidates",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    },
+    {
+      "operationId": "assignSessionGroom",
+      "method": "POST",
+      "endpoint": "/api/training-sessions/{id}/groom-assignment",
+      "role": "[TRAINER]",
+      "core": [
+        "CORE-026"
+      ],
+      "status": "PARTIAL",
+      "beSource": [
+        "src/main/java/com/racehorse/training/session/Core028Api.java",
+        "src/main/java/com/racehorse/training/session/Core028Controller.java",
+        "src/main/java/com/racehorse/training/session/Core028Service.java",
+        "src/main/java/com/racehorse/training/session/SessionApi.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionController.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionRepository.java",
+        "src/main/java/com/racehorse/training/session/TrainingSessionService.java"
+      ],
+      "feSource": [
+        "src\\features\\trainer-session\\sessionApi.ts"
+      ],
+      "evidence": [
+        "Static implementation mapping from existing API inventory; no positive request this batch"
+      ],
+      "blocker": "No current positive operation smoke; full acceptance deferred",
+      "acceptanceComplete": false
+    }
+  ]
+}

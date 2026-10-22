@@ -1,0 +1,1191 @@
+openapi: 3.1.0
+info:
+  title: Racehorse Training & Management System — Shared API (auth, registration, account, users, audit, notifications, CM dashboard)
+  version: 0.1.0
+  description: |
+    CORE-003 contract. Owner: Long (security). Reviewers: Tiến (BE), Hoàng (FE consumer).
+
+    Sources: requirements/role-feature-matrix.md; DEC-002 §Q-04; DEC-004 (7 roles); DEC-008 §2 and §6 (R1–R12);
+    DEC-007 §3.2; DEC-009 §4; database/schema.sql (app_user, role, user_role, skill, user_skill, notification,
+    audit_log); technical table registration_request (DEC-008 §2.3, outside the 51 entities).
+
+    Conventions (all contracts):
+    - Every response uses the CORE-001 envelope `{ success, data, error }`. `data` is omitted on errors and `error` on success.
+    - Timestamps are ISO-8601 UTC (`2026-10-10T08:15:00.000Z`); calendar dates are `YYYY-MM-DD`.
+    - `x-roles` lists the RBAC role codes allowed to call an operation. Spring Security enforces it (CORE-007).
+      Hiding a menu item in the frontend is never authorization.
+    - There is no `SYSTEM` role. Automatic behaviour runs inside the backend and never authenticates.
+    - Lists are paged: `page` is zero-based, `size` defaults to 20 (max 100).
+
+    Security rules encoded here (DEC-008 §6):
+    - R1: duplicate emails (normalised trim + NFC + lower-case) never create a second request: existing user, PENDING request,
+      cool-down (< 7 days after a rejection) and ≥ 3 rejections all get the same neutral 202 as a new request.
+    - R2: password fields are write-only, never returned, never logged.
+    - R3 / R4: approve (exactly one role) and reject are Club Manager only, conditional on PENDING_APPROVAL (409 otherwise).
+    - R6: no role, including Club Manager, can view, set or receive a password; MF-17 users start with a NULL hash.
+    - R5: login outcome order (ACTIVE → JWT; INACTIVE → 403; PENDING with matching hash → 403; everything else → one identical 401).
+    - R7: registration never accepts a role; unknown properties are ignored and never persisted.
+    - R8: register always returns 202 with the same body; only 400 (field validation) and 429 differ.
+    - R9: forgot-password always returns 202; the reset token is never in a response body.
+    - R10: `permitAll` = login, register, forgot-password, reset-password, health, Swagger (dev). Everything else needs a JWT.
+      Every `/api/admin/**` operation is CLUB_MANAGER only.
+    - R11: emails are masked in logs (`j***@domain`); auth request/response bodies are never logged.
+    - R12: a registration hash exists only while PENDING; PENDING requests do not expire automatically in this increment.
+
+    `x-roles` pseudo-values: `PUBLIC` = permitAll (R10 list only); `ALL_AUTHENTICATED` = any of the 7 roles with a valid JWT.
+
+    STOMP (WebSocket) — not expressible in OpenAPI, documented here:
+    - Endpoint `/ws`. The client sends `Authorization: Bearer <jwt>` in the STOMP CONNECT headers; a missing or invalid token is rejected at CONNECT.
+    - User queue `/user/queue/notifications`: each new `notification` row for the signed-in user is pushed as a `Notification` object (schema below).
+      Clients subscribe once after login and refresh `/api/notifications/unread-count` on reconnect.
+    - Flow 2 session topics (`/topic/sessions/{id}/metrics|alerts|state`) are defined in flow2-stomp.md (CORE-005).
+  contact:
+    name: SWP391 Racehorse team
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+    description: Login, registration (access request), password reset. DEC-008.
+  - name: Account
+    description: The signed-in user's own profile (SCR-AUTH-003).
+  - name: Admin Users
+    description: MF-17 Staff & User Management (Club Manager only).
+  - name: Admin Registrations
+    description: DEC-008 registration review (Club Manager only).
+  - name: Admin Roles
+    description: MF-18 read-only roles view (SCR-ADMIN-003).
+  - name: Audit
+    description: MF-20 Audit Log, read-only.
+  - name: Dashboard
+    description: SCR-DASH-001 Club Manager dashboard, core widgets only (DEC-009 §4).
+  - name: Notifications
+    description: In-app notifications (REST + STOMP). Q-19 in-app only.
+
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Sign in with email and password
+      description: |
+        DEC-008 §6 R5. Outcomes, checked in this order:
+        1. `app_user` found and password correct: ACTIVE → 200 with a JWT; INACTIVE → 403 "Your account is deactivated."
+        2. No `app_user`, but a PENDING_APPROVAL registration whose hash matches → 403 "Your account is waiting for Club Manager approval." (no token)
+        3. Anything else (unknown email, wrong password, REJECTED request, user with NULL hash) → one identical 401 "Invalid email or password.".
+           A dummy BCrypt check keeps the timing equal.
+
+        Rate limit (R8): 10 failed attempts per 15 minutes per IP + email → 429.
+        Successful login sets `app_user.last_login_at`.
+      security: []
+      x-roles: [PUBLIC]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Invalid email or password (identical for every non-disclosing case).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error: { code: UNAUTHORIZED, message: Invalid email or password., details: [] }
+        '403':
+          description: Correct credentials, but the account cannot sign in yet or any more.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                pending:
+                  value:
+                    success: false
+                    error: { code: FORBIDDEN, message: Your account is waiting for Club Manager approval., details: [] }
+                inactive:
+                  value:
+                    success: false
+                    error: { code: FORBIDDEN, message: Your account is deactivated., details: [] }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: The signed-in user (used to resolve /dashboard and the sidebar)
+      x-roles: [ALL_AUTHENTICATED]
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/CurrentUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The authenticated account is deactivated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error: { code: FORBIDDEN, message: Your account is deactivated., details: [] }
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Sign out
+      description: |
+        The JWT is stateless (physical-schema.md §9: no token store). The client discards its token.
+        The endpoint exists so the frontend has one sign-out call and the backend can write an audit entry.
+      x-roles: [ALL_AUTHENTICATED]
+      responses:
+        '204': { description: Signed out. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Submit an access request (no role, no account yet)
+      description: |
+        DEC-008 §2.1 and §6 R1, R2, R7, R8.
+        - Creates a `registration_request` in PENDING_APPROVAL, never an `app_user`.
+        - There is **no role field**. Any extra property (for example `role`, `roles`, `authority`) is ignored and never persisted.
+        - The password is validated and hashed with BCrypt immediately. The plaintext is never stored, logged or echoed.
+        - **Always 202 with the same body**: created, duplicate email, pending request, cool-down and blocked cases are indistinguishable.
+          Only field validation (400, which never reveals whether the email exists) and rate limiting (429) differ.
+        - Rate limits: 5 per 15 min per client IP; 3 per 24 h per normalised email.
+      security: []
+      x-roles: [PUBLIC]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '202':
+          description: Neutral confirmation. Identical in every case.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/NeutralMessage' }
+              example:
+                success: true
+                data: { message: 'If the details can be accepted, your request is waiting for Club Manager approval.' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: forgotPassword
+      summary: Request a password reset link (NOT PRODUCTION-READY)
+      description: |
+        DEC-008 §3 item 7 and §6 R9.
+        - Always 202 with the same neutral message.
+        - A token is issued only for an ACTIVE `app_user` (a NULL hash means "set your first password").
+          PENDING/REJECTED registrations, INACTIVE users and unknown emails get no token and no outbox entry.
+        - The token goes only to the dev-profile outbox. It never appears in a response or in production logs.
+        - Rate limits: 3 per hour per email; 10 per hour per IP.
+      security: []
+      x-roles: [PUBLIC]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '202':
+          description: Neutral confirmation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/NeutralMessage' }
+              example:
+                success: true
+                data: { message: 'If an account exists for this email, a reset link has been sent.' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: Set a new password with a reset token (NOT PRODUCTION-READY)
+      description: |
+        DEC-008 §6 R9. The token is HMAC-signed, expires after 30 minutes and is single-use: it embeds a fingerprint of the
+        current password hash and `updated_at`, so any password change invalidates it.
+        A reset changes only `password_hash` and `updated_at`, never roles or status. Audit: `PASSWORD_RESET` (no token).
+        An invalid, expired or used token returns 400 with one generic message.
+      security: []
+      x-roles: [PUBLIC]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204': { description: Password set. The user can now sign in. }
+        '400':
+          description: Field validation failed, or the link is invalid or has expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error: { code: VALIDATION_ERROR, message: The reset link is invalid or has expired., details: [] }
+
+  /api/account:
+    get:
+      tags: [Account]
+      operationId: getMyAccount
+      summary: My account (own record only)
+      x-roles: [ALL_AUTHENTICATED]
+      responses:
+        '200':
+          description: Own profile.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/AccountProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [Account]
+      operationId: updateMyAccount
+      summary: Update my profile
+      description: |
+        ASSUMPTION (SCR-AUTH-003 lists "Update profile"; the editable fields are not specified): only `fullName` is editable here.
+        Email and role are changed by a Club Manager through MF-17, never by the user.
+      x-roles: [ALL_AUTHENTICATED]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAccountRequest' }
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/AccountProfile' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/account/password:
+    put:
+      tags: [Account]
+      operationId: changeMyPassword
+      summary: Change my password (requires the current password)
+      description: DEC-008 §6 R9. A wrong current password returns 400 with a field error on `currentPassword`.
+      x-roles: [ALL_AUTHENTICATED]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Password changed. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/admin/users:
+    get:
+      tags: [Admin Users]
+      operationId: listUsers
+      summary: User list (SCR-ADMIN-001)
+      x-roles: [CLUB_MANAGER]
+      parameters:
+        - { name: q, in: query, description: "Search in name, user code or email.", schema: { type: string, maxLength: 100 } }
+        - { name: role, in: query, schema: { $ref: '#/components/schemas/RoleCode' } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AccountStatus' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of users.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/UserSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Users]
+      operationId: createUser
+      summary: Create a user (SCR-ADMIN-002 Create, Figma 289:3336)
+      description: |
+        DEC-008 §6 R6: there is **no password field**. The user is created ACTIVE with `password_hash` = NULL and sets a first
+        password through the reset flow. `user_code` is generated (`U-nnn`). Exactly one role is assigned (Figma role select,
+        7 options). Audit: `USER_CREATED`, `ROLE_ASSIGNED`.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: User created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/UserDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin Users]
+      operationId: getUser
+      summary: User detail
+      x-roles: [CLUB_MANAGER]
+      responses:
+        '200':
+          description: User.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/UserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Admin Users]
+      operationId: updateUser
+      summary: Edit a user (SCR-ADMIN-002 Edit, Figma 289:3538)
+      description: |
+        Changes name, email, role and the skill/experience profile used by the Trainer and Work Rider recommendations.
+        Never touches the password (R6). Changing the role replaces the user's single role. Audit: `USER_UPDATED`,
+        and `ROLE_ASSIGNED` when the role changes. A Club Manager cannot remove their own CLUB_MANAGER role (409).
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/UserDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/users/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin Users]
+      operationId: setUserStatus
+      summary: Activate or deactivate a user (never hard delete, BR-D07)
+      description: |
+        MF-17 `ACTIVE ⇄ INACTIVE`. An INACTIVE user cannot sign in (403). A Club Manager cannot deactivate their own account (409).
+        Audit: `USER_ACTIVATED` / `USER_DEACTIVATED`.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetUserStatusRequest' }
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/UserDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/skills:
+    get:
+      tags: [Admin Users]
+      operationId: listSkills
+      summary: Skill catalogue (trainer specialisations and rider skills) for the user form
+      description: |
+        Read-only catalogue for the user form. Not in the CORE-003 playbook API list; kept because CORE-049 (MF-17 BE) owns
+        `PUT /api/admin/users/{id}` with role **and skills** (writes user_skill, reads skill), and Flow 2 preconditions P3/P4
+        need Trainer specialisation and Work Rider skill profiles for the recommendations (BR-D22, BR-D29).
+        No other CORE task owns a skill endpoint. There is no skill create/edit/delete: the catalogue is seed data (CORE-011).
+        Club Manager only, like every `/api/admin/**` path (DEC-008 §6 R10).
+      x-roles: [CLUB_MANAGER]
+      parameters:
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/SkillKind' } }
+      responses:
+        '200':
+          description: Skills.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Skill' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/roles:
+    get:
+      tags: [Admin Roles]
+      operationId: listRoles
+      summary: The 7 roles with their permission summary (SCR-ADMIN-003, read-only)
+      description: Read-only (Resolution C). There is no endpoint to edit permissions; roles are assigned to users in MF-17.
+      x-roles: [CLUB_MANAGER]
+      responses:
+        '200':
+          description: Roles.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        minItems: 7
+                        maxItems: 7
+                        items: { $ref: '#/components/schemas/RoleInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/registrations:
+    get:
+      tags: [Admin Registrations]
+      operationId: listRegistrations
+      summary: Registration requests (SCR-ADMIN-REG)
+      x-roles: [CLUB_MANAGER]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/RegistrationStatus' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of requests. Never contains a password, hash or "has password" indicator (R2).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/RegistrationRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/registrations/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Registrations]
+      operationId: approveRegistration
+      summary: Approve and assign exactly one role
+      description: |
+        DEC-008 §6 R3, one transaction:
+        - conditional update `WHERE status = 'PENDING_APPROVAL'`; a request already decided → 409
+        - re-check `uq_app_user__email`; taken → 409 and the request stays PENDING (the Club Manager may reject it)
+        - create `app_user` (ACTIVE, generated `user_code`, the request's hash), create `user_role` (assigned by the Club Manager)
+        - set the request APPROVED and clear its `password_hash`
+        - audit `REGISTRATION_APPROVED` + `ROLE_ASSIGNED` (no secrets)
+
+        No email or notification goes to the applicant; they sign in with their own password.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveRegistrationRequest' }
+      responses:
+        '200':
+          description: Approved. Returns the decided request (with `createdUserId`).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/RegistrationRequest' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/registrations/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Registrations]
+      operationId: rejectRegistration
+      summary: Reject a registration request
+      description: |
+        DEC-008 §6 R4. Same conditional update; status REJECTED; `password_hash` cleared immediately; the row is kept.
+        The optional reason is visible to Club Managers only, never to the applicant. Audit `REGISTRATION_REJECTED`.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectRegistrationRequest' }
+      responses:
+        '200':
+          description: Rejected.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/RegistrationRequest' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/audit-log:
+    get:
+      tags: [Audit]
+      operationId: listAuditLog
+      summary: Audit log (SCR-ADMIN-004, read-only)
+      description: Append-only. Entries never contain a password, hash, JWT, reset token or secret. The audited action set is proposed in CORE-051 (Q-15).
+      x-roles: [CLUB_MANAGER]
+      parameters:
+        - { name: actor, in: query, description: Actor user id., schema: { type: integer, format: int64 } }
+        - { name: action, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: targetType, in: query, schema: { type: string, maxLength: 50 } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of entries, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/AuditEntry' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/dashboard/club-manager:
+    get:
+      tags: [Dashboard]
+      operationId: getClubManagerDashboard
+      summary: Club Manager dashboard, core widgets (SCR-DASH-001, Figma 308:4605)
+      description: |
+        Core widgets only (DEC-007 §3.4, DEC-009 §4). No finance, race, inventory, nutrition or care-plan figures,
+        and no clinical detail.
+      x-roles: [CLUB_MANAGER]
+      responses:
+        '200':
+          description: Dashboard figures.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ClubManagerDashboard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: My notifications (SCR-NOTIF-001 drawer, SCR-NOTIF-002 center)
+      description: Always scoped to `recipient_user_id` = the signed-in user. Newest first. No deletion.
+      x-roles: [ALL_AUTHENTICATED]
+      parameters:
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/NotificationCategory' } }
+        - { name: read, in: query, description: "true = read only; false = unread only; omitted = all.", schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of notifications.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/notifications/unread-count:
+    get:
+      tags: [Notifications]
+      operationId: getUnreadNotificationCount
+      summary: Unread count for the header bell
+      x-roles: [ALL_AUTHENTICATED]
+      responses:
+        '200':
+          description: Unread count.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/UnreadCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/notifications/{id}/read:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark one notification as read
+      description: Only the recipient may mark it. Someone else's notification returns 404 (never reveals that it exists).
+      x-roles: [ALL_AUTHENTICATED]
+      responses:
+        '200':
+          description: Updated notification.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark all my notifications as read
+      x-roles: [ALL_AUTHENTICATED]
+      responses:
+        '200':
+          description: Remaining unread count (0).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/UnreadCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Stateless JWT from POST /api/auth/login. Claims: `sub` = user id, `roles` = role codes, `exp`.
+        Lifetime and signing key are configuration (CORE-007); the key is an environment variable, never committed.
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    Page:
+      name: page
+      in: query
+      description: Zero-based page index.
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationError:
+      description: Field validation failed (VALIDATION_ERROR). `details` lists each invalid field.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Request validation failed.
+              details:
+                - { field: email, message: must be a well-formed email address }
+    Unauthorized:
+      description: Missing, invalid or expired JWT.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Authenticated, but the role may not perform this operation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Resource not found (or not visible to the caller).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: State conflict (CONFLICT), for example a duplicate email or a request that was already decided.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    TooManyRequests:
+      description: Rate limit reached. Identical whether or not the account exists.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            error: { code: TOO_MANY_REQUESTS, message: Too many attempts. Try again later., details: [] }
+
+  schemas:
+    # ---------- Envelope (mirrors CORE-001 com.racehorse.common.api; keep identical in every contract file) ----------
+    Envelope:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        data: {}
+        error: { $ref: '#/components/schemas/ApiError' }
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error: { $ref: '#/components/schemas/ApiError' }
+    ApiError:
+      type: object
+      required: [code, message, details]
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message: { type: string }
+        details:
+          type: array
+          items: { $ref: '#/components/schemas/ErrorDetail' }
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        field: { type: [string, 'null'] }
+        message: { type: string }
+    ErrorCode:
+      type: string
+      enum: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, CONFLICT, BUSINESS_RULE_VIOLATION, TOO_MANY_REQUESTS, INTERNAL_ERROR]
+    PageMeta:
+      type: object
+      required: [page, size, totalItems, totalPages]
+      properties:
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalItems: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    # ---------- Vocabularies (schema.sql CHECK constraints) ----------
+    RoleCode:
+      type: string
+      description: The 7 RBAC roles (ck_role__role_code). There is no SYSTEM role.
+      enum: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, WORK_RIDER, VETERINARIAN, GROOM, HORSE_OWNER]
+    AccountStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+    RegistrationStatus:
+      type: string
+      enum: [PENDING_APPROVAL, APPROVED, REJECTED]
+    SkillKind:
+      type: string
+      enum: [TRAINER_SPECIALIZATION, RIDER_SKILL]
+    NotificationCategory:
+      type: string
+      enum: [ALERTS, MEDICAL, SCHEDULE]
+
+    # ---------- Auth ----------
+    Password:
+      type: string
+      writeOnly: true
+      format: password
+      minLength: 8
+      maxLength: 64
+      description: |
+        DEC-008 §6 R2: 8–64 characters, at least 1 letter and 1 digit, at most 72 bytes UTF-8, not equal to the email.
+        Write-only: never returned, logged or included in toString.
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, format: password, writeOnly: true, minLength: 1, maxLength: 64 }
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string, description: JWT. Never logged. }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, description: Seconds until expiry. }
+        user: { $ref: '#/components/schemas/CurrentUser' }
+    CurrentUser:
+      type: object
+      description: Never contains a password, hash or token.
+      required: [id, userCode, fullName, email, roles, accountStatus]
+      properties:
+        id: { type: integer, format: int64 }
+        userCode: { type: string, maxLength: 20, examples: [U-001] }
+        fullName: { type: string, maxLength: 150 }
+        email: { type: string, format: email, maxLength: 254 }
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RoleCode' }
+        accountStatus: { $ref: '#/components/schemas/AccountStatus' }
+    RegisterRequest:
+      type: object
+      description: |
+        No role field (DEC-008 §2.1, R7). Extra properties are ignored and never persisted, so
+        `additionalProperties` is intentionally not false: a client cannot detect role handling from a 400.
+      required: [fullName, email, password, confirmPassword]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 150 }
+        email: { type: string, format: email, maxLength: 254, description: "Normalised server-side (trim, NFC, lower-case)." }
+        password: { $ref: '#/components/schemas/Password' }
+        confirmPassword: { type: string, format: password, writeOnly: true, description: Must equal `password`. }
+    NeutralMessage:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword, confirmPassword]
+      properties:
+        token: { type: string, writeOnly: true, description: From the reset link. Never logged. }
+        newPassword: { $ref: '#/components/schemas/Password' }
+        confirmPassword: { type: string, format: password, writeOnly: true }
+
+    # ---------- Account ----------
+    AccountProfile:
+      type: object
+      required: [id, userCode, fullName, email, roles, accountStatus]
+      properties:
+        id: { type: integer, format: int64 }
+        userCode: { type: string }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/RoleCode' }
+        accountStatus: { $ref: '#/components/schemas/AccountStatus' }
+        lastLoginAt: { type: [string, 'null'], format: date-time }
+    UpdateAccountRequest:
+      type: object
+      required: [fullName]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 150 }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword, confirmPassword]
+      properties:
+        currentPassword: { type: string, format: password, writeOnly: true }
+        newPassword: { $ref: '#/components/schemas/Password' }
+        confirmPassword: { type: string, format: password, writeOnly: true }
+
+    # ---------- Users (MF-17) ----------
+    UserSummary:
+      type: object
+      description: SCR-ADMIN-001 row. Never contains a password, hash or "has password" indicator.
+      required: [id, userCode, fullName, email, roles, accountStatus]
+      properties:
+        id: { type: integer, format: int64 }
+        userCode: { type: string }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/RoleCode' }
+        accountStatus: { $ref: '#/components/schemas/AccountStatus' }
+        lastLoginAt: { type: [string, 'null'], format: date-time }
+    UserDetail:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          properties:
+            experienceYears: { type: [integer, 'null'], minimum: 0 }
+            experienceLevel: { type: [string, 'null'], maxLength: 50 }
+            skills:
+              type: array
+              items: { $ref: '#/components/schemas/Skill' }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: [string, 'null'], format: date-time }
+    CreateUserRequest:
+      type: object
+      description: No password field (DEC-008 §6 R6).
+      required: [fullName, email, roleCode]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 150 }
+        email: { type: string, format: email, maxLength: 254 }
+        roleCode: { $ref: '#/components/schemas/RoleCode' }
+        experienceYears: { type: [integer, 'null'], minimum: 0 }
+        experienceLevel: { type: [string, 'null'], maxLength: 50 }
+        skillIds:
+          type: array
+          description: Only for TRAINER (TRAINER_SPECIALIZATION) and WORK_RIDER (RIDER_SKILL).
+          items: { type: integer, format: int64 }
+    UpdateUserRequest:
+      type: object
+      required: [fullName, email, roleCode]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 150 }
+        email: { type: string, format: email, maxLength: 254 }
+        roleCode: { $ref: '#/components/schemas/RoleCode' }
+        experienceYears: { type: [integer, 'null'], minimum: 0 }
+        experienceLevel: { type: [string, 'null'], maxLength: 50 }
+        skillIds:
+          type: array
+          items: { type: integer, format: int64 }
+    SetUserStatusRequest:
+      type: object
+      required: [accountStatus]
+      properties:
+        accountStatus: { $ref: '#/components/schemas/AccountStatus' }
+    Skill:
+      type: object
+      required: [id, name, kind]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, maxLength: 100 }
+        kind: { $ref: '#/components/schemas/SkillKind' }
+    RoleInfo:
+      type: object
+      required: [roleCode, displayName, scoping]
+      properties:
+        roleCode: { $ref: '#/components/schemas/RoleCode' }
+        displayName: { type: string, maxLength: 100 }
+        scoping:
+          type: string
+          enum: [ROLE_LEVEL, ASSIGNMENT_SCOPED, ROW_LEVEL_OWN]
+          description: role-feature-matrix §1 / §3a. Trainer and Work Rider are assignment-scoped; Horse Owner is row-level.
+        userCount: { type: integer, minimum: 0 }
+
+    # ---------- Registration (technical table registration_request) ----------
+    RegistrationRequest:
+      type: object
+      description: Never exposes `password_hash` or any indicator of it (R2).
+      required: [id, fullName, email, status, requestedAt]
+      properties:
+        id: { type: integer, format: int64 }
+        fullName: { type: string, maxLength: 150 }
+        email: { type: string, format: email, maxLength: 254 }
+        status: { $ref: '#/components/schemas/RegistrationStatus' }
+        requestedAt: { type: string, format: date-time }
+        reviewedAt: { type: [string, 'null'], format: date-time }
+        reviewedBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        approvedRoleCode: { oneOf: [{ $ref: '#/components/schemas/RoleCode' }, { type: 'null' }] }
+        createdUserId: { type: [integer, 'null'], format: int64 }
+        decisionReason: { type: [string, 'null'], maxLength: 500, description: Club Managers only; never shown to the applicant. }
+    ApproveRegistrationRequest:
+      type: object
+      required: [roleCode]
+      properties:
+        roleCode: { $ref: '#/components/schemas/RoleCode' }
+    RejectRegistrationRequest:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 500 }
+    UserRef:
+      type: object
+      required: [id, fullName]
+      properties:
+        id: { type: integer, format: int64 }
+        userCode: { type: string }
+        fullName: { type: string }
+
+    # ---------- Audit (MF-20) ----------
+    AuditEntry:
+      type: object
+      required: [id, occurredAt, action]
+      properties:
+        id: { type: integer, format: int64 }
+        occurredAt: { type: string, format: date-time }
+        actor: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }], description: NULL for automatic backend behaviour. }
+        actorRole: { oneOf: [{ $ref: '#/components/schemas/RoleCode' }, { type: 'null' }] }
+        action: { type: string, maxLength: 100, examples: [REGISTRATION_APPROVED, HEAD_TRAINER_READINESS_REVIEWED] }
+        targetType: { type: [string, 'null'], maxLength: 50 }
+        targetId: { type: [integer, 'null'], format: int64 }
+        safeSummary: { type: [string, 'null'], description: Never contains secrets. }
+        source: { type: [string, 'null'], maxLength: 30, examples: [WEB, SIMULATOR] }
+
+    # ---------- Dashboard (SCR-DASH-001) ----------
+    CountByKey:
+      type: object
+      required: [key, count]
+      properties:
+        key: { type: string }
+        count: { type: integer, minimum: 0 }
+    ClubManagerDashboard:
+      type: object
+      required: [horsesByLifecycle, horsesByAvailability, boxOccupancy, accountsByStatus, needsAttention, trainingToday, openIncidents, recentAudit]
+      properties:
+        horsesByLifecycle:
+          type: array
+          description: Keys DRAFT | ACTIVE | INACTIVE.
+          items: { $ref: '#/components/schemas/CountByKey' }
+        horsesByAvailability:
+          type: array
+          description: Keys AVAILABLE | LIMITED | LOCKED (derived from active medical restrictions; ACTIVE horses only).
+          items: { $ref: '#/components/schemas/CountByKey' }
+        boxOccupancy:
+          type: object
+          required: [total, occupied, free]
+          properties:
+            total: { type: integer, minimum: 0 }
+            occupied: { type: integer, minimum: 0 }
+            free: { type: integer, minimum: 0 }
+        accountsByStatus:
+          type: array
+          description: Keys ACTIVE | INACTIVE.
+          items: { $ref: '#/components/schemas/CountByKey' }
+        needsAttention:
+          type: object
+          required: [pendingActivations, pendingRegistrations]
+          properties:
+            pendingActivations: { type: integer, minimum: 0, description: DRAFT horses. }
+            pendingRegistrations: { type: integer, minimum: 0 }
+        trainingToday:
+          type: object
+          description: Sessions scheduled today, by status.
+          required: [byStatus]
+          properties:
+            byStatus:
+              type: array
+              items: { $ref: '#/components/schemas/CountByKey' }
+        openIncidents:
+          type: integer
+          minimum: 0
+          description: Incidents in REPORTED or UNDER_REVIEW.
+        recentAudit:
+          type: array
+          maxItems: 10
+          items: { $ref: '#/components/schemas/AuditEntry' }
+
+    # ---------- Notifications (table notification) ----------
+    Notification:
+      type: object
+      required: [id, category, notificationType, title, message, isSimulated, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        category: { $ref: '#/components/schemas/NotificationCategory' }
+        notificationType:
+          type: string
+          maxLength: 50
+          description: |
+            Free VARCHAR(50) in the schema. Core types used by Flows 1–3 (stable names; extend only by contract change):
+            SESSION_ASSIGNED, SESSION_BLOCKED, MONITORING_ALERT_CRITICAL, MONITORING_ALERT_ESCALATED, INCIDENT_REPORTED,
+            TREATMENT_PLAN_ISSUED, CARE_TASK_ASSIGNED, RESTRICTION_CHANGED, ADJUSTMENT_REQUEST_SUBMITTED,
+            ADJUSTMENT_REQUEST_DECIDED, PROGRAM_ASSIGNED, HORSE_ACTIVATED.
+        title: { type: string, maxLength: 200 }
+        message: { type: string, maxLength: 1000 }
+        readAt: { type: [string, 'null'], format: date-time }
+        targetType: { type: [string, 'null'], maxLength: 50, description: Set together with targetId (ck_notification__target_pair). }
+        targetId: { type: [integer, 'null'], format: int64 }
+        isSimulated: { type: boolean, description: True when the event came from the demo simulator (DEC-002 D-03). }
+        createdAt: { type: string, format: date-time }
+    UnreadCount:
+      type: object
+      required: [unread]
+      properties:
+        unread: { type: integer, minimum: 0 }

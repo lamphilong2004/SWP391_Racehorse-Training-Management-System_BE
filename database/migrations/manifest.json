@@ -1,0 +1,71 @@
+{
+  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01-candidate",
+  "approvedAt": "2026-10-18",
+  "approvedBy": "Lam Phi Long",
+  "sourceHead": "6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04",
+  "collation": "SQL_Latin1_General_CP1_CI_AS",
+  "schema": "database/schema.sql",
+  "migrations": [
+    {
+      "version": "V20261016_01",
+      "order": 1,
+      "path": "database/migrations/V20261016_01__create_registration_request.sql"
+    },
+    {
+      "version": "V20261020_01",
+      "order": 2,
+      "path": "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"
+    },
+    {
+      "version": "V20261021_01",
+      "order": 3,
+      "path": "database/migrations/V20261021_01__training_session_groom_assignment.sql"
+    }
+  ],
+  "files": [
+    {
+      "sha256": "79c4098f5635e521b2f8e9ca81a21df36e5c5cdaa618094dccc9ac851ab00222",
+      "path": "database/migrations/V20261021_01__training_session_groom_assignment.sql"
+    },
+    {
+      "sha256": "416eb579e59f926e01c08bdfb25af6db5bc9376e87ec93eb7b6aa35d512a9141",
+      "path": "database/schema.sql"
+    },
+    {
+      "sha256": "431c6d0b0f84309b2820e2697e26dd52ab6072fdd664d0eef9d850abcc98b34c",
+      "path": "database/migrations/V20261016_01__create_registration_request.sql"
+    },
+    {
+      "sha256": "decb437690c9e8e4249caba168c6095f1c21bb627bfd575c4b14f6fa2f736488",
+      "path": "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"
+    },
+    {
+      "sha256": "18d05ebe2088574b9781f56f29b1e0ec2daedc1a5f38ed1b9da74e54300e4671",
+      "path": "database/verification/snapshot.sql"
+    },
+    {
+      "sha256": "687654c020e91dcd8bcd362393ea2fa3372ec9eec1174ec21e8f3fe0bb016d86",
+      "path": "database/verification/expected-schema.json"
+    },
+    {
+      "sha256": "adb4886e8997f2628eef83dd4e0c67ae5a8e023e9f997e6f5f30cbfc8e8efae3",
+      "path": "database/seeds/core007-auth-smoke.sql"
+    },
+    {
+      "sha256": "3eada7df9fd5ee5e92da10a684a4a50a4f960d1045cd28dba285413040ae60b5",
+      "path": "scripts/db/GenerateCore007SmokeCredentials.java"
+    },
+    {
+      "path": "database/verification/expected-schema-v20261021.json",
+      "sha256": "41045e70a8970bfbad9589c9567766f17d5eb6483f1c0546e9ed38dea8a391ad"
+    }
+  ],
+  "history": "External local receipt only; not permission to upgrade any existing database",
+  "verification": {
+    "path": "database/verification/expected-schema-v20261021.json",
+    "sha256": "41045e70a8970bfbad9589c9567766f17d5eb6483f1c0546e9ed38dea8a391ad",
+    "tables": 53,
+    "columns": 512,
+    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required"
+  }
+}

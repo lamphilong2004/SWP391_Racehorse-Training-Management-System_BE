@@ -1,0 +1,1126 @@
+openapi: 3.1.0
+info:
+  title: Racehorse Training & Management System — Flow 1 Horse API (+ Owner read endpoints)
+  version: 0.1.0
+  description: |
+    CORE-004 contract. Owner: Dũng. Reviewers: Đức, Hoàng; Long (Owner row-scope security).
+    Initial draft: Lâm Phi Long (commit 6976c77, 2026-10-10). Review and revisions: Cao Thanh Dũng.
+
+    Sources: analysis/business-flows.md §FLOW 1 (1.1–1.5); BR-01…BR-07; BR-D01; BR-D05; DEC-009 §1 (automatic activation)
+    and §5 (Owner minimum workspace); Figma SCR-HORSE-001…007, SCR-OWNER-001/002; database/schema.sql horse,
+    horse_ownership, horse_photo, stable_box, horse_stable_assignment, weight_record.
+
+    Conventions: identical to shared.openapi.yaml (CORE-003): envelope `{ success, data, error }`, ISO-8601 UTC timestamps,
+    `x-roles` = allowed role codes (enforced by Spring Security), zero-based paging. There is no SYSTEM role.
+
+    Key rules:
+    - Create returns lifecycle DRAFT (BR-02). Duplicate `horseCode` → 409 CONFLICT (BR-01).
+    - **Automatic activation** (DEC-009 §1, approved 2026-10-10; BR-05, business-rules.md line 20, confirmed by the Leader):
+      the System changes `horse.lifecycle` from DRAFT to ACTIVE only when all five mandatory conditions are satisfied:
+      valid identity (Flow 1 §1.1); valid pedigree, valid owner, and an assigned free stable box (Flow 1 §1.2); and a valid
+      Veterinarian baseline (Flow 1 §1.3). When all conditions are met, the System sets `horse.activated_at`; this timestamp
+      starts the horse timeline. No role has a manual approve or activate endpoint. CORE-016 owns implementation of the
+      lifecycle transition. Flow 1 references the Flow 3 operation `POST /api/horses/{horseId}/baseline-examinations`,
+      defined in `flow3-medical.openapi.yaml`. After a successful baseline write, CORE-016 re-evaluates the mandatory
+      activation conditions. If the horse is DRAFT and all five conditions are satisfied, CORE-016 performs the DRAFT →
+      ACTIVE transition and sets `horse.activated_at`; if it is DRAFT but any condition remains unmet, it remains DRAFT.
+      The Flow 3 endpoint records the baseline but does not itself own the lifecycle evaluation or transition.
+    - The Head Trainer readiness review (1.4) is recommended and non-blocking, has no persisted assessment or separate
+      readiness state, and does not decide activation. Each successful review records a new `HEAD_TRAINER_READINESS_REVIEWED` audit event.
+      Behavior for INACTIVE horses is **NEEDS CLARIFICATION**.
+    - A box holds at most one horse and a horse at most one box (filtered unique indexes); an occupied box → 409 (BR-03).
+    - Owner endpoints are row-scoped in the backend: the query joins `horse_ownership.owner_user_id` = current user
+      (open period). A non-owned horse → **403**. Owner DTOs carry non-clinical fields only and no race, finance,
+      nutrition, inventory or video data (DEC-009 §5).
+    - Training Availability is derived from the active medical restriction (CORE-006); it is never a stored horse field.
+
+    Open questions: Q-18 production photo storage, deployment URL/distribution, and approved safe URL integration; Q-7
+    accumulated session distance, source data, calculation, and unit; Q-28 multiple owners (ownership is a list; the Owner UI says "linked to your account");
+    physical-schema §11 #1 ownership shares total 100 % is NOT enforced.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Horses
+    description: MF-01 horse register and profile (Flow 1.1, 1.2).
+  - name: Stable
+    description: Stable boxes and assignments, the BR-D01 subset of MF-10 needed by step 1.2.
+  - name: Activation
+    description: Automatic activation status and the Head Trainer readiness acknowledgement (1.4, 1.5).
+  - name: Owner
+    description: Horse Owner minimum read-only workspace (SCR-OWNER-001/002, DEC-009 §5).
+
+paths:
+  /api/horses:
+    get:
+      tags: [Horses]
+      operationId: listHorses
+      summary: Horse register (SCR-HORSE-001)
+      description: |
+        Club Manager, Head Trainer, Veterinarian and Groom see all horses. A Trainer sees only horses whose programs are
+        assigned to them (assignment scope). The Owner uses `/api/owner/horses` instead.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
+      parameters:
+        - { name: q, in: query, description: Search in name or horse code., schema: { type: string, maxLength: 100 } }
+        - { name: lifecycle, in: query, schema: { $ref: '#/components/schemas/HorseLifecycle' } }
+        - { name: healthStatus, in: query, schema: { $ref: '#/components/schemas/HealthStatus' } }
+        - { name: availability, in: query, schema: { $ref: '#/components/schemas/TrainingAvailability' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of horses.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/HorseSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Horses]
+      operationId: createHorse
+      summary: Create a horse profile (Flow 1.1, SCR-HORSE-003)
+      description: |
+        Validates required fields and the duplicate code (BR-01). The horse starts in DRAFT (BR-02).
+        Audit behavior and event name are NEEDS CLARIFICATION because no approved source establishes them.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HorseIdentityRequest' }
+      responses:
+        '201':
+          description: Horse created in DRAFT.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/HorseDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Duplicate horse code (BR-01) or duplicate registration / microchip number.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error: { code: CONFLICT, message: A horse with this code already exists., details: [{ field: horseCode, message: already exists }] }
+
+  /api/horses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Horses]
+      operationId: getHorse
+      summary: Horse profile (SCR-HORSE-002)
+      description: A Trainer may read only horses of assigned programs (403 otherwise). Contains no clinical detail.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
+      responses:
+        '200':
+          description: Horse profile.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/HorseDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Horses]
+      operationId: updateHorse
+      summary: Edit identification data (SCR-HORSE-003 edit)
+      description: |
+        Does not change lifecycle, health status or pedigree. Audit behavior and event name are NEEDS CLARIFICATION
+        because no approved source establishes them.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HorseIdentityRequest' }
+      responses:
+        '200':
+          description: Updated horse.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/HorseDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/horses/{id}/pedigree:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Horses]
+      operationId: setPedigree
+      summary: Declare the pedigree (Flow 1.2, SCR-HORSE-004)
+      description: |
+        For sire and dam, give either a registered horse id or a free-text name, never both
+        (ck_horse__sire_ref_xor_name / ck_horse__dam_ref_xor_name). A horse cannot be its own parent and sire ≠ dam.
+        After a successful write, the System re-evaluates the activation conditions. If the horse is DRAFT and all mandatory
+        conditions are satisfied, the System transitions it to ACTIVE and sets `horse.activated_at`; CORE-016 owns this
+        transition. A pedigree write does not necessarily activate the horse. The write response does not guarantee the
+        updated activation checklist; clients can GET `/api/horses/{id}/activation-status` after success to read the current
+        lifecycle and checklist. Audit event behavior and event name are NEEDS CLARIFICATION.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PedigreeRequest' }
+      responses:
+        '200':
+          description: Updated horse.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/HorseDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/horses/{id}/ownerships:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Horses]
+      operationId: listOwnerships
+      summary: Ownership history (current and past)
+      description: |
+        Club Managers and Head Trainers may read the full current and past ownership history. Other MF-01 roles do not
+        receive access to this history endpoint: Trainer, Veterinarian and Groom may view current ownership only through
+        Horse Profile within their approved scopes; Horse Owners use `/api/owner/horses/**` for owned-horse data.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER]
+      responses:
+        '200':
+          description: Ownership rows, current first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Ownership' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Horses]
+      operationId: addOwnership
+      summary: Link an owner to the horse (Flow 1.2, BR-04)
+      description: |
+        The owner must be an ACTIVE user holding HORSE_OWNER (400 otherwise). Shares total 100 % is NOT enforced
+        (UNRESOLVED BUSINESS RULE, physical-schema §11 #1). After a successful write, the System re-evaluates the activation
+        conditions. If the horse is DRAFT and all mandatory conditions are satisfied, the System transitions it to ACTIVE
+        and sets `horse.activated_at`; CORE-016 owns this transition. An ownership write does not necessarily activate the
+        horse. The write response does not guarantee the updated activation checklist; clients can GET
+        `/api/horses/{id}/activation-status` after success to read the current lifecycle and checklist. Audit event behavior
+        and event name are NEEDS CLARIFICATION.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OwnershipRequest' }
+      responses:
+        '201':
+          description: Ownership created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Ownership' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/horses/{id}/photos:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Horses]
+      operationId: listHorsePhotos
+      summary: List horse photos
+      description: |
+        Returns photos newest first; horses without photos return an empty array. TRAINER access is limited to horses
+        with an open `trainer_assignment`.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
+      responses:
+        '200':
+          description: Horse photos, newest first; an empty list when there are no photos.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Photo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Horses]
+      operationId: uploadHorsePhoto
+      summary: Upload a horse photo (Flow 1.1)
+      description: |
+        Accepts image/jpeg, image/png, or image/webp files up to 5 MiB (5,242,880 bytes). An invalid file is rejected and
+        must not be represented as a successful upload or have successful-upload metadata persisted. For development,
+        local storage is a permitted capability. The `url` response is generated from backend/storage-adapter configuration;
+        filesystem absolute paths and hardcoded developer-machine domains, ports, or paths are not returned. The database
+        stores the adapter reference in `horse_photo.file_reference`. Production storage, deployment URL/distribution,
+        and any required safe-URL integration remain Q-18; this contract does not claim runtime implementation.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, or WebP; maximum size 5,242,880 bytes.
+            encoding:
+              file:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        '201':
+          description: Photo uploaded.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data: { $ref: '#/components/schemas/Photo' }
+        '400':
+          description: Invalid file MIME type or file exceeds 5 MiB (VALIDATION_ERROR); no successful-upload metadata is persisted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/horses/{id}/timeline:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Horses]
+      operationId: getHorseTimeline
+      summary: Horse history / timeline (SCR-HORSE-006)
+      description: |
+        Read model assembled from existing tables (activation, box assignments, ownership changes, examinations,
+        restrictions, programs, sessions, incidents). The horse timeline starts at `horse.activated_at`, the timestamp set
+        when the System automatically transitions the horse to ACTIVE (DEC-009 §1; BR-05). It includes
+        `HORSE_ACTIVATED` from `horse.activated_at`; `STABLE_ASSIGNED` from
+        `horse_stable_assignment.effective_from`; `OWNERSHIP_CHANGED` from `horse_ownership.effective_from`;
+        `VETERINARY_EXAMINATION` from `veterinary_examination.examined_at`; `RESTRICTION_CHANGED` from
+        `medical_restriction.effective_from` and, when present, `lifted_at`; `PROGRAM_ACTIVATED` from
+        `horse_training_program.activated_at`; `TRAINING_SESSION` from `training_session.actual_start` only; and
+        `INCIDENT_REPORTED` from `incident.reported_at`. Scheduled-only sessions are excluded. The DATE-valued
+        `effective_from` fields are represented at 00:00:00Z and do not imply an exact operation time. Events before
+        `horse.activated_at` are excluded. Results are newest first with a stable event-type/source-row tie-break.
+        Titles are neutral; clinical detail is never included. `targetType` and `targetId` are omitted unless the caller
+        may access the corresponding source resource. A DRAFT horse with no activation timestamp has an empty timeline.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of events, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/TimelineEvent' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/stable-boxes:
+    get:
+      tags: [Stable]
+      operationId: listStableBoxes
+      summary: Stable boxes with occupancy (box picker in SCR-HORSE-004)
+      description: Status is derived from open `horse_stable_assignment` rows. Box administration itself is Flow 4 and deferred.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/BoxStatus' } }
+      responses:
+        '200':
+          description: Boxes.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/StableBox' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/horses/{id}/stable-assignments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Stable]
+      operationId: listStableAssignments
+      summary: Box assignment history of a horse
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER]
+      responses:
+        '200':
+          description: Assignments, current first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/StableAssignment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Stable]
+      operationId: assignStableBox
+      summary: Assign or move the horse to a box (Flow 1.2, BR-03)
+      description: |
+        Assignment dates are inclusive. On a move, close the previous open assignment with effective_to equal to the day
+        before the new effective_from; reject a date that would place effective_to before the previous effective_from.
+        Reject any overlapping assignment period for the horse or target box. Close the previous assignment and insert
+        the new open-ended assignment atomically in one transaction. After a successful write, the System re-evaluates the
+        activation conditions. If the horse is DRAFT and all mandatory conditions are satisfied, the System transitions it
+        to ACTIVE and sets `horse.activated_at`; CORE-016 owns this transition. A stable assignment does not necessarily
+        activate the horse. The write response does not guarantee the updated activation checklist; clients can GET
+        `/api/horses/{id}/activation-status` after success to read the current lifecycle and checklist. Audit event behavior
+        and event name are NEEDS CLARIFICATION.
+      x-roles: [CLUB_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StableAssignmentRequest' }
+      responses:
+        '201':
+          description: Assignment created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/StableAssignment' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The horse or target box has an overlapping assignment period (BR-03).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error: { code: CONFLICT, message: The requested assignment overlaps an existing assignment., details: [{ field: stableBoxId, message: overlap }] }
+
+  /api/horses/pending-activation:
+    get:
+      tags: [Activation]
+      operationId: listPendingActivation
+      summary: DRAFT horses and what each still needs (SCR-HORSE-005, Figma 285:2786)
+      description: A Club Manager status screen showing the mandatory activation conditions and recommended readiness review. It has no approve action; activation happens automatically.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, VETERINARIAN]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of DRAFT horses with their checklist.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/ActivationStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/horses/{id}/activation-status:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Activation]
+      operationId: getActivationStatus
+      summary: Activation checklist of one horse
+      description: |
+        Returns the five mandatory activation conditions and the recommended, non-blocking Head Trainer readiness review.
+        The readiness review does not gate automatic activation. Clients can read this endpoint after a successful
+        pedigree, ownership, stable assignment, or baseline write to obtain the current lifecycle and checklist.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, VETERINARIAN]
+      responses:
+        '200':
+          description: Checklist.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ActivationStatus' }
+              example:
+                success: true
+                data:
+                  horseId: 42
+                  horseCode: RH-0042
+                  name: Example Horse
+                  lifecycle: DRAFT
+                  activatedAt: null
+                  checklist:
+                    - id: IDENTITY
+                      label: Horse identity
+                      description: Horse identity is valid.
+                      requirement: MANDATORY
+                      state: SATISFIED
+                    - id: PEDIGREE
+                      label: Pedigree
+                      description: Pedigree is valid.
+                      requirement: MANDATORY
+                      state: SATISFIED
+                    - id: OWNER
+                      label: Owner
+                      description: A valid owner is linked to the horse.
+                      requirement: MANDATORY
+                      state: SATISFIED
+                    - id: FREE_STABLE_BOX
+                      label: Free stable box
+                      description: A free stable box is assigned to the horse.
+                      requirement: MANDATORY
+                      state: PENDING
+                    - id: VETERINARIAN_BASELINE
+                      label: Veterinarian baseline
+                      description: A valid Veterinarian baseline is recorded.
+                      requirement: MANDATORY
+                      state: PENDING
+                    - id: HEAD_TRAINER_READINESS_REVIEW
+                      label: Head Trainer readiness review
+                      description: Recommended review; this item is non-blocking and does not gate activation.
+                      requirement: RECOMMENDED
+                      state: NOT_REVIEWED
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/horses/{id}/readiness-review:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Activation]
+      operationId: acknowledgeReadinessReview
+      summary: Head Trainer readiness acknowledgement (Flow 1.4, non-blocking)
+      description: |
+        No request body, assessment content, score, or separate readiness state is persisted. Readiness review is non-blocking
+        and does not decide activation. Repeated reviews are allowed; every successful invocation records a new
+        `HEAD_TRAINER_READINESS_REVIEWED` audit event. The operation is successful only after that event is recorded.
+        No status-based rejection rule is specified. Under the CORE-001 shared error mapping, an unhandled audit-persistence
+        exception returns 500 with `INTERNAL_ERROR`. No audit-specific error code is established.
+      x-roles: [HEAD_TRAINER]
+      responses:
+        '204': { description: Acknowledged after the audit event is recorded. No response body. }
+        '500':
+          description: Unexpected server error (INTERNAL_ERROR), including an unhandled audit-persistence exception.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/owner/horses:
+    get:
+      tags: [Owner]
+      operationId: listMyHorses
+      summary: My Horses (SCR-OWNER-001)
+      description: Only horses with an open `horse_ownership` row for the current user. Filtered in the database query.
+      x-roles: [HORSE_OWNER]
+      responses:
+        '200':
+          description: Owned horses (may be empty).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/OwnerHorseCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/owner/horses/{id}/profile:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Owner]
+      operationId: getMyHorseProfile
+      summary: Profile & Pedigree tab (SCR-OWNER-002)
+      x-roles: [HORSE_OWNER]
+      responses:
+        '200':
+          description: Profile.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/OwnerHorseProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/OwnerForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/owner/horses/{id}/health-summary:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Owner]
+      operationId: getMyHorseHealthSummary
+      summary: Health & Readiness tab (SCR-OWNER-002)
+      description: |
+        Non-clinical summary only (MF-02/03/08 "own" cells; BR-D06 analogue): health status, readiness, weight trend and
+        recovery status. Never contains findings, diagnosis, prescriptions, treatment protocol or the restriction reason.
+      x-roles: [HORSE_OWNER]
+      responses:
+        '200':
+          description: Health summary.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/OwnerHealthSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/OwnerForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/owner/horses/{id}/training-summary:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Owner]
+      operationId: getMyHorseTrainingSummary
+      summary: Training & Performance tab (SCR-OWNER-002)
+      description: |
+        Current program is the ACTIVE program whose inclusive period contains the current UTC date. If more than one
+        qualifies, select the latest `activated_at`, then highest program ID for a stable tie-break. The current phase
+        name is returned only when exactly one phase date range contains today's UTC date. `sessionsCompleted` counts
+        COMPLETED sessions in the selected program; `sessionsPlanned` counts all sessions in that program.
+        `recentSessions` contains up to 10 sessions across all of the horse's programs, all statuses included, ordered by
+        `scheduled_start` descending then session ID descending. Only `session_result.evaluation_label` is exposed; no
+        evaluation notes, exercise details, race fields, or clinical data are returned.
+      x-roles: [HORSE_OWNER]
+      responses:
+        '200':
+          description: Training summary.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/OwnerTrainingSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/OwnerForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    Page:
+      name: page
+      in: query
+      description: Zero-based page index.
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationError:
+      description: Field validation failed (VALIDATION_ERROR).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Missing, invalid or expired JWT.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: The role may not perform this operation, or the horse is outside the caller's assignment scope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    OwnerForbidden:
+      description: The horse is not owned by the current user (DEC-009 §5 — 403, never the data).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            success: false
+            error: { code: FORBIDDEN, message: You do not have access to this horse., details: [] }
+    NotFound:
+      description: Horse not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: Unique-key conflict (CONFLICT).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    # ---------- Envelope (mirrors CORE-001 com.racehorse.common.api; identical in every contract file) ----------
+    Envelope:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        data: {}
+        error: { $ref: '#/components/schemas/ApiError' }
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error: { $ref: '#/components/schemas/ApiError' }
+    ApiError:
+      type: object
+      required: [code, message, details]
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message: { type: string }
+        details:
+          type: array
+          items: { $ref: '#/components/schemas/ErrorDetail' }
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        field: { type: [string, 'null'] }
+        message: { type: string }
+    ErrorCode:
+      type: string
+      enum: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, CONFLICT, BUSINESS_RULE_VIOLATION, TOO_MANY_REQUESTS, INTERNAL_ERROR]
+    PageMeta:
+      type: object
+      required: [page, size, totalItems, totalPages]
+      properties:
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalItems: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    UserRef:
+      type: object
+      required: [id, fullName]
+      properties:
+        id: { type: integer, format: int64 }
+        userCode: { type: string }
+        fullName: { type: string }
+
+    # ---------- Vocabularies (schema.sql CHECK constraints) ----------
+    HorseLifecycle:
+      type: string
+      enum: [DRAFT, ACTIVE, INACTIVE]
+    HealthStatus:
+      type: string
+      description: Set by the Veterinarian (baseline / examinations, CORE-006). NULL until the baseline exists.
+      enum: [FIT, MONITORING, INJURED, QUARANTINED]
+    TrainingAvailability:
+      type: string
+      description: Derived, never stored. No active restriction → AVAILABLE; LIMITED → LIMITED; LOCKED → LOCKED.
+      enum: [AVAILABLE, LIMITED, LOCKED]
+    BoxStatus:
+      type: string
+      description: Derived from open box assignments.
+      enum: [FREE, OCCUPIED]
+    ProgramStatus:
+      type: string
+      enum: [ACTIVE, PAUSED, COMPLETED]
+    SessionStatus:
+      type: string
+      enum: [SCHEDULED, IN_PROGRESS, PAUSED, COMPLETED, INTERRUPTED]
+    RecoveryStatus:
+      type: string
+      enum: [NOT_RECOVERED, IMPROVING, RECOVERED]
+
+    # ---------- Horse ----------
+    HorseIdentityRequest:
+      type: object
+      required: [horseCode, name]
+      properties:
+        horseCode: { type: string, minLength: 1, maxLength: 20, description: Unique (BR-01). }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        breed: { type: [string, 'null'], maxLength: 100 }
+        sex: { type: [string, 'null'], maxLength: 20, description: "Free text; value list NEEDS CLARIFICATION (physical-schema §11 #3)." }
+        foaledDate: { type: [string, 'null'], format: date }
+        countryOfOrigin: { type: [string, 'null'], maxLength: 100 }
+        registrationNo: { type: [string, 'null'], maxLength: 50, description: Microchip / registration number; unique when present. }
+    HorseSummary:
+      type: object
+      required: [id, horseCode, name, lifecycle, trainingAvailability]
+      properties:
+        id: { type: integer, format: int64 }
+        horseCode: { type: string }
+        name: { type: string }
+        breed: { type: [string, 'null'] }
+        sex: { type: [string, 'null'] }
+        foaledDate: { type: [string, 'null'], format: date }
+        lifecycle: { $ref: '#/components/schemas/HorseLifecycle' }
+        healthStatus: { oneOf: [{ $ref: '#/components/schemas/HealthStatus' }, { type: 'null' }] }
+        trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
+        currentBoxCode: { type: [string, 'null'] }
+    HorseDetail:
+      allOf:
+        - $ref: '#/components/schemas/HorseSummary'
+        - type: object
+          required: [pedigree, currentOwnerships]
+          properties:
+            countryOfOrigin: { type: [string, 'null'] }
+            registrationNo: { type: [string, 'null'] }
+            activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
+            pedigree: { $ref: '#/components/schemas/Pedigree' }
+            currentOwnerships:
+              type: array
+              items: { $ref: '#/components/schemas/Ownership' }
+            currentAssignment: { oneOf: [{ $ref: '#/components/schemas/StableAssignment' }, { type: 'null' }] }
+            latestWeight: { oneOf: [{ $ref: '#/components/schemas/WeightPoint' }, { type: 'null' }] }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: [string, 'null'], format: date-time }
+    Photo:
+      type: object
+      required: [id, url, uploadedAt]
+      properties:
+        id: { type: integer, format: int64 }
+        url:
+          type: string
+          format: uri
+          description: Generated from backend/storage-adapter configuration; never a filesystem absolute path or hardcoded developer-machine URL.
+        uploadedAt: { type: string, format: date-time, description: Maps to dbo.horse_photo.uploaded_at. }
+    ParentRef:
+      type: object
+      description: Exactly one of `horseId` or `name` (or neither when unknown).
+      properties:
+        horseId: { type: [integer, 'null'], format: int64 }
+        horseCode: { type: [string, 'null'], readOnly: true }
+        name: { type: [string, 'null'], maxLength: 150 }
+    Pedigree:
+      type: object
+      required: [sire, dam]
+      properties:
+        sire: { $ref: '#/components/schemas/ParentRef' }
+        dam: { $ref: '#/components/schemas/ParentRef' }
+    PedigreeRequest:
+      type: object
+      required: [sire, dam]
+      properties:
+        sire: { $ref: '#/components/schemas/ParentRef' }
+        dam: { $ref: '#/components/schemas/ParentRef' }
+    Ownership:
+      type: object
+      required: [id, owner, sharePercentage, effectiveFrom, isManagingOwner]
+      properties:
+        id: { type: integer, format: int64 }
+        owner: { $ref: '#/components/schemas/UserRef' }
+        sharePercentage: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        isManagingOwner: { type: boolean }
+    OwnershipRequest:
+      type: object
+      required: [ownerUserId, sharePercentage, effectiveFrom]
+      properties:
+        ownerUserId: { type: integer, format: int64, description: ACTIVE user holding HORSE_OWNER. }
+        sharePercentage: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        effectiveFrom: { type: string, format: date }
+        isManagingOwner: { type: boolean, default: false }
+    WeightPoint:
+      type: object
+      required: [weightKg, recordedAt]
+      properties:
+        weightKg: { type: number, exclusiveMinimum: 0, maximum: 9999.99, multipleOf: 0.01, description: 'Kilograms; dbo.weight_record.weight DECIMAL(6,2), consistent with flow3-medical WeightRecord.' }
+        recordedAt: { type: string, format: date-time, description: UTC timestamp; maps to dbo.weight_record.measured_at DATETIME2(3). Aligned with flow3-medical WeightRecord.recordedAt (CORE-006). }
+    TimelineEvent:
+      type: object
+      description: 'A neutral event summary. DATE-valued ownership/stable effective_from values are normalized to 00:00:00Z; this is a date representation, not the exact operation time.'
+      required: [occurredAt, eventType, title]
+      properties:
+        occurredAt: { type: string, format: date-time, description: UTC timestamp; DATE-valued source dates are represented at 00:00:00Z. }
+        eventType:
+          type: string
+          enum: [HORSE_ACTIVATED, STABLE_ASSIGNED, OWNERSHIP_CHANGED, VETERINARY_EXAMINATION, RESTRICTION_CHANGED, PROGRAM_ACTIVATED, TRAINING_SESSION, INCIDENT_REPORTED]
+        title: { type: string, maxLength: 200, description: Non-clinical wording. }
+        targetType: { type: [string, 'null'], description: Null unless the caller may access the corresponding source resource. }
+        targetId: { type: [integer, 'null'], format: int64, description: Null unless the caller may access the corresponding source resource. }
+
+    # ---------- Stable ----------
+    StableBox:
+      type: object
+      required: [id, boxCode, status]
+      properties:
+        id: { type: integer, format: int64 }
+        boxCode: { type: string, maxLength: 20 }
+        yard: { type: [string, 'null'], maxLength: 100 }
+        status: { $ref: '#/components/schemas/BoxStatus' }
+        currentHorse:
+          oneOf:
+            - type: object
+              required: [id, horseCode, name]
+              properties:
+                id: { type: integer, format: int64 }
+                horseCode: { type: string }
+                name: { type: string }
+            - type: 'null'
+    StableAssignment:
+      type: object
+      required: [id, boxCode, stableBoxId, effectiveFrom, assignedBy]
+      properties:
+        id: { type: integer, format: int64 }
+        stableBoxId: { type: integer, format: int64 }
+        boxCode: { type: string }
+        yard: { type: [string, 'null'] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        reason: { type: [string, 'null'], maxLength: 500 }
+        assignedBy: { $ref: '#/components/schemas/UserRef' }
+    StableAssignmentRequest:
+      type: object
+      required: [stableBoxId, effectiveFrom]
+      properties:
+        stableBoxId: { type: integer, format: int64 }
+        effectiveFrom: { type: string, format: date }
+        reason: { type: [string, 'null'], maxLength: 500 }
+
+    # ---------- Activation ----------
+    ActivationStatus:
+      type: object
+      required: [horseId, horseCode, name, lifecycle, checklist]
+      properties:
+        horseId: { type: integer, format: int64 }
+        horseCode: { type: string }
+        name: { type: string }
+        lifecycle: { $ref: '#/components/schemas/HorseLifecycle' }
+        activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
+        checklist:
+          type: array
+          minItems: 6
+          maxItems: 6
+          description: Exactly five mandatory activation conditions and one recommended, non-blocking Head Trainer readiness review.
+          prefixItems:
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: IDENTITY }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: PEDIGREE }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: OWNER }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: FREE_STABLE_BOX }
+            - allOf:
+                - $ref: '#/components/schemas/MandatoryActivationChecklistItem'
+                - properties:
+                    id: { const: VETERINARIAN_BASELINE }
+            - $ref: '#/components/schemas/RecommendedReadinessChecklistItem'
+          items: false
+    MandatoryActivationChecklistItem:
+      type: object
+      required: [id, label, description, requirement, state]
+      properties:
+        id:
+          type: string
+          enum: [IDENTITY, PEDIGREE, OWNER, FREE_STABLE_BOX, VETERINARIAN_BASELINE]
+        label: { type: string }
+        description: { type: string }
+        requirement: { type: string, const: MANDATORY }
+        state: { type: string, enum: [SATISFIED, PENDING] }
+      additionalProperties: false
+    RecommendedReadinessChecklistItem:
+      type: object
+      required: [id, label, description, requirement, state]
+      properties:
+        id: { type: string, const: HEAD_TRAINER_READINESS_REVIEW }
+        label: { type: string }
+        description:
+          type: string
+          description: Must explain that the recommended readiness review is non-blocking and does not gate activation.
+        requirement: { type: string, const: RECOMMENDED }
+        state: { type: string, enum: [REVIEWED, NOT_REVIEWED] }
+      additionalProperties: false
+
+    # ---------- Owner (non-clinical, row-scoped) ----------
+    OwnerHorseCard:
+      type: object
+      required: [id, horseCode, name, lifecycle, trainingAvailability]
+      properties:
+        id: { type: integer, format: int64 }
+        horseCode: { type: string }
+        name: { type: string }
+        breed: { type: [string, 'null'] }
+        sex: { type: [string, 'null'] }
+        foaledDate: { type: [string, 'null'], format: date }
+        lifecycle: { $ref: '#/components/schemas/HorseLifecycle' }
+        healthStatus: { oneOf: [{ $ref: '#/components/schemas/HealthStatus' }, { type: 'null' }] }
+        trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
+    OwnerHorseProfile:
+      type: object
+      required: [horse, pedigree, myOwnership]
+      properties:
+        horse: { $ref: '#/components/schemas/OwnerHorseCard' }
+        countryOfOrigin: { type: [string, 'null'] }
+        registrationNo: { type: [string, 'null'] }
+        currentBoxCode: { type: [string, 'null'], description: 'Non-clinical current stable box, scoped to this owner’s horse.' }
+        stableEffectiveFrom: { type: [string, 'null'], format: date }
+        activatedAt: { type: [string, 'null'], format: date-time, description: 'Maps to dbo.horse.activated_at; set when the System automatically transitions the horse to ACTIVE and marks the start of the horse timeline (DEC-009 §1; BR-05).' }
+        pedigree: { $ref: '#/components/schemas/Pedigree' }
+        myOwnership:
+          type: object
+          description: The current user's own ownership row only. Other owners are not listed (Q-28).
+          required: [sharePercentage, effectiveFrom, isManagingOwner]
+          properties:
+            sharePercentage: { type: number }
+            effectiveFrom: { type: string, format: date }
+            isManagingOwner: { type: boolean }
+    OwnerHealthSummary:
+      type: object
+      description: Non-clinical. No findings, diagnosis, prescription, treatment protocol or restriction reason.
+      required: [healthStatus, trainingAvailability, weights]
+      properties:
+        healthStatus: { oneOf: [{ $ref: '#/components/schemas/HealthStatus' }, { type: 'null' }] }
+        trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
+        restrictionReviewDate: { type: [string, 'null'], format: date, description: "Planned review date of the active restriction, if any." }
+        recoveryStatus:
+          oneOf: [{ $ref: '#/components/schemas/RecoveryStatus' }, { type: 'null' }]
+          description: Latest re-examination outcome of an open medical case; NULL when there is none.
+        lastExaminedAt: { type: [string, 'null'], format: date-time }
+        weights:
+          type: array
+          maxItems: 12
+          description: Most recent weight records, newest first.
+          items: { $ref: '#/components/schemas/WeightPoint' }
+    OwnerTrainingSummary:
+      type: object
+      required: [recentSessions]
+      properties:
+        currentProgram:
+          oneOf:
+            - type: object
+              required: [name, status, periodStart, periodEnd]
+              properties:
+                name: { type: string }
+                status: { $ref: '#/components/schemas/ProgramStatus' }
+                periodStart: { type: string, format: date }
+                periodEnd: { type: string, format: date }
+                currentPhaseName: { type: [string, 'null'], description: Null unless exactly one phase date range includes the current UTC date. }
+                sessionsCompleted: { type: integer, minimum: 0, description: Count of sessions with status COMPLETED in the selected program. }
+                sessionsPlanned: { type: integer, minimum: 0, description: Count of all sessions in the selected program. }
+            - type: 'null'
+        recentSessions:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [sessionCode, scheduledStart, status]
+            properties:
+              sessionCode: { type: string }
+              scheduledStart: { type: string, format: date-time }
+              status: { $ref: '#/components/schemas/SessionStatus' }
+              evaluationLabel: { type: [string, 'null'], maxLength: 50 }

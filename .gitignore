@@ -1,0 +1,17 @@
+target/
+*.iml
+.idea/
+.vscode/
+*.log
+.env
+.env.*
+!.env.example
+application-local.yml
+*.p12
+*.pfx
+*.jks
+*.key
+*.b64
+
+# Private dev-only reset outbox; never commit tokens or local secrets.
+.local/

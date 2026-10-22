@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: racehorse-backend
+  profiles:
+    default: dev
+  datasource:
+    # Connection comes from environment variables only. Never commit credentials.
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=racehorse_dev;encrypt=true;trustServerCertificate=false}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # The approved schema (database/schema.sql, DB-01) is applied by script; Hibernate only validates it.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  jackson:
+    time-zone: UTC
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+server:
+  error:
+    include-stacktrace: never
+    include-message: never
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  jwt:
+    signing-key: ${JWT_SIGNING_KEY:}
+    access-token-ttl-seconds: ${JWT_ACCESS_TOKEN_TTL_SECONDS:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: false
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: false

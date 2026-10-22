@@ -1,0 +1,622 @@
+{
+  "testedCode": {
+    "fe": "e48f8383c19464d01d2d45fc288d8a393ec52bc4",
+    "be": "23cd849d0a88b22cc6d969ca760427e5b6f2505c"
+  },
+  "scope": "Local release heads, not main. No full-suite or three-flow browser acceptance claim.",
+  "database": "racehorse_local_api128_20261021_163300",
+  "tls": "PASS: encrypted TCP, certificate validation enabled, dedicated truststore",
+  "schema": "PASS: existing versioned 53-table/512-column structural verifier; SELECT only",
+  "httpProxy": {
+    "requests": [
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "HEAD_TRAINER",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "TRAINER",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "WORK_RIDER",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "VETERINARIAN",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "GROOM",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "HORSE_OWNER",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "",
+        "method": "GET",
+        "path": "/api/account",
+        "status": 401,
+        "expected": 401,
+        "pass": true
+      },
+      {
+        "role": "GROOM",
+        "method": "GET",
+        "path": "/api/admin/users",
+        "status": 403,
+        "expected": 403,
+        "pass": true
+      },
+      {
+        "role": "HORSE_OWNER",
+        "method": "GET",
+        "path": "/api/horses",
+        "status": 403,
+        "expected": 403,
+        "pass": true
+      },
+      {
+        "role": "GROOM",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "POST",
+        "path": "/api/horses",
+        "status": 201,
+        "expected": 201,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/horses?q=RB-3BAC3DBB6D",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/horses/2",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/horses/2",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/stable-boxes",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/admin/users",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/admin/audit-log?size=10",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "GET",
+        "path": "/api/dashboard/club-manager",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "TRAINER",
+        "method": "GET",
+        "path": "/api/exercises",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "HEAD_TRAINER",
+        "method": "GET",
+        "path": "/api/training-programs",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "TRAINER",
+        "method": "GET",
+        "path": "/api/training-sessions/1",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "TRAINER",
+        "method": "GET",
+        "path": "/api/training-sessions/2",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "VETERINARIAN",
+        "method": "GET",
+        "path": "/api/medical/cases",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "VETERINARIAN",
+        "method": "GET",
+        "path": "/api/medical/cases/1",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "VETERINARIAN",
+        "method": "GET",
+        "path": "/api/medical/restrictions",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "HORSE_OWNER",
+        "method": "GET",
+        "path": "/api/owner/horses",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "GROOM",
+        "method": "GET",
+        "path": "/api/notifications",
+        "status": 200,
+        "expected": 200,
+        "pass": true
+      },
+      {
+        "role": "CLUB_MANAGER",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      },
+      {
+        "role": "HEAD_TRAINER",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      },
+      {
+        "role": "TRAINER",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      },
+      {
+        "role": "WORK_RIDER",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      },
+      {
+        "role": "VETERINARIAN",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      },
+      {
+        "role": "GROOM",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      },
+      {
+        "role": "HORSE_OWNER",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "status": 204,
+        "expected": 204,
+        "pass": true
+      }
+    ],
+    "assertions": [
+      {
+        "name": "seven approved local accounts",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT CLUB_MANAGER",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role CLUB_MANAGER",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT HEAD_TRAINER",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role HEAD_TRAINER",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT TRAINER",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role TRAINER",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT WORK_RIDER",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role WORK_RIDER",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT VETERINARIAN",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role VETERINARIAN",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT GROOM",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role GROOM",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/auth/login",
+        "pass": true
+      },
+      {
+        "name": "backend-issued JWT HORSE_OWNER",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "ACTIVE current role HORSE_OWNER",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/auth/me",
+        "pass": true
+      },
+      {
+        "name": "role denial retains valid session",
+        "pass": true
+      },
+      {
+        "name": "success envelope POST /api/horses",
+        "pass": true
+      },
+      {
+        "name": "created lifecycle DRAFT",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/horses?q=RB-3BAC3DBB6D",
+        "pass": true
+      },
+      {
+        "name": "SQL list contains created horse",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/horses/2",
+        "pass": true
+      },
+      {
+        "name": "detail stable persisted identity",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/horses/2",
+        "pass": true
+      },
+      {
+        "name": "refresh stable persisted identity",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/stable-boxes",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/admin/users",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/admin/audit-log?size=10",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/dashboard/club-manager",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/exercises",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/training-programs",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/training-sessions/1",
+        "pass": true
+      },
+      {
+        "name": "terminal session retained flow2SessionId",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/training-sessions/2",
+        "pass": true
+      },
+      {
+        "name": "terminal session retained flow3SessionId",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/medical/cases",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/medical/cases/1",
+        "pass": true
+      },
+      {
+        "name": "existing medical case retained",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/medical/restrictions",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/owner/horses",
+        "pass": true
+      },
+      {
+        "name": "unowned new DRAFT absent from Owner scope",
+        "pass": true
+      },
+      {
+        "name": "success envelope GET /api/notifications",
+        "pass": true
+      }
+    ],
+    "transport": "http://127.0.0.1:5173/api -> http://127.0.0.1:8080/api"
+  },
+  "independentSqlReadback": {
+    "result": "PASS",
+    "strictTls": true,
+    "selectOnly": true,
+    "assertions": 5,
+    "horseId": 2
+  },
+  "writes": {
+    "horseId": 2,
+    "horseCode": "RB-3BAC3DBB6D",
+    "scope": "One retained DRAFT in the prior authorized isolated test DB; normal auth audit writes"
+  },
+  "publicBackend": [
+    {
+      "openApiPaths": null,
+      "origin": "http://127.0.0.1:8080",
+      "contentType": "application/json",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "openApiPaths": 110,
+      "origin": "http://127.0.0.1:8080",
+      "contentType": "application/json",
+      "path": "/v3/api-docs",
+      "status": 200
+    },
+    {
+      "openApiPaths": null,
+      "origin": "http://127.0.0.1:8080",
+      "contentType": "text/html",
+      "path": "/swagger-ui/index.html",
+      "status": 200
+    },
+    {
+      "allowHeaders": "authorization, content-type",
+      "path": "/api/auth/login",
+      "allowOrigin": "http://localhost:5173",
+      "status": 200,
+      "method": "OPTIONS"
+    }
+  ],
+  "browser": "Built-in browser confirmed Login renders. Authenticated clicks/refresh/logout NOT RUN this batch.",
+  "fullSuites": "DEFERRED BY LEADER; prior fixture results are not current SQL acceptance",
+  "production": "No deployment, main push, merge, branch deletion or hosting configuration changes"
+}

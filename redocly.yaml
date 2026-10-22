@@ -1,0 +1,6 @@
+# OpenAPI lint configuration for docs/api (run: npx @redocly/cli lint docs/api/*.openapi.yaml)
+extends:
+  - recommended
+rules:
+  info-license: off            # university project, no published licence
+  no-server-example.com: off   # localhost is the intended development server

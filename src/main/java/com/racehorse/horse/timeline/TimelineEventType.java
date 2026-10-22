@@ -1,0 +1,12 @@
+package com.racehorse.horse.timeline;
+
+public enum TimelineEventType {
+    HORSE_ACTIVATED,
+    STABLE_ASSIGNED,
+    OWNERSHIP_CHANGED,
+    VETERINARY_EXAMINATION,
+    RESTRICTION_CHANGED,
+    PROGRAM_ACTIVATED,
+    TRAINING_SESSION,
+    INCIDENT_REPORTED
+}
