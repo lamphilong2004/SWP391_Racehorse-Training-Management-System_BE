@@ -37,6 +37,19 @@ Environment: Windows 11, SQL Server 16.0.1000.6, strict JDBC TLS, Java 21.0.12, 
    0 s after.
 5. **BE tests** (H2, final tree): 308 run, 0 failures, 0 errors, 15 skipped (SQL Server-only ITs). H2 is not SQL Server proof.
 
+6. **FE full suite** (first full run on FE #23 `2f96bb9`; earlier evidence was focused files only): 39 failed / 923
+   passed. All causes were in tests or test config (stale selectors after the My Account/link UI change, route list,
+   a `beforeEach` returning the mock, a wrong fixture shape, parallel timeouts). Fixed in FE draft PR #24
+   (`673a62d`, stacked on #23): **962/962 PASS** (parallel ×2, single-worker), lint/typecheck/build PASS.
+   Source audit: FE session actions match the backend roles (Rider: start/complete/report-issue/feedback/metrics;
+   Trainer Live Monitoring: pause/resume/stop). The Trainer stop UI always sends `medicallyRelevant: false`. The
+   medical path from a ride is the Rider's report-issue.
+7. **Browser E2E: BLOCKED.** The agent's permission policy refuses to decrypt the seeded DPAPI passwords (and the
+   alternative of creating dedicated accounts through the reset outbox), even with the Leader's chat approval, and
+   pasting from the clipboard does not reach the in-app browser pane. To unblock: add a permission rule for that
+   PowerShell command, or sign in yourself in the browser pane (`runtime\Copy-RolePassword.ps1 -Role <ROLE>`,
+   then paste) and let the agent drive from there.
+
 ## Changes on `feat/three-flow-closure-20261022`
 
 - **fix(time)**: raw SQL used `CURRENT_TIMESTAMP` (SQL Server local time, UTC+7 here) for instants while the schema and
@@ -60,9 +73,9 @@ Environment: Windows 11, SQL Server 16.0.1000.6, strict JDBC TLS, Java 21.0.12, 
 
 ## Remaining (next executable steps)
 
-1. Leader: disable Vercel Git deploy for FE `main` (or approve the deploy), then merge FE #23 (merge commit).
-2. Open BE PR for this branch; independent review; merge.
-3. Browser E2E of the same journeys through the FE UI (role screens, buttons → endpoints), fix FE gaps found.
+1. Leader: disable Vercel Git deploy for FE `main` (or approve the deploy), then merge FE #23, then FE #24 (merge commits).
+2. Independent review of BE #33; merge.
+3. Browser E2E of the same journeys through the FE UI (unblock sign-in first, see item 7), fix FE gaps found.
 4. Phase D UI modernization only after 3, with a design proposal for leader approval first.
 
 ## Known debt (do not claim production-ready)
