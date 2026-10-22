@@ -110,7 +110,7 @@ public class AdjustmentRequestService {
         if (approve && reason != null && reason.length() > 2000) throw validation("decisionReason must be at most 2000 characters.");
         String targetStatus = approve ? "APPROVED" : "REJECTED";
         int changed = jdbc.update("UPDATE dbo.program_adjustment_request SET status=?, reviewed_by_user_id=?, reviewed_at=?, " +
-                "decision_reason=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'",
+                "decision_reason=?, updated_at=SYSUTCDATETIME() WHERE id=? AND status='PENDING'",
                 targetStatus, actor.userId(), Timestamp.from(Instant.now()), reason, id);
         if (changed == 0) {
             if (!exists(id)) throw notFound("Adjustment request was not found.");

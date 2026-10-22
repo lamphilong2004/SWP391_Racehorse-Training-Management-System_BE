@@ -84,7 +84,7 @@ public class TrainingSessionService {
         ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),start);
         repository.lockRiderSchedule(rider);
         if(repository.hasScheduleConflict(rider,start,end,id)) throw business("Work Rider has an overlapping session schedule.");
-        int changed=jdbc.update("UPDATE dbo.training_session SET scheduled_start=?,scheduled_end=?,surface=COALESCE(?,surface),focus=COALESCE(?,focus),intensity=?,work_rider_user_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='SCHEDULED'",
+        int changed=jdbc.update("UPDATE dbo.training_session SET scheduled_start=?,scheduled_end=?,surface=COALESCE(?,surface),focus=COALESCE(?,focus),intensity=?,work_rider_user_id=?,updated_at=SYSUTCDATETIME() WHERE id=? AND status='SCHEDULED'",
                 timestamp(start),timestamp(end),r.surface(),r.focus(),intensity,rider,id);
         if(changed!=1)throw business("The session state changed; reload and try again.");
         repository.audit(a.userId(),"TRAINER","SESSION_UPDATED",id,"Scheduled session details changed.");
@@ -214,8 +214,8 @@ public class TrainingSessionService {
         if(groomCandidates(id).stream().noneMatch(u->u.id()==groomId))throw validation("groomUserId must identify an ACTIVE Groom.");
         SessionApi.UserRef current=groom(id);
         if(current!=null&&current.id()==groomId)return detail(id,false);
-        if(current==null)jdbc.update("INSERT INTO dbo.training_session_groom_assignment(training_session_id,groom_user_id,assigned_by_user_id,assigned_at) VALUES (?,?,?,CURRENT_TIMESTAMP)",id,groomId,a.userId());
-        else jdbc.update("UPDATE dbo.training_session_groom_assignment SET groom_user_id=?,assigned_by_user_id=?,assigned_at=CURRENT_TIMESTAMP WHERE training_session_id=?",groomId,a.userId(),id);
+        if(current==null)jdbc.update("INSERT INTO dbo.training_session_groom_assignment(training_session_id,groom_user_id,assigned_by_user_id,assigned_at) VALUES (?,?,?,SYSUTCDATETIME())",id,groomId,a.userId());
+        else jdbc.update("UPDATE dbo.training_session_groom_assignment SET groom_user_id=?,assigned_by_user_id=?,assigned_at=SYSUTCDATETIME() WHERE training_session_id=?",groomId,a.userId(),id);
         notifications.persistAndPublish(groomId,Category.SCHEDULE,"GROOM_PRECHECK_ASSIGNED","Pre-session check assigned",
                 "Pre-session check assigned for session "+row.get("session_code")+".","TRAINING_SESSION",id,false);
         repository.audit(a.userId(),"TRAINER","SESSION_GROOM_ASSIGNED",id,"Explicit Groom assignment updated.");
@@ -238,7 +238,7 @@ public class TrainingSessionService {
         SessionApi.SuitabilityResult result=evaluate(longValue(row,"horse_program_phase_id"),intensity,exercises);
         if(result.sessionBlocked()||!result.sessionIssues().isEmpty()||result.exercises().stream().anyMatch(e->"A".equals(e.category())))
             throw business("Current medical restrictions and phase intensity bounds must pass.");
-        if(jdbc.update("UPDATE dbo.training_session SET intensity=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND intensity=? AND status IN ('IN_PROGRESS','PAUSED')",intensity,id,row.get("intensity"))!=1)
+        if(jdbc.update("UPDATE dbo.training_session SET intensity=?,updated_at=SYSUTCDATETIME() WHERE id=? AND intensity=? AND status IN ('IN_PROGRESS','PAUSED')",intensity,id,row.get("intensity"))!=1)
             throw business("Session changed concurrently; reload before reducing intensity.");
         repository.audit(a.userId(),"TRAINER","SESSION_INTENSITY_REDUCED",id,"Session intensity reduced from "+row.get("intensity")+" to "+intensity+".");
         return detail(id,false);

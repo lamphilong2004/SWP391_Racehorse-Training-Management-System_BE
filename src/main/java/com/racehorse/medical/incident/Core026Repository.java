@@ -162,7 +162,7 @@ public class Core026Repository {
 
     public int transitionIncident(long id,String expected,String status,long actorId,Long medicalCaseId) {
         return jdbc.update("""
-                UPDATE dbo.incident SET status=?,reviewed_by_user_id=?,medical_case_id=COALESCE(?,medical_case_id),updated_at=CURRENT_TIMESTAMP
+                UPDATE dbo.incident SET status=?,reviewed_by_user_id=?,medical_case_id=COALESCE(?,medical_case_id),updated_at=SYSUTCDATETIME()
                 WHERE id=? AND status=?
                 """,status,actorId,medicalCaseId,id,expected);
     }

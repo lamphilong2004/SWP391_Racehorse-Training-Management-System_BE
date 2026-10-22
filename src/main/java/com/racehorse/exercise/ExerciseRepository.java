@@ -85,7 +85,7 @@ public class ExerciseRepository {
     public int update(long id, ExerciseInput input) {
         return jdbcTemplate.update("""
                 UPDATE dbo.exercise_definition
-                SET name = ?, exercise_type = ?, description = ?, target_metric = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, exercise_type = ?, description = ?, target_metric = ?, updated_at = SYSUTCDATETIME()
                 WHERE id = ?
                 """, input.name(), input.exerciseType(), input.description(), input.targetMetric(), id);
     }

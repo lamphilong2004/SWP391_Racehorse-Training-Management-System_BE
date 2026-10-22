@@ -55,7 +55,7 @@ public class Core028Service {
     @Transactional(isolation=Isolation.SERIALIZABLE)
     public Map<String,Object> complete(long id){ActorContext a=require(RoleCode.WORK_RIDER);Session s=session(id);if(s.riderId()!=a.userId())throw forbidden();
         if(!"IN_PROGRESS".equals(s.status()))throw conflict("Only an IN_PROGRESS session may be completed.");
-        if(jdbc.update("UPDATE dbo.training_session SET status='COMPLETED',actual_end=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='IN_PROGRESS'",id)!=1)throw conflict("Session state changed; reload and try again.");
+        if(jdbc.update("UPDATE dbo.training_session SET status='COMPLETED',actual_end=SYSUTCDATETIME(),updated_at=SYSUTCDATETIME() WHERE id=? AND status='IN_PROGRESS'",id)!=1)throw conflict("Session state changed; reload and try again.");
         return summary(id);}
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
@@ -70,7 +70,7 @@ public class Core028Service {
         if(!Set.of("IN_PROGRESS","PAUSED").contains(s.status()))throw conflict("Only an IN_PROGRESS or PAUSED session may report an issue.");
         Instant at=r.observedAt()==null?Instant.now():r.observedAt();String code="INC-"+UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(Locale.ROOT);
         long incident=insertIncident(s,id,a.userId(),code,r.incidentType(),r.observedSeverity(),r.description(),at);
-        if(jdbc.update("UPDATE dbo.training_session SET status='INTERRUPTED',interruption_reason=?,actual_end=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('IN_PROGRESS','PAUSED')",r.description(),id)!=1)throw conflict("Session state changed; reload and try again.");
+        if(jdbc.update("UPDATE dbo.training_session SET status='INTERRUPTED',interruption_reason=?,actual_end=SYSUTCDATETIME(),updated_at=SYSUTCDATETIME() WHERE id=? AND status IN ('IN_PROGRESS','PAUSED')",r.description(),id)!=1)throw conflict("Session state changed; reload and try again.");
         notifyIncident(s,id,code);return new IssueResult(incident,code,"INTERRUPTED");}
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
@@ -80,14 +80,14 @@ public class Core028Service {
         if(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.rider_feedback WHERE training_session_id=?",Integer.class,id)>0)throw conflict("Rider feedback was already submitted for this session.");
         for(var e:r.responses().entrySet())if(e.getValue()!=null&&(!(e.getValue() instanceof String v)||v.length()>maxLength(e.getKey())))throw validation("Feedback values must be strings within their field limits.");
         String body;try{body=json.writeValueAsString(r.responses());}catch(Exception e){throw new IllegalStateException("Feedback could not be serialized.",e);}
-        long feedbackId;try{feedbackId=insertId("INSERT INTO dbo.rider_feedback(training_session_id,submitted_by_user_id,submitted_at,responses) VALUES (?,?,CURRENT_TIMESTAMP,?)",ps->{ps.setLong(1,id);ps.setLong(2,a.userId());ps.setString(3,body);});}catch(DataIntegrityViolationException e){throw conflict("Rider feedback was already submitted for this session.");}
+        long feedbackId;try{feedbackId=insertId("INSERT INTO dbo.rider_feedback(training_session_id,submitted_by_user_id,submitted_at,responses) VALUES (?,?,SYSUTCDATETIME(),?)",ps->{ps.setLong(1,id);ps.setLong(2,a.userId());ps.setString(3,body);});}catch(DataIntegrityViolationException e){throw conflict("Rider feedback was already submitted for this session.");}
         Instant submitted=jdbc.queryForObject("SELECT submitted_at FROM dbo.rider_feedback WHERE id=?",Timestamp.class,feedbackId).toInstant();return new Feedback(feedbackId,id,a.userId(),submitted,r.responses());}
 
     private void interrupt(Session s,long id,String reason,String type,String severity,Instant at,long actorId){if(!Set.of("IN_PROGRESS","PAUSED").contains(s.status()))throw conflict("Only an IN_PROGRESS or PAUSED session may be interrupted.");
         if(type!=null){String code="INC-"+UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(Locale.ROOT);insertIncident(s,id,actorId,code,type,severity,reason,at);notifyIncident(s,id,code);}
-        if(jdbc.update("UPDATE dbo.training_session SET status='INTERRUPTED',interruption_reason=?,actual_end=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('IN_PROGRESS','PAUSED')",reason,id)!=1)throw conflict("Session state changed; reload and try again.");}
+        if(jdbc.update("UPDATE dbo.training_session SET status='INTERRUPTED',interruption_reason=?,actual_end=SYSUTCDATETIME(),updated_at=SYSUTCDATETIME() WHERE id=? AND status IN ('IN_PROGRESS','PAUSED')",reason,id)!=1)throw conflict("Session state changed; reload and try again.");}
 
-    private long insertIncident(Session s,long id,long actor,String code,String type,String severity,String description,Instant observed){return insertId("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,'REPORTED')",ps->{ps.setString(1,code);ps.setLong(2,s.horseId());ps.setLong(3,actor);ps.setLong(4,id);ps.setTimestamp(5,Timestamp.from(observed));ps.setString(6,type);ps.setString(7,severity);ps.setString(8,description);});}
+    private long insertIncident(Session s,long id,long actor,String code,String type,String severity,String description,Instant observed){return insertId("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,?,SYSUTCDATETIME(),?,?,?,'REPORTED')",ps->{ps.setString(1,code);ps.setLong(2,s.horseId());ps.setLong(3,actor);ps.setLong(4,id);ps.setTimestamp(5,Timestamp.from(observed));ps.setString(6,type);ps.setString(7,severity);ps.setString(8,description);});}
 
     private void notifyIncident(Session s,long id,String code){String message="Incident "+code+" was reported for session "+s.code()+".";
         List<Long> recipients=new ArrayList<>(jdbc.queryForList("SELECT u.id FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'",Long.class));

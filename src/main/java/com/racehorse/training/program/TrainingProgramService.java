@@ -228,7 +228,7 @@ public class TrainingProgramService {
         ActorContext actor = requireRole(RoleCode.HEAD_TRAINER);
         Map<String, Object> row = templateRow(id);
         if ("ARCHIVED".equals(row.get("status"))) throw conflict("Template is already archived.");
-        jdbc.update("UPDATE dbo.training_program_template SET status='ARCHIVED', updated_at=CURRENT_TIMESTAMP WHERE id=?", id);
+        jdbc.update("UPDATE dbo.training_program_template SET status='ARCHIVED', updated_at=SYSUTCDATETIME() WHERE id=?", id);
         audit(actor, "TEMPLATE_ARCHIVED", "TRAINING_PROGRAM_TEMPLATE", id, "Template archived.");
         return templateSummary(templateRow(id));
     }
@@ -365,7 +365,7 @@ public class TrainingProgramService {
                 ||("PAUSED".equals(before)&&Set.of("ACTIVE","COMPLETED").contains(after));
         if(!valid) throw conflict("The requested program status transition is not allowed.");
         if("PAUSED".equals(before)&&"ACTIVE".equals(after)) requireNotLocked((Long)current.get("horse_id"));
-        jdbc.update("UPDATE dbo.horse_training_program SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",after,id);
+        jdbc.update("UPDATE dbo.horse_training_program SET status=?,updated_at=SYSUTCDATETIME() WHERE id=?",after,id);
         audit(actor,"PROGRAM_STATUS_CHANGED","TRAINING_PROGRAM",id,"Program status changed from "+before+" to "+after+(request.reason()==null?".":". "+request.reason()));
         return programDetailView(id);
     }
@@ -401,7 +401,7 @@ public class TrainingProgramService {
                 Integer belongs=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse_program_phase WHERE id=? AND horse_training_program_id=?",Integer.class,phase.id(),id);
                 if(belongs==null||belongs!=1) throw notFound("A supplied phase id is not part of this program.");
                 jdbc.update("""
-                        UPDATE dbo.horse_program_phase SET template_version_phase_id=?,phase_order=?,name=?,objective=?,start_date=?,end_date=?,intensity_min=?,intensity_max=?,workload=?,is_customized=1,updated_at=CURRENT_TIMESTAMP
+                        UPDATE dbo.horse_program_phase SET template_version_phase_id=?,phase_order=?,name=?,objective=?,start_date=?,end_date=?,intensity_min=?,intensity_max=?,workload=?,is_customized=1,updated_at=SYSUTCDATETIME()
                         WHERE id=? AND horse_training_program_id=?
                         """,phase.templateVersionPhaseId(),phase.phaseOrder(),phase.name(),phase.objective(),phase.startDate(),phase.endDate(),phase.intensityMin(),phase.intensityMax(),phase.workload(),phase.id(),id);
             }
@@ -425,7 +425,7 @@ public class TrainingProgramService {
         if (Objects.equals(active.get("trainer_user_id"), request.trainerUserId())) throw conflict("The requested Trainer is already assigned.");
         LocalDate currentStart = (LocalDate) active.get("effective_from");
         if (!request.effectiveFrom().isAfter(currentStart)) throw conflict("The new assignment date must follow the current assignment start.");
-        jdbc.update("UPDATE dbo.trainer_assignment SET effective_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        jdbc.update("UPDATE dbo.trainer_assignment SET effective_to=?, updated_at=SYSUTCDATETIME() WHERE id=?",
                 request.effectiveFrom().minusDays(1), active.get("id"));
         jdbc.update("INSERT INTO dbo.trainer_assignment (horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from,reason) VALUES (?,?,?,?,?)",
                 id, request.trainerUserId(), actor.userId(), request.effectiveFrom(), request.reason());

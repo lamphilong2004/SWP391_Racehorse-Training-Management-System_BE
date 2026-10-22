@@ -1,5 +1,8 @@
 CREATE SCHEMA IF NOT EXISTS dbo;
 
+-- SQL Server SYSUTCDATETIME() used by production SQL; H2 lacks it.
+CREATE ALIAS IF NOT EXISTS SYSUTCDATETIME FOR "com.racehorse.testsupport.H2Functions.sysUtcDateTime";
+
 CREATE TABLE IF NOT EXISTS dbo.role (
     id BIGINT PRIMARY KEY,
     role_code VARCHAR(30) NOT NULL UNIQUE

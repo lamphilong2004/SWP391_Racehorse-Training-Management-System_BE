@@ -241,15 +241,15 @@ public class TrainingSessionRepository {
                 UPDATE dbo.training_session SET scheduled_start=COALESCE(?,scheduled_start),
                   scheduled_end=CASE WHEN ? THEN ? ELSE scheduled_end END,
                   surface=COALESCE(?,surface),focus=COALESCE(?,focus),intensity=COALESCE(?,intensity),
-                  work_rider_user_id=COALESCE(?,work_rider_user_id),updated_at=CURRENT_TIMESTAMP
+                  work_rider_user_id=COALESCE(?,work_rider_user_id),updated_at=SYSUTCDATETIME()
                 WHERE id=? AND status='SCHEDULED'
                 """,r.scheduledStart(),r.scheduledEnd()!=null,r.scheduledEnd(),r.surface(),r.focus(),r.intensity(),riderId,id);
     }
 
     public void deleteExercises(long id) { jdbc.update("DELETE FROM dbo.session_exercise WHERE training_session_id=?",id); }
     public int transition(long id,String from,String to) {
-        if("IN_PROGRESS".equals(to)) return jdbc.update("UPDATE dbo.training_session SET status=?,actual_start=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?",to,id,from);
-        return jdbc.update("UPDATE dbo.training_session SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?",to,id,from);
+        if("IN_PROGRESS".equals(to)) return jdbc.update("UPDATE dbo.training_session SET status=?,actual_start=SYSUTCDATETIME(),updated_at=SYSUTCDATETIME() WHERE id=? AND status=?",to,id,from);
+        return jdbc.update("UPDATE dbo.training_session SET status=?,updated_at=SYSUTCDATETIME() WHERE id=? AND status=?",to,id,from);
     }
     public boolean hasPassingPrecheck(long id) {
         Integer n=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.pre_session_check WHERE training_session_id=? AND overall_result='ALL_NORMAL'",Integer.class,id);
