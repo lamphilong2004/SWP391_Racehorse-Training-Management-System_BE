@@ -1,6 +1,30 @@
 # Project handoff checkpoint — three-core-flow local release
 
-Resumable checkpoint. Update after each milestone. Last update: 2026-10-22 (Phase C, backend API journeys).
+Resumable checkpoint. Update after each milestone. Last update: 2026-10-22 15:15 (+07), real-environment browser run.
+
+## CURRENT STATE (read first)
+
+- **Real stack:** FE http://127.0.0.1:5173 (Vite dev, branch `fix/fe-full-suite-20261022` = FE main + #23 + #24) →
+  BE http://127.0.0.1:8080 (branch `feat/three-flow-closure-20261022` = BE main + #33) → SQL Server DB
+  **`racehorse_integration_test`** (Leader's original DB). Private launcher outside Git:
+  `rh-main-20261022\runtime\RunOriginalBackend.ps1`. Backup before changes:
+  `...\MSSQL\Backup\racehorse_integration_test_before_final_20261022.bak` (COPY_ONLY, CHECKSUM, verified).
+- **Original accounts (unchanged):** clubmanager@ / headtrainer@ / trainer@ / workrider@ / veterinarian@ / groom@ /
+  horseowner@gmail.com. The Leader signs in; the agent drives the browser (its policy blocks password handling).
+- **Merges blocked on review:** BE #33 (agent merge without review denied by policy) and FE #24 (FE main ruleset needs
+  a non-author approval; #24 contains #23 and disables Vercel main deploys, so merge #24 only).
+- **Real reference data:** 5 horses with sourced identity/pedigree (docs/data/REAL-HORSE-REFERENCE-DATA.md), DRAFT
+  until the club enters owner, box and Vet baseline. No operational/medical history invented for them.
+- **Browser-verified Training journey (original DB, real APIs, SQL readback):** HT template/program pages, program
+  pause/resume, reassign dialog, adjustment review → Trainer adjustment request, Walk exercise, session 7 wizard,
+  Groom assignment → Groom pre-check ALL_NORMAL → HT approves request #1 → Work Rider start, manual sample, complete,
+  feedback → Trainer evaluation MET → program Progress/History, Performance History.
+- **Fixed during the run:** EF-4 Trainer candidates; adjustment/program-management screens; optional owner at pedigree
+  step; record-linked parents; country of origin field; rider surface + start-gate message; header/breadcrumb
+  overflow; a11y names; greeting; gait codes; feedback wording; evaluation time format; adjustment audit rows.
+- **Open decisions/gaps:** distance aggregation semantics (contract OPEN); no UI to apply an approved phase change
+  (PUT phases exists; program period cannot be extended); request #1 and its approval predate the audit fix, so
+  Program 4 history lacks those two rows; Medical (Vet) and Horse Owner browser passes not yet run in this DB.
 
 ## Git state
 
