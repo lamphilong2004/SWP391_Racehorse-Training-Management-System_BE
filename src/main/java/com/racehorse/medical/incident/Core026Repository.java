@@ -113,6 +113,20 @@ public class Core026Repository {
         return jdbc.query("SELECT scheduled_start,scheduled_end FROM dbo.training_session WHERE id=?", (rs,n)->new Instant[]{
                 rs.getTimestamp(1).toInstant(), rs.getTimestamp(2)==null?null:rs.getTimestamp(2).toInstant()}, sessionId).stream().findFirst();
     }
+    /** ACTIVE horse with a stable assignment covering today in Asia/Ho_Chi_Minh (UTC+7). */
+    public boolean horseInStableToday(long horseId) {
+        Integer n=jdbc.queryForObject("""
+                SELECT COUNT(*) FROM dbo.horse h JOIN dbo.horse_stable_assignment a ON a.horse_id=h.id
+                WHERE h.id=? AND h.lifecycle='ACTIVE'
+                  AND a.effective_from<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+                  AND (a.effective_to IS NULL OR a.effective_to>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
+                """,Integer.class,horseId);
+        return n!=null&&n>0;
+    }
+    public Long activeProgramOf(long horseId) {
+        List<Long> ids=jdbc.queryForList("SELECT id FROM dbo.horse_training_program WHERE horse_id=? AND status IN ('ACTIVE','PAUSED') ORDER BY period_start DESC, id DESC",Long.class,horseId);
+        return ids.isEmpty()?null:ids.getFirst();
+    }
     /** ACTIVE Veterinarians plus the Trainers currently assigned to the program (BR-23, BR-27). */
     public List<Long> medicalRecipients(Long programId) {
         List<Long> recipients=new java.util.ArrayList<>(jdbc.queryForList("""

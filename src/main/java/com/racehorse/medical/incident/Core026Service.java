@@ -98,7 +98,8 @@ public class Core026Service {
         Incident incident;
         try{incident=repository.incident(repository.insertIncident(request,actor.userId())).orElseThrow();}
         catch(DataIntegrityViolationException e){throw conflict("The source context already has a linked Incident or changed concurrently.");}
-        for(long recipient:repository.medicalRecipients(programId))if(recipient!=actor.userId())
+        Long notifyProgram=programId!=null?programId:repository.activeProgramOf(request.horseId());
+        for(long recipient:repository.medicalRecipients(notifyProgram))if(recipient!=actor.userId())
             notifications.persistAndPublish(recipient,Category.MEDICAL,"INCIDENT_REPORTED","Incident reported",
                     "An incident was reported and awaits Veterinarian review.","INCIDENT",incident.id(),false);
         return incident;
@@ -159,6 +160,8 @@ public class Core026Service {
         }
         if(actor.roles().contains(RoleCode.GROOM)){
             if(session!=null&&repository.hasGroomSessionNotice(actor.userId(),session.id()))return;
+            // BR-35: a Groom may report an abnormality seen during feeding or stable care for an ACTIVE horse that is in a stable box today.
+            if(session==null&&check==null&&!careTask&&repository.horseInStableToday(horseId))return;
             throw forbidden("The Groom is not notified for this session.");
         }
         throw forbidden("The report context is not authorized.");

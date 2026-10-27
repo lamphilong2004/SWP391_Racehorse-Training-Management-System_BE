@@ -283,6 +283,30 @@ public class TrainingSessionRepository {
         Integer n=jdbc.queryForObject(sql,Integer.class,values.toArray());
         return n!=null&&n>0;
     }
+    public List<String> riderSkills(long userId) {
+        return jdbc.queryForList("SELECT s.name FROM dbo.user_skill us JOIN dbo.skill s ON s.id=us.skill_id WHERE us.user_id=? AND s.kind='RIDER_SKILL' ORDER BY s.name",String.class,userId);
+    }
+    public List<String> horseStrengths(long horseId) {
+        return jdbc.queryForList("SELECT strength_code FROM dbo.horse_strength WHERE horse_id=?",String.class,horseId);
+    }
+    public int completedSessionsWithHorse(long riderId,long horseId) {
+        Integer n=jdbc.queryForObject("""
+                SELECT COUNT(*) FROM dbo.training_session s JOIN dbo.horse_program_phase ph ON ph.id=s.horse_program_phase_id
+                JOIN dbo.horse_training_program p ON p.id=ph.horse_training_program_id
+                WHERE s.work_rider_user_id=? AND p.horse_id=? AND s.status='COMPLETED'
+                """,Integer.class,riderId,horseId);
+        return n==null?0:n;
+    }
+    /** Rider sessions on the same Asia/Ho_Chi_Minh day as {@code start}. */
+    public int riderSessionsOnClubDay(long riderId,Instant start,Long exceptId) {
+        java.time.ZoneId zone=java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        java.time.LocalDate day=start.atZone(zone).toLocalDate();
+        String sql="SELECT COUNT(*) FROM dbo.training_session WHERE work_rider_user_id=? AND status IN ('SCHEDULED','IN_PROGRESS','PAUSED','COMPLETED') AND scheduled_start>=? AND scheduled_start<?";
+        List<Object> args=new java.util.ArrayList<>(List.of(riderId,timestamp(day.atStartOfDay(zone).toInstant()),timestamp(day.plusDays(1).atStartOfDay(zone).toInstant())));
+        if(exceptId!=null){sql+=" AND id<>?";args.add(exceptId);}
+        Integer n=jdbc.queryForObject(sql,Integer.class,args.toArray());
+        return n==null?0:n;
+    }
     public Instant precheckPerformedAt(long sessionId) {
         List<Instant> rows=jdbc.query("SELECT performed_at FROM dbo.pre_session_check WHERE training_session_id=?",(rs,n)->rs.getTimestamp(1).toInstant(),sessionId);
         return rows.isEmpty()?null:rows.getFirst();

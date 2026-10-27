@@ -49,6 +49,7 @@ public final class SessionApi {
     public record SuitabilityResult(String trainingAvailability, boolean sessionBlocked, String blockedMessage,
                                     List<SuitabilityItem> exercises, List<SessionIssue> sessionIssues) {}
     public record Candidate(UserRef user, String experienceLevel,
-                            String label, List<String> reasons, List<String> warnings, String hardBlock) {}
+                            String label, List<String> reasons, List<String> warnings, String hardBlock,
+                            List<String> skills) {}
     public record CandidateList(List<Candidate> candidates, String emptyReason) {}
 }

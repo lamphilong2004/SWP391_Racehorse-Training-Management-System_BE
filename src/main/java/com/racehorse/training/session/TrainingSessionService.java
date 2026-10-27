@@ -54,6 +54,7 @@ public class TrainingSessionService {
         repository.lockRiderSchedule(r.workRiderUserId());
         if(repository.hasScheduleConflict(r.workRiderUserId(),r.scheduledStart(),r.scheduledEnd(),null)) throw business("Work Rider has an overlapping session schedule.");
         if(repository.hasHorseScheduleConflict(r.horseProgramPhaseId(),r.scheduledStart(),r.scheduledEnd(),null)) throw business("The horse already has another session overlapping this time.");
+        requireRiderAcknowledgement(r.horseProgramPhaseId(),r.intensity(),r.workRiderUserId(),r.scheduledStart(),r.scheduledEnd(),null,r.riderWarningAcknowledged());
         SessionApi.SuitabilityResult suitability=evaluate(r.horseProgramPhaseId(),r.intensity(),r.exercises());
         if(suitability.sessionBlocked()) throw business("Training is locked by the Veterinarian: "+suitability.blockedMessage());
         List<String> hardBlocks=new ArrayList<>();
@@ -87,6 +88,8 @@ public class TrainingSessionService {
         repository.lockRiderSchedule(rider);
         if(repository.hasScheduleConflict(rider,start,end,id)) throw business("Work Rider has an overlapping session schedule.");
         if(repository.hasHorseScheduleConflict(longValue(row,"horse_program_phase_id"),start,end,id)) throw business("The horse already has another session overlapping this time.");
+        if(rider!=longValue(row,"work_rider_user_id")||!java.util.Objects.equals(intensity,row.get("intensity")))
+            requireRiderAcknowledgement(longValue(row,"horse_program_phase_id"),intensity,rider,start,end,id,r.riderWarningAcknowledged());
         Instant checkedAt=repository.precheckPerformedAt(id);
         if(checkedAt!=null&&checkedAt.isBefore(start.minus(com.racehorse.medical.incident.Core026Service.PRECHECK_WINDOW)))
             throw business("A pre-session check is already recorded; the session cannot move more than 12 hours after that check.");
@@ -131,13 +134,13 @@ public class TrainingSessionService {
     @Transactional(readOnly=true)
     public SessionApi.CandidateList riderCandidates(SessionApi.DraftRequest r) {
         ActorContext a=require(RoleCode.TRAINER); validateDraft(r); ensureTrainerAssignment(r.horseProgramPhaseId(),a.userId(),r.scheduledStart());
-        return candidates(r.scheduledStart(),r.scheduledEnd(),null);
+        return candidates(r.horseProgramPhaseId(),r.intensity(),r.scheduledStart(),r.scheduledEnd(),null);
     }
 
     @Transactional(readOnly=true)
     public SessionApi.CandidateList riderCandidatesForSession(long id) {
         ActorContext a=require(RoleCode.TRAINER); requireId(id); Map<String,Object> row=requiredSession(id); authorize(row,a);
-        return candidates(instant(row.get("scheduled_start")),instant(row.get("scheduled_end")),id);
+        return candidates(longValue(row,"horse_program_phase_id"),(String)row.get("intensity"),instant(row.get("scheduled_start")),instant(row.get("scheduled_end")),id);
     }
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
@@ -261,13 +264,46 @@ public class TrainingSessionService {
                 """,(rs,n)->new SessionApi.UserRef(rs.getLong(1),rs.getString(2),rs.getString(3)),id).stream().findFirst().orElse(null);
     }
 
-    private SessionApi.CandidateList candidates(Instant start,Instant end,Long except) {
-        List<SessionApi.Candidate> list=repository.candidates().stream().map(u->{
-            long id=longValue(u,"id"); boolean conflict=repository.hasScheduleConflict(id,start,end,except);
-            return new SessionApi.Candidate(new SessionApi.UserRef(id,(String)u.get("user_code"),(String)u.get("full_name")),(String)u.get("experience_level"),
-                    conflict?"NOT_RECOMMENDED":"SUITABLE",List.of(conflict?"Schedule conflict":"Available for the requested schedule"),List.of(),conflict?"Schedule conflict":null);
-        }).toList();
+    private static final List<String> LABEL_ORDER=List.of("RECOMMENDED","SUITABLE","SUITABLE_WITH_CAUTION","NOT_RECOMMENDED");
+
+    /** BR-D22: schedule conflict is the only hard block; skills, horse experience and workload give labels and warnings. */
+    private SessionApi.CandidateList candidates(long phaseId,String intensity,Instant start,Instant end,Long except) {
+        Map<String,Object> phase=repository.phase(phaseId); if(phase==null) throw notFound("Program phase was not found.");
+        long horseId=longValue(phase,"horse_id");
+        List<String> strengths=repository.horseStrengths(horseId);
+        List<SessionApi.Candidate> list=repository.candidates().stream().map(u->candidate(u,horseId,strengths,intensity,start,end,except))
+                .sorted(Comparator.comparingInt(c->LABEL_ORDER.indexOf(c.label()))).toList();
         return new SessionApi.CandidateList(list,list.isEmpty()?"No active Work Riders are available.":null);
+    }
+
+    private SessionApi.Candidate candidate(Map<String,Object> u,long horseId,List<String> strengths,String intensity,Instant start,Instant end,Long except) {
+        long id=longValue(u,"id"); String level=(String)u.get("experience_level");
+        List<String> skills=repository.riderSkills(id);
+        List<String> reasons=new ArrayList<>(),warnings=new ArrayList<>();
+        boolean conflict=repository.hasScheduleConflict(id,start,end,except);
+        List<String> matched=RiderSkillMatch.matchedStrengths(skills,strengths);
+        if(!matched.isEmpty()) reasons.add("Kỹ năng phù hợp thế mạnh của ngựa: "+String.join(", ",matched)+".");
+        int withHorse=repository.completedSessionsWithHorse(id,horseId);
+        if(withHorse>0) reasons.add("Đã hoàn thành "+withHorse+" buổi tập với ngựa này.");
+        if(!conflict) reasons.add("Rảnh trong khung giờ này.");
+        if(RiderSkillMatch.junior(level)&&intensity!=null&&RiderSkillMatch.HIGH_INTENSITY.contains(intensity))
+            warnings.add("Work Rider mới cho buổi cường độ cao; cần xác nhận trước khi giao.");
+        int sameDay=repository.riderSessionsOnClubDay(id,start,except);
+        if(sameDay>=RiderSkillMatch.DAILY_SESSION_WARNING) warnings.add("Work Rider đã có "+sameDay+" buổi trong ngày này.");
+        if(!strengths.isEmpty()&&matched.isEmpty()&&!skills.isEmpty()) warnings.add("Chưa có kỹ năng khớp với thế mạnh đã khai báo của ngựa.");
+        String label=conflict?"NOT_RECOMMENDED":!warnings.isEmpty()?"SUITABLE_WITH_CAUTION":(!matched.isEmpty()||withHorse>0)?"RECOMMENDED":"SUITABLE";
+        return new SessionApi.Candidate(new SessionApi.UserRef(id,(String)u.get("user_code"),(String)u.get("full_name")),level,label,
+                List.copyOf(reasons),List.copyOf(warnings),conflict?"Trùng lịch với một buổi tập khác của Work Rider.":null,skills);
+    }
+
+    /** Warnings must be acknowledged before a rider is saved on a session (BR-D22). */
+    private void requireRiderAcknowledgement(long phaseId,String intensity,long riderId,Instant start,Instant end,Long except,Boolean acknowledged) {
+        if(Boolean.TRUE.equals(acknowledged)) return;
+        Map<String,Object> rider=repository.candidates().stream().filter(u->longValue(u,"id")==riderId).findFirst().orElse(null);
+        if(rider==null) return;
+        long horseId=longValue(repository.phase(phaseId),"horse_id");
+        SessionApi.Candidate c=candidate(rider,horseId,repository.horseStrengths(horseId),intensity,start,end,except);
+        if(!c.warnings().isEmpty()) throw business("Acknowledge the Work Rider warnings before saving the session.");
     }
 
     private SessionApi.SuitabilityResult evaluate(long phaseId,String intensity,List<SessionApi.ExerciseInput> items) {
