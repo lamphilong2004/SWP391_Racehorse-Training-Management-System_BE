@@ -53,6 +53,7 @@ public class TrainingSessionService {
         if(!repository.activeWorkRider(r.workRiderUserId())) throw validation("workRiderUserId must identify an active Work Rider.");
         repository.lockRiderSchedule(r.workRiderUserId());
         if(repository.hasScheduleConflict(r.workRiderUserId(),r.scheduledStart(),r.scheduledEnd(),null)) throw business("Work Rider has an overlapping session schedule.");
+        if(repository.hasHorseScheduleConflict(r.horseProgramPhaseId(),r.scheduledStart(),r.scheduledEnd(),null)) throw business("The horse already has another session overlapping this time.");
         SessionApi.SuitabilityResult suitability=evaluate(r.horseProgramPhaseId(),r.intensity(),r.exercises());
         if(suitability.sessionBlocked()) throw business("Training is locked by the Veterinarian: "+suitability.blockedMessage());
         List<String> hardBlocks=new ArrayList<>();
@@ -85,6 +86,10 @@ public class TrainingSessionService {
         if(!repository.activeWorkRider(rider)) throw validation("workRiderUserId must identify an active Work Rider.");
         repository.lockRiderSchedule(rider);
         if(repository.hasScheduleConflict(rider,start,end,id)) throw business("Work Rider has an overlapping session schedule.");
+        if(repository.hasHorseScheduleConflict(longValue(row,"horse_program_phase_id"),start,end,id)) throw business("The horse already has another session overlapping this time.");
+        Instant checkedAt=repository.precheckPerformedAt(id);
+        if(checkedAt!=null&&checkedAt.isBefore(start.minus(com.racehorse.medical.incident.Core026Service.PRECHECK_WINDOW)))
+            throw business("A pre-session check is already recorded; the session cannot move more than 12 hours after that check.");
         int changed=jdbc.update("UPDATE dbo.training_session SET scheduled_start=?,scheduled_end=?,surface=COALESCE(?,surface),focus=COALESCE(?,focus),intensity=?,work_rider_user_id=?,updated_at=SYSUTCDATETIME() WHERE id=? AND status='SCHEDULED'",
                 timestamp(start),timestamp(end),r.surface(),r.focus(),intensity,rider,id);
         if(changed!=1)throw business("The session state changed; reload and try again.");
@@ -143,9 +148,13 @@ public class TrainingSessionService {
         if("TRAINER".equals(primaryRole(a))) authorize(row,a);
         if(!"SCHEDULED".equals(row.get("status"))) throw business("Only a SCHEDULED session can start.");
         if(instant(row.get("scheduled_start")).isAfter(calendar.now())) throw business("A session cannot start before its scheduledStart; the Trainer must reschedule.");
+        Instant latestStart=row.get("scheduled_end")==null?instant(row.get("scheduled_start")).plus(com.racehorse.medical.incident.Core026Service.PRECHECK_WINDOW):instant(row.get("scheduled_end"));
+        if(calendar.now().isAfter(latestStart)) throw business("The scheduled time has passed; the Trainer must reschedule the session.");
         String precheck=repository.precheckResult(id);
         if(precheck==null) throw business("Start is blocked until a Groom pre-session check is recorded.");
         if("ABNORMAL".equals(precheck)) throw business("Start is blocked by an ABNORMAL Groom pre-session check.");
+        if(repository.precheckPerformedAt(id).isBefore(instant(row.get("scheduled_start")).minus(com.racehorse.medical.incident.Core026Service.PRECHECK_WINDOW)))
+            throw business("The pre-session check is older than 12 hours before the scheduled start; ask the Groom for a new check.");
         if("LOCKED".equals(row.get("availability"))) throw business("Training is locked by the Veterinarian: "+row.get("restriction_reason"));
         if(!"ACTIVE".equals(row.get("program_status"))) throw business("The training program is not ACTIVE.");
         List<SessionApi.ExerciseInput> current=repository.exercises(id).stream().map(e->new SessionApi.ExerciseInput(e.exerciseDefinitionId(),e.exerciseOrder(),e.distanceM(),e.durationMin(),e.repetitions(),e.restIntervalMin(),e.intensity(),e.surface(),e.acknowledgementNote())).toList();

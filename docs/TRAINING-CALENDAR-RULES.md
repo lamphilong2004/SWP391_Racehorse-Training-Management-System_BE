@@ -35,3 +35,21 @@ These findings are not silently converted into new business rules:
 TrainingCalendarTest covers Vietnam midnight, yesterday/today/future and an unrestricted future horizon. Program/session API tests use a deterministic scheduling clock and retain real role/SQL-fixture checks. They verify invalid requests do not persist changes and unauthorized Trainers cannot obtain clinical reasons.
 
 These API tests use H2 fixtures. They are not proof of a full seven-role SQL Server/browser journey. See the workspace checkpoint for exact runs and local runtime evidence.
+
+## Leader rule review — 27 October 2026 (resolves findings 1–4)
+
+The Leader asked to correct unreasonable rules before the three-flow review. Implemented with API tests:
+
+| Finding | Rule now enforced |
+| --- | --- |
+| 1. Late start | A SCHEDULED session cannot start after its scheduledEnd (or 12 hours after scheduledStart when no end is set). The Trainer reschedules it. Historical rows are untouched. |
+| 2. Precheck freshness | A Groom pre-session check is accepted from 12 hours before scheduledStart until the planned end. Start rejects a check performed more than 12 hours before scheduledStart. A session with a recorded check cannot be rescheduled more than 12 hours after that check. |
+| 3. Horse overlap | A horse cannot have two SCHEDULED/IN_PROGRESS/PAUSED sessions overlapping in time; back-to-back sessions are allowed. Recovery gaps between sessions remain a Head Trainer/Veterinarian judgement, not a hard gate. |
+| 4. Current box | The horse profile/list shows the stable assignment covering today in Asia/Ho_Chi_Minh, so a future move is not shown early. |
+
+Medical hand-over gaps found in the same review (BR-23, BR-27):
+
+- Every incident reported through `/api/incidents` now notifies ACTIVE Veterinarians and the program's current Trainers (`INCIDENT_REPORTED`, target `INCIDENT`). Rider interruptions already did.
+- An ABNORMAL pre-session check notifies the same recipients (`PRECHECK_ABNORMAL`), so Flow 3 is triggered even before the Groom files the incident. The incident itself is still filed by the Groom with type and severity; no incident content is invented automatically.
+
+Finding 5 (no scheduler for reminders or time-based phase completion) is unchanged.

@@ -5,6 +5,9 @@ import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
+import com.racehorse.notification.NotificationApi.Category;
+import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.training.TrainingCalendar;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -30,8 +33,13 @@ public class Core026Service {
     private final Core026Repository repository;
     private final CurrentActorProvider actors;
     private final JsonMapper json;
+    private final NotificationPublisher notifications;
+    private final TrainingCalendar calendar;
+    /** A pre-session check is valid from this long before scheduledStart until the session's planned end. */
+    public static final java.time.Duration PRECHECK_WINDOW=java.time.Duration.ofHours(12);
 
-    public Core026Service(Core026Repository repository,CurrentActorProvider actors,JsonMapper json){this.repository=repository;this.actors=actors;this.json=json;}
+    public Core026Service(Core026Repository repository,CurrentActorProvider actors,JsonMapper json,NotificationPublisher notifications,TrainingCalendar calendar){
+        this.repository=repository;this.actors=actors;this.json=json;this.notifications=notifications;this.calendar=calendar;}
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
     public PreSessionCheck submitPrecheck(long sessionId,PreSessionCheckRequest request){
@@ -41,6 +49,10 @@ public class Core026Service {
         if(!"SCHEDULED".equals(session.status()))throw conflict("Pre-session checks are accepted only for SCHEDULED sessions.");
         if(!repository.hasGroomSessionNotice(actor.userId(),sessionId))throw forbidden("This Groom is not assigned or notified for this session.");
         if(repository.hasCheck(sessionId))throw conflict("A pre-session check already exists for this session.");
+        Instant[] window=repository.sessionWindow(sessionId).orElseThrow(()->notFound("Training session was not found."));
+        Instant now=calendar.now();
+        if(now.isBefore(window[0].minus(PRECHECK_WINDOW)))throw conflict("The pre-session check opens 12 hours before the scheduled start.");
+        if(now.isAfter(window[1]==null?window[0].plus(PRECHECK_WINDOW):window[1]))throw conflict("The scheduled time has passed; the Trainer must reschedule before a pre-session check.");
         Map<String,CheckItem> checks=validateChecks(request);
         String observations;
         try{observations=json.writeValueAsString(checks);}catch(Exception e){throw new IllegalStateException("Could not serialize pre-session checklist.",e);}
@@ -49,6 +61,9 @@ public class Core026Service {
         long id;
         try{id=repository.insertPrecheck(sessionId,actor.userId(),observations,result,Instant.now().truncatedTo(ChronoUnit.MILLIS));}
         catch(DataIntegrityViolationException e){throw conflict("A pre-session check already exists for this session.");}
+        if("ABNORMAL".equals(result))for(long recipient:repository.medicalRecipients(session.programId()))
+            notifications.persistAndPublish(recipient,Category.MEDICAL,"PRECHECK_ABNORMAL","Pre-session check ABNORMAL",
+                    "The Groom recorded an ABNORMAL pre-session check; the session is blocked until the Veterinarian reviews it.","TRAINING_SESSION",sessionId,false);
         return precheckResponse(repository.precheckData(id));
     }
 
@@ -80,8 +95,13 @@ public class Core026Service {
         authorizeReport(actor,request.horseId(),session,check,request.careTaskId()!=null,programId);
         if(repository.incidentForSourceExists(request.preSessionCheckId(),request.trainingSessionId(),request.careTaskId()))
             throw conflict("An Incident already references this source context.");
-        try{return repository.incident(repository.insertIncident(request,actor.userId())).orElseThrow();}
+        Incident incident;
+        try{incident=repository.incident(repository.insertIncident(request,actor.userId())).orElseThrow();}
         catch(DataIntegrityViolationException e){throw conflict("The source context already has a linked Incident or changed concurrently.");}
+        for(long recipient:repository.medicalRecipients(programId))if(recipient!=actor.userId())
+            notifications.persistAndPublish(recipient,Category.MEDICAL,"INCIDENT_REPORTED","Incident reported",
+                    "An incident was reported and awaits Veterinarian review.","INCIDENT",incident.id(),false);
+        return incident;
     }
 
     @Transactional(readOnly=true)

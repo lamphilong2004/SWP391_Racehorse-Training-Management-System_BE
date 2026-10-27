@@ -277,6 +277,31 @@ class TrainingSessionApiIntegrationTest {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
     }
 
+    @Test void horseCannotBeDoubleBookedAndLateOrStaleStartsAreRejected() throws Exception {
+        Fixture f=fixture();String trainer=login(f.trainer()),rider=login(f.rider());long rider2=addUser(RoleCode.WORK_RIDER);
+        String body="{\"horseProgramPhaseId\":%d,\"scheduledStart\":\"%s\",\"scheduledEnd\":\"%s\",\"intensity\":\"LOW\",\"workRiderUserId\":%d,\"exercises\":[{\"exerciseDefinitionId\":%d,\"exerciseOrder\":1,\"durationMin\":10}]}";
+        long first=json.readTree(mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json")
+                .content(body.formatted(f.phase(),f.start(),f.start().plusSeconds(1800),f.rider(),f.exercise()))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString()).path("data").path("id").longValue();
+        mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json")
+                        .content(body.formatted(f.phase(),f.start().plusSeconds(600),f.start().plusSeconds(2400),rider2,f.exercise())))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("horse already has")));
+        long second=json.readTree(mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json")
+                .content(body.formatted(f.phase(),f.start().plusSeconds(1800),f.start().plusSeconds(3600),rider2,f.exercise()))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString()).path("data").path("id").longValue();
+
+        jdbc.update("INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,overall_result) VALUES (?,?,?,'ALL_NORMAL')",first,f.groom(),java.sql.Timestamp.from(f.start().minusSeconds(60)));
+        doReturn(f.start().plusSeconds(1801)).when(calendar).now();
+        mvc.perform(post("/api/training-sessions/{id}/start",first).header("Authorization","Bearer "+rider))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("scheduled time has passed")));
+
+        jdbc.update("INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,overall_result) VALUES (?,?,?,'ALL_NORMAL')",second,f.groom(),java.sql.Timestamp.from(f.start().minusSeconds(13*3600)));
+        String rider2Token=login(rider2);
+        mvc.perform(post("/api/training-sessions/{id}/start",second).header("Authorization","Bearer "+rider2Token))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("older than 12 hours")));
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.training_session WHERE id IN (?,?) AND status<>'SCHEDULED'",Integer.class,first,second));
+    }
+
     private long insertSession(Fixture f,String code,String status,String intensity){
         jdbc.update("INSERT INTO dbo.training_session(session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,scheduled_end,intensity,status) VALUES (?,?,?,?,?,?,?,?)",code,f.phase(),f.trainer(),f.rider(),java.sql.Timestamp.from(f.start()),java.sql.Timestamp.from(f.start().plusSeconds(1800)),intensity,status);
         return jdbc.queryForObject("SELECT id FROM dbo.training_session WHERE session_code=?",Long.class,code);

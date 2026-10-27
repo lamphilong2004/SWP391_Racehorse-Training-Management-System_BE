@@ -93,6 +93,13 @@ class Core026ApiIntegrationTest {
         mvc.perform(post("/api/training-sessions/2/pre-session-check").header("Authorization","Bearer "+groom).contentType("application/json").content(checklist("ABNORMAL")))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.overallResult").value("ABNORMAL"));
         org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.incident",Integer.class));
+        // BR-23: the abnormal check hands over to Flow 3 by notifying the assigned Trainer (and any Veterinarian).
+        org.junit.jupiter.api.Assertions.assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE notification_type='PRECHECK_ABNORMAL' AND recipient_user_id=260001 AND target_id=2",Integer.class));
+        // A check more than 12 hours before the scheduled start is refused.
+        jdbc.update("INSERT INTO dbo.training_session(id,session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,status) VALUES (4,'S-4',1,260001,260002,?,'SCHEDULED')",java.sql.Timestamp.from(Instant.now().plusSeconds(2*86400)));
+        notice(260003,4);
+        mvc.perform(post("/api/training-sessions/4/pre-session-check").header("Authorization","Bearer "+groom).contentType("application/json").content(normal))
+                .andExpect(status().isConflict());
 
         String incident=String.format("{\"horseId\":1,\"preSessionCheckId\":%d,\"incidentType\":\"FEVER\",\"observedSeverity\":\"MEDIUM\",\"observedAt\":\"%s\"}",checkId,Instant.now());
         mvc.perform(post("/api/incidents").header("Authorization","Bearer "+groom).contentType("application/json").content(incident))
@@ -110,6 +117,8 @@ class Core026ApiIntegrationTest {
         String response=mvc.perform(post("/api/incidents").header("Authorization","Bearer "+trainer).contentType("application/json").content(trainerReport))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("REPORTED"))
                 .andReturn().getResponse().getContentAsString();long incidentId=json.readTree(response).path("data").path("id").longValue();
+        // BR-27: every reported incident notifies the Veterinarian.
+        org.junit.jupiter.api.Assertions.assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE notification_type='INCIDENT_REPORTED' AND recipient_user_id=? AND target_id=?",Integer.class,vetId,incidentId));
         mvc.perform(get("/api/incidents").header("Authorization","Bearer "+trainer)).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
         mvc.perform(get("/api/incidents/{id}",incidentId).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
         String open="{\"action\":\"OPEN_CASE\"}";

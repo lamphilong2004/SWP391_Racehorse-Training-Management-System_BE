@@ -108,6 +108,24 @@ public class Core026Repository {
                 rs.getString("full_name"),rs.getTimestamp("performed_at").toInstant(),rs.getString("observations"),rs.getString("overall_result")),id);
     }
 
+    /** Scheduled window of a session: [scheduled_start, scheduled_end or null]. */
+    public Optional<Instant[]> sessionWindow(long sessionId) {
+        return jdbc.query("SELECT scheduled_start,scheduled_end FROM dbo.training_session WHERE id=?", (rs,n)->new Instant[]{
+                rs.getTimestamp(1).toInstant(), rs.getTimestamp(2)==null?null:rs.getTimestamp(2).toInstant()}, sessionId).stream().findFirst();
+    }
+    /** ACTIVE Veterinarians plus the Trainers currently assigned to the program (BR-23, BR-27). */
+    public List<Long> medicalRecipients(Long programId) {
+        List<Long> recipients=new java.util.ArrayList<>(jdbc.queryForList("""
+                SELECT u.id FROM dbo.app_user u JOIN dbo.user_role ur ON ur.user_id=u.id JOIN dbo.role r ON r.id=ur.role_id
+                WHERE u.account_status='ACTIVE' AND r.role_code='VETERINARIAN'
+                """, Long.class));
+        if(programId!=null) recipients.addAll(jdbc.queryForList("""
+                SELECT DISTINCT trainer_user_id FROM dbo.trainer_assignment
+                WHERE horse_training_program_id=? AND effective_from<=CAST(CURRENT_TIMESTAMP AS DATE)
+                  AND (effective_to IS NULL OR effective_to>=CAST(CURRENT_TIMESTAMP AS DATE))
+                """, Long.class, programId));
+        return recipients.stream().distinct().toList();
+    }
     public long insertIncident(CreateRequest req,long actorId) {
         String code="INC-"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(java.util.Locale.ROOT);
         return insertId("""

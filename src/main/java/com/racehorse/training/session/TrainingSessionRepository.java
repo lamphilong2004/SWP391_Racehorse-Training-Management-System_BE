@@ -267,6 +267,26 @@ public class TrainingSessionRepository {
         Integer n=jdbc.queryForObject(sql,Integer.class,args);
         return n!=null&&n>0;
     }
+    /** Another active session of the same horse overlapping [start,end); a horse cannot train twice at once. */
+    public boolean hasHorseScheduleConflict(long phaseId,Instant start,Instant end,Long exceptId) {
+        Instant effectiveEnd=end==null?start.plusSeconds(1):end;
+        String sql="""
+                SELECT COUNT(*) FROM dbo.training_session s
+                JOIN dbo.horse_program_phase ph ON ph.id=s.horse_program_phase_id
+                JOIN dbo.horse_training_program p ON p.id=ph.horse_training_program_id
+                WHERE p.horse_id=(SELECT p2.horse_id FROM dbo.horse_program_phase ph2 JOIN dbo.horse_training_program p2 ON p2.id=ph2.horse_training_program_id WHERE ph2.id=?)
+                  AND s.status IN ('SCHEDULED','IN_PROGRESS','PAUSED')
+                  AND s.scheduled_start<? AND (COALESCE(s.scheduled_end,s.scheduled_start)>? OR s.scheduled_start>=?)
+                """;
+        List<Object> values=new java.util.ArrayList<>(List.of(phaseId,timestamp(effectiveEnd),timestamp(start),timestamp(start)));
+        if(exceptId!=null){sql+=" AND s.id<>?";values.add(exceptId);}
+        Integer n=jdbc.queryForObject(sql,Integer.class,values.toArray());
+        return n!=null&&n>0;
+    }
+    public Instant precheckPerformedAt(long sessionId) {
+        List<Instant> rows=jdbc.query("SELECT performed_at FROM dbo.pre_session_check WHERE training_session_id=?",(rs,n)->rs.getTimestamp(1).toInstant(),sessionId);
+        return rows.isEmpty()?null:rows.getFirst();
+    }
     private java.sql.Timestamp timestamp(Instant i){return i==null?null:java.sql.Timestamp.from(i);}
     private static Double nullableDouble(java.sql.ResultSet rs,String col)throws java.sql.SQLException { double v=rs.getDouble(col); return rs.wasNull()?null:v; }
     private static Integer nullableInt(java.sql.ResultSet rs,String col)throws java.sql.SQLException { int v=rs.getInt(col); return rs.wasNull()?null:v; }

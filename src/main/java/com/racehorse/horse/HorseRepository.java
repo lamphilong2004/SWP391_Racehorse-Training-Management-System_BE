@@ -11,7 +11,10 @@ import java.sql.*;
 import java.time.*;
 import java.util.*;
 
-/** SQL-backed projections only; no lifecycle transition or synthetic medical metrics. */
+/**
+ * SQL-backed projections only; no lifecycle transition or synthetic medical metrics. The current box is the
+ * assignment covering today in Asia/Ho_Chi_Minh (UTC+7, no DST), so a scheduled future move is not shown early.
+ */
 @Repository
 public class HorseRepository {
     private final JdbcTemplate jdbc;
@@ -22,7 +25,9 @@ public class HorseRepository {
         LEFT JOIN dbo.horse sire ON sire.id=h.sire_horse_id
         LEFT JOIN dbo.horse dam ON dam.id=h.dam_horse_id
         LEFT JOIN dbo.medical_restriction mr ON mr.horse_id=h.id AND mr.lifted_at IS NULL
-        LEFT JOIN dbo.horse_stable_assignment a ON a.horse_id=h.id AND a.effective_to IS NULL
+        LEFT JOIN dbo.horse_stable_assignment a ON a.horse_id=h.id
+            AND a.effective_from<=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE)
+            AND (a.effective_to IS NULL OR a.effective_to>=CAST(DATEADD(HOUR,7,SYSUTCDATETIME()) AS DATE))
         LEFT JOIN dbo.stable_box b ON b.id=a.stable_box_id
         LEFT JOIN dbo.app_user assigned ON assigned.id=a.assigned_by_user_id
         """;
