@@ -303,6 +303,9 @@ public class TrainingProgramService {
                 request.horseId());
         if (horse == null) throw notFound("Horse was not found.");
         if (!"ACTIVE".equals(horse.get("lifecycle"))) throw conflict("Only ACTIVE horses can receive a training program.");
+        Integer overlapping = jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse_training_program WHERE horse_id=? AND status IN ('ACTIVE','PAUSED') AND period_start<=? AND period_end>=?",
+                Integer.class, request.horseId(), request.periodEnd(), request.periodStart());
+        if (overlapping != null && overlapping > 0) throw conflict("The horse already has an ACTIVE or PAUSED program in this period. Complete it or choose later dates.");
         Map<String, Object> version = jdbc.query("""
                 SELECT v.training_program_template_id, t.status FROM dbo.template_version v
                 JOIN dbo.training_program_template t ON t.id=v.training_program_template_id WHERE v.id=?

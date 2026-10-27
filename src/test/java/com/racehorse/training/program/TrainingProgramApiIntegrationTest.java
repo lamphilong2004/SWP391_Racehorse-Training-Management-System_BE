@@ -119,6 +119,14 @@ class TrainingProgramApiIntegrationTest {
                 .andExpect(jsonPath("$.data.currentTrainer.id").value(trainerId))
                 .andReturn().getResponse().getContentAsString();
         long programId = objectMapper.readTree(programJson).path("data").path("id").longValue();
+        // One ACTIVE/PAUSED program per horse per period: an overlapping second program is refused, a later one is allowed.
+        String second = """
+                {"horseId":%d,"templateVersionId":%d,"name":"Second block","periodStart":"%s","periodEnd":"%s","phases":[{"phaseOrder":1,"name":"Foundation","startDate":"%s","endDate":"%s"}],"trainer":{"trainerUserId":%d,"effectiveFrom":"%s","warningsAcknowledged":true}}
+                """;
+        mockMvc.perform(post("/api/training-programs").header("Authorization", "Bearer " + headToken).contentType("application/json")
+                        .content(second.formatted(horseId, versionId, "2026-11-20", "2026-12-10", "2026-11-20", "2026-12-10", trainerId, "2026-11-20")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("already has an ACTIVE or PAUSED program")));
 
         mockMvc.perform(get("/api/training-programs").header("Authorization", "Bearer " + headToken))
                 .andExpect(status().isOk())

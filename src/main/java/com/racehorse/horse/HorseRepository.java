@@ -36,7 +36,10 @@ public class HorseRepository {
         dam.horse_code AS dam_code,dam.name AS dam_display_name,
         COALESCE(mr.restriction_level,'AVAILABLE') AS availability,
         b.box_code,b.yard,a.id AS assignment_id,a.stable_box_id,a.effective_from,a.effective_to,
-        a.reason,a.assigned_by_user_id,assigned.user_code AS assigned_code,assigned.full_name AS assigned_name
+        a.reason,a.assigned_by_user_id,assigned.user_code AS assigned_code,assigned.full_name AS assigned_name,
+        (SELECT TOP 1 p.name FROM dbo.horse_training_program p WHERE p.horse_id=h.id AND p.status IN ('ACTIVE','PAUSED') ORDER BY p.period_start DESC, p.id DESC) AS current_program_name,
+        (SELECT MAX(s.actual_end) FROM dbo.training_session s JOIN dbo.horse_program_phase ph ON ph.id=s.horse_program_phase_id
+            JOIN dbo.horse_training_program p ON p.id=ph.horse_training_program_id WHERE p.horse_id=h.id AND s.status='COMPLETED') AS last_training_at
         """+FROM;
 
     public long insert(HorseIdentityRequest v) {
@@ -302,7 +305,7 @@ public class HorseRepository {
         h.put("breed",r.getString("breed"));h.put("sex",r.getString("sex"));h.put("foaledDate",date(r,"foaled_date"));h.put("countryOfOrigin",r.getString("country_of_origin"));
         h.put("registrationNo",r.getString("registration_no"));h.put("lifecycle",r.getString("lifecycle"));h.put("healthStatus",r.getString("health_status"));
         h.put("trainingAvailability",r.getString("availability"));h.put("activatedAt",instant(r,"activated_at"));h.put("createdAt",instant(r,"created_at"));h.put("updatedAt",instant(r,"updated_at"));
-        h.put("currentBoxCode",r.getString("box_code"));h.put("pedigree",Map.of("sire",parent(r,"sire"),"dam",parent(r,"dam")));
+        h.put("currentBoxCode",r.getString("box_code"));h.put("currentProgramName",r.getString("current_program_name"));h.put("lastTrainingAt",instant(r,"last_training_at"));h.put("pedigree",Map.of("sire",parent(r,"sire"),"dam",parent(r,"dam")));
         Map<String,Object> a=null;
         if(r.getObject("assignment_id")!=null){a=new LinkedHashMap<>();a.put("id",r.getLong("assignment_id"));a.put("stableBoxId",r.getLong("stable_box_id"));a.put("boxCode",r.getString("box_code"));a.put("yard",r.getString("yard"));a.put("effectiveFrom",date(r,"effective_from"));a.put("effectiveTo",date(r,"effective_to"));a.put("reason",r.getString("reason"));a.put("assignedBy",user(r.getLong("assigned_by_user_id"),r.getString("assigned_code"),r.getString("assigned_name")));}
         h.put("currentAssignment",a);return h;
