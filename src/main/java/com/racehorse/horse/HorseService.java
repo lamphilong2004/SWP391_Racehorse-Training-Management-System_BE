@@ -32,6 +32,7 @@ public class HorseService {
     }
     @Transactional
     public Map<String,Object> create(HorseIdentityRequest input) {
+        List<String> strengths=validStrengths(input);
         long id;
         try{id=repository.insert(input.normalized());}
         catch(DataIntegrityViolationException error){
@@ -46,11 +47,13 @@ public class HorseService {
             if(!duplicate)throw error;
             throw new BusinessException(ErrorCode.CONFLICT,"Horse code or registration number already exists.",List.of(new ErrorDetail(field,"already exists")));
         }
+        if(strengths!=null&&!strengths.isEmpty())declareStrengths(id,strengths);
         return detail(id);
     }
     @Transactional
     public Map<String,Object> update(long horseId, HorseIdentityRequest input) {
         requireHorse(horseId);
+        List<String> strengths=validStrengths(input);
         try {
             if (repository.updateIdentity(horseId, input.normalized()) != 1) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "Horse not found.");
@@ -77,7 +80,24 @@ public class HorseService {
             throw new BusinessException(ErrorCode.CONFLICT, "Horse code or registration number already exists.",
                     List.of(new ErrorDetail(field, "already exists")));
         }
+        if (strengths != null && !strengths.equals(repository.strengths(List.of(horseId)).get(horseId))) {
+            declareStrengths(horseId, strengths);
+        }
         return detail(horseId);
+    }
+    private List<String> validStrengths(HorseIdentityRequest input) {
+        List<String> invalid = new ArrayList<>();
+        List<String> strengths = HorseStrength.normalize(input.strengths(), invalid);
+        if (!invalid.isEmpty()) throw validation("strengths", "Unknown strength code.");
+        return strengths;
+    }
+    private void declareStrengths(long horseId, List<String> strengths) {
+        ActorContext actor = actors.currentActor().orElseThrow(
+                () -> new BusinessException(ErrorCode.UNAUTHORIZED, "Authentication required."));
+        repository.replaceStrengths(horseId, strengths, actor.userId());
+        repository.auditStrengths(horseId, actor.userId(), strengths.isEmpty()
+                ? "Declared strengths cleared."
+                : "Declared strengths: " + String.join(", ", strengths) + ". Not a Head Trainer confirmation.");
     }
     @Transactional(readOnly=true)
     public Map<String,Object> detail(long id) {
@@ -85,6 +105,7 @@ public class HorseService {
         Map<String,Object> horse=repository.find(id,trainer).orElseThrow(()->new BusinessException(
             trainer!=null&&repository.exists(id)?ErrorCode.FORBIDDEN:ErrorCode.NOT_FOUND,
             trainer!=null&&repository.exists(id)?"This horse is outside your assigned programs.":"Horse not found."));
+        horse.put("strengths",repository.strengths(List.of(id)).get(id));
         horse.put("currentOwnerships",repository.ownerships(id));
         horse.put("latestWeight",repository.latestWeight(id));return horse;
     }

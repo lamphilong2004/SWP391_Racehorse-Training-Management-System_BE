@@ -2,6 +2,7 @@ package com.racehorse.horse;
 
 import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -59,6 +60,27 @@ public class HorseRepository {
             WHERE id=?
             """, v.horseCode(), v.name(), v.breed(), v.sex(), v.foaledDate(),
                 v.countryOfOrigin(), v.registrationNo(), LocalDateTime.now(Clock.systemUTC()), horseId);
+    }
+    /** Declared strength codes per horse, in {@link HorseStrength} catalogue order. */
+    public Map<Long,List<String>> strengths(Collection<Long> horseIds) {
+        Map<Long,List<String>> out=new HashMap<>();
+        if(horseIds.isEmpty())return out;
+        Set<String> declared=new HashSet<>();
+        String marks=String.join(",",Collections.nCopies(horseIds.size(),"?"));
+        jdbc.query("SELECT horse_id,strength_code FROM dbo.horse_strength WHERE horse_id IN ("+marks+")",
+                (RowCallbackHandler) r->declared.add(r.getLong("horse_id")+":"+r.getString("strength_code")),horseIds.toArray());
+        for(Long id:horseIds)out.put(id,Arrays.stream(HorseStrength.values()).map(Enum::name).filter(code->declared.contains(id+":"+code)).toList());
+        return out;
+    }
+    public void replaceStrengths(long horseId, List<String> codes, long declaredByUserId) {
+        jdbc.update("DELETE FROM dbo.horse_strength WHERE horse_id=?", horseId);
+        for(String code:codes)
+            jdbc.update("INSERT INTO dbo.horse_strength(horse_id,strength_code,declared_by_user_id,declared_at) VALUES (?,?,?,?)",
+                    horseId, code, declaredByUserId, LocalDateTime.now(Clock.systemUTC()));
+    }
+    public void auditStrengths(long horseId, long actorUserId, String summary) {
+        jdbc.update("INSERT INTO dbo.audit_log (actor_user_id,actor_role,action,target_type,target_id,safe_summary,source) VALUES (?,?,?,?,?,?,?)",
+                actorUserId, "CLUB_MANAGER", "HORSE_STRENGTHS_DECLARED", "HORSE", horseId, summary, "API");
     }
     public void updatePedigree(long horseId, PedigreeRequest request) {
         jdbc.update("""
@@ -235,6 +257,8 @@ public class HorseRepository {
         long total=Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT(*) "+FROM+where,Long.class,args.toArray()));
         args.add((long)page*size);args.add(size);
         List<Map<String,Object>> rows=jdbc.query(SELECT+where+" ORDER BY h.id DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",ROW,args.toArray());
+        Map<Long,List<String>> strengths=strengths(rows.stream().map(row->(Long)row.get("id")).toList());
+        rows.forEach(row->row.put("strengths",strengths.getOrDefault((Long)row.get("id"),List.of())));
         return new Page(rows,page,size,total,total/size+(total%size==0?0:1));
     }
     public Map<String,Object> latestWeight(long horseId) {

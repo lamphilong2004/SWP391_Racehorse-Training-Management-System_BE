@@ -1,6 +1,7 @@
 package com.racehorse.training.session;
 
 import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.training.TrainingCalendar;
 import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.auth.ActorContext;
 import com.racehorse.auth.CurrentActorProvider;
@@ -26,8 +27,10 @@ public class TrainingSessionService {
     private final NotificationPublisher notifications;
     private final TrainingSessionRepository repository;
     private final CurrentActorProvider actors;
+    private final TrainingCalendar calendar;
 
-    public TrainingSessionService(JdbcTemplate jdbc,TrainingSessionRepository repository,CurrentActorProvider actors,NotificationPublisher notifications) {
+    public TrainingSessionService(JdbcTemplate jdbc,TrainingSessionRepository repository,CurrentActorProvider actors,NotificationPublisher notifications,TrainingCalendar calendar) {
+        this.calendar=calendar;
         this.notifications=notifications;
         this.jdbc=jdbc; this.repository=repository; this.actors=actors;
     }
@@ -48,7 +51,6 @@ public class TrainingSessionService {
     public SessionApi.Session create(SessionApi.CreateRequest r) {
         ActorContext a=require(RoleCode.TRAINER); validateSchedule(r.horseProgramPhaseId(),r.scheduledStart(),r.scheduledEnd(),r.intensity());
         if(!repository.activeWorkRider(r.workRiderUserId())) throw validation("workRiderUserId must identify an active Work Rider.");
-        ensureTrainerAssignment(r.horseProgramPhaseId(),a.userId(),r.scheduledStart());
         repository.lockRiderSchedule(r.workRiderUserId());
         if(repository.hasScheduleConflict(r.workRiderUserId(),r.scheduledStart(),r.scheduledEnd(),null)) throw business("Work Rider has an overlapping session schedule.");
         SessionApi.SuitabilityResult suitability=evaluate(r.horseProgramPhaseId(),r.intensity(),r.exercises());
@@ -81,7 +83,6 @@ public class TrainingSessionService {
         validateSchedule(longValue(row,"horse_program_phase_id"),start,end,intensity);
         long rider=r.workRiderUserId()==null?longValue(row,"work_rider_user_id"):r.workRiderUserId();
         if(!repository.activeWorkRider(rider)) throw validation("workRiderUserId must identify an active Work Rider.");
-        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),start);
         repository.lockRiderSchedule(rider);
         if(repository.hasScheduleConflict(rider,start,end,id)) throw business("Work Rider has an overlapping session schedule.");
         int changed=jdbc.update("UPDATE dbo.training_session SET scheduled_start=?,scheduled_end=?,surface=COALESCE(?,surface),focus=COALESCE(?,focus),intensity=?,work_rider_user_id=?,updated_at=SYSUTCDATETIME() WHERE id=? AND status='SCHEDULED'",
@@ -141,7 +142,7 @@ public class TrainingSessionService {
         if("WORK_RIDER".equals(primaryRole(a))&&longValue(row,"work_rider_user_id")!=a.userId()) throw forbidden();
         if("TRAINER".equals(primaryRole(a))) authorize(row,a);
         if(!"SCHEDULED".equals(row.get("status"))) throw business("Only a SCHEDULED session can start.");
-        if(instant(row.get("scheduled_start")).isAfter(Instant.now())) throw business("A session cannot start before its scheduledStart; the Trainer must reschedule.");
+        if(instant(row.get("scheduled_start")).isAfter(calendar.now())) throw business("A session cannot start before its scheduledStart; the Trainer must reschedule.");
         String precheck=repository.precheckResult(id);
         if(precheck==null) throw business("Start is blocked until a Groom pre-session check is recorded.");
         if("ABNORMAL".equals(precheck)) throw business("Start is blocked by an ABNORMAL Groom pre-session check.");
@@ -195,7 +196,7 @@ public class TrainingSessionService {
     @Transactional(readOnly=true)
     public List<SessionApi.UserRef> groomCandidates(long id) {
         ActorContext a=require(RoleCode.TRAINER);requireId(id);Map<String,Object> row=requiredSession(id);
-        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),Instant.now());
+        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),instant(row.get("scheduled_start")));
         return jdbc.query("""
                 SELECT u.id,u.user_code,u.full_name FROM dbo.app_user u
                 WHERE u.account_status='ACTIVE' AND EXISTS (
@@ -208,7 +209,7 @@ public class TrainingSessionService {
     public SessionApi.Session assignGroom(long id,long groomId) {
         ActorContext a=require(RoleCode.TRAINER);requireId(id);repository.lockSession(id);
         Map<String,Object> row=requiredSession(id);
-        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),Instant.now());
+        ensureTrainerAssignment(longValue(row,"horse_program_phase_id"),a.userId(),instant(row.get("scheduled_start")));
         if(!"SCHEDULED".equals(row.get("status"))||repository.precheckResult(id)!=null)
             throw business("A Groom may be assigned only before a SCHEDULED session's pre-check.");
         if(groomCandidates(id).stream().noneMatch(u->u.id()==groomId))throw validation("groomUserId must identify an ACTIVE Groom.");
@@ -309,9 +310,10 @@ public class TrainingSessionService {
 
     private void validateSchedule(long phaseId,Instant start,Instant end,String intensity) {
         Map<String,Object> p=repository.phase(phaseId); if(p==null) throw notFound("Program phase was not found.");
+        if(start==null||end!=null&&end.isBefore(start))throw validation("scheduledEnd must be at or after scheduledStart.");
         if(!"ACTIVE".equals(p.get("program_status")))throw business("The training program is not ACTIVE.");
         if(!"ACTIVE".equals(p.get("lifecycle")))throw business("The horse is not ACTIVE.");
-        if(start==null||end!=null&&end.isBefore(start))throw validation("scheduledEnd must be at or after scheduledStart.");
+        calendar.requireFutureSession(start);
         LocalDate date=start.atZone(CLUB_ZONE).toLocalDate();
         if(date.isBefore(localDate(p.get("start_date")))||date.isAfter(localDate(p.get("end_date"))))throw business("scheduledStart must be inside the selected phase dates.");
         if(date.isBefore(localDate(p.get("period_start")))||date.isAfter(localDate(p.get("period_end"))))throw business("scheduledStart must be inside the program period.");
@@ -321,6 +323,8 @@ public class TrainingSessionService {
             if(endDate.isBefore(localDate(p.get("period_start")))||endDate.isAfter(localDate(p.get("period_end"))))throw business("scheduledEnd must be inside the program period.");
         }
         if(intensity!=null&&(!INTENSITIES.contains(intensity)||!within(intensity,(String)p.get("intensity_min"),(String)p.get("intensity_max"))))throw validation("intensity must fit the phase intensity range.");
+        // Keep public date-validation errors, but authorize before returning clinical reasons.
+        ensureTrainerAssignment(phaseId,require(RoleCode.TRAINER).userId(),start);
         String reason=repository.restrictionReason(longValue(p,"horse_id"));
         if(reason!=null) throw business("Training is locked by the Veterinarian: "+reason);
     }
@@ -331,9 +335,15 @@ public class TrainingSessionService {
         if(!"ACTIVE".equals(p.get("program_status")))throw business("The training program is not ACTIVE.");
         if(!"ACTIVE".equals(p.get("lifecycle")))throw business("The horse is not ACTIVE.");
         if(r.scheduledEnd()!=null&&r.scheduledEnd().isBefore(r.scheduledStart()))throw validation("scheduledEnd must be at or after scheduledStart.");
+        calendar.requireFutureSession(r.scheduledStart());
         LocalDate startDate=r.scheduledStart().atZone(CLUB_ZONE).toLocalDate();
         if(startDate.isBefore(localDate(p.get("start_date")))||startDate.isAfter(localDate(p.get("end_date")))
                 ||startDate.isBefore(localDate(p.get("period_start")))||startDate.isAfter(localDate(p.get("period_end"))))throw business("scheduledStart must be inside the active phase and program periods.");
+        if(r.scheduledEnd()!=null) {
+            LocalDate endDate=r.scheduledEnd().atZone(CLUB_ZONE).toLocalDate();
+            if(endDate.isBefore(localDate(p.get("start_date")))||endDate.isAfter(localDate(p.get("end_date")))
+                    ||endDate.isBefore(localDate(p.get("period_start")))||endDate.isAfter(localDate(p.get("period_end"))))throw business("scheduledEnd must be inside the active phase and program periods.");
+        }
         if(r.intensity()!=null&&!INTENSITIES.contains(r.intensity()))throw validation("Unsupported intensity.");
         for(SessionApi.ExerciseInput e:r.exercises())if(e==null)throw validation("Exercise entries cannot be null.");
     }

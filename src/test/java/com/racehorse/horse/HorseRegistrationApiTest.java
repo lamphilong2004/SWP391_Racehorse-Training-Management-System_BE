@@ -110,6 +110,8 @@ class HorseRegistrationApiTest {
                     effective_to DATE, is_managing_owner BOOLEAN NOT NULL DEFAULT FALSE
                 )
                 """);
+        jdbc.update("DELETE FROM dbo.horse_strength");
+        jdbc.update("DELETE FROM dbo.audit_log WHERE action='HORSE_STRENGTHS_DECLARED'");
         jdbc.update("DELETE FROM dbo.horse_ownership");
         jdbc.update("DELETE FROM dbo.horse_stable_assignment");
         jdbc.update("DELETE FROM dbo.stable_box");
@@ -119,6 +121,57 @@ class HorseRegistrationApiTest {
         jdbc.update("DELETE FROM dbo.app_user");
         jdbc.update("DELETE FROM dbo.role");
         nextUserId.set(900);
+    }
+
+    @Test
+    void clubManagerDeclaresStrengthsOnCreateAndEditWithAudit() throws Exception {
+        String manager = tokenFor(RoleCode.CLUB_MANAGER);
+        String created = mockMvc.perform(post("/api/horses")
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"horseCode":"STR-01","name":"Strength Horse","strengths":["SPEED","SPRINT","SPEED"]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.strengths.length()").value(2))
+                .andExpect(jsonPath("$.data.strengths[0]").value("SPRINT"))
+                .andReturn().getResponse().getContentAsString();
+        long horseId = objectMapper.readTree(created).path("data").path("id").asLong();
+
+        // Omitting strengths keeps the declaration; an empty list clears it.
+        mockMvc.perform(put("/api/horses/{id}", horseId)
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"horseCode":"STR-01","name":"Strength Horse renamed"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.strengths.length()").value(2));
+        mockMvc.perform(put("/api/horses/{id}", horseId)
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"horseCode":"STR-01","name":"Strength Horse","strengths":[]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.strengths.length()").value(0));
+        mockMvc.perform(get("/api/horses").header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].strengths.length()").value(0));
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM dbo.audit_log WHERE action='HORSE_STRENGTHS_DECLARED' AND target_id=?",
+                Integer.class, horseId));
+
+        mockMvc.perform(post("/api/horses")
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"horseCode":"STR-02","name":"Bad Strength","strengths":["FLYING"]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.details[0].field").value("strengths"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM dbo.horse WHERE horse_code='STR-02'", Integer.class));
     }
 
     @Test

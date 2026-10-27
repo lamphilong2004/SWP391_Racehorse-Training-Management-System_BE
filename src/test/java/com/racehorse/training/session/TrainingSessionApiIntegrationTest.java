@@ -1,6 +1,8 @@
 package com.racehorse.training.session;
 
 import com.racehorse.TestJwtProperties;
+import com.racehorse.training.TrainingCalendar;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import com.racehorse.auth.AccountStatus;
 import com.racehorse.auth.PendingRegistrationRepository;
 import com.racehorse.auth.RoleCode;
@@ -29,6 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.doReturn;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -40,6 +43,8 @@ class TrainingSessionApiIntegrationTest {
     @Autowired PasswordEncoder encoder;
     @Autowired JsonMapper json;
     @MockitoBean PendingRegistrationRepository pendingRegistrationRepository;
+    @MockitoSpyBean TrainingCalendar calendar;
+    private static final Instant NOW=Instant.parse("2026-10-20T16:00:00Z");
     MockMvc mvc;
 
     @DynamicPropertySource static void jwt(DynamicPropertyRegistry r){
@@ -48,6 +53,7 @@ class TrainingSessionApiIntegrationTest {
     }
 
     @BeforeEach void setup(){
+        doReturn(NOW).when(calendar).now();
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(SecurityMockMvcConfigurers.springSecurity()).build();
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.role(id BIGINT PRIMARY KEY, role_code VARCHAR(30) UNIQUE)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.app_user(id BIGINT PRIMARY KEY,user_code VARCHAR(20),full_name NVARCHAR(150),email NVARCHAR(254),password_hash VARCHAR(255),account_status VARCHAR(20),experience_years SMALLINT,experience_level NVARCHAR(50))");
@@ -88,6 +94,8 @@ class TrainingSessionApiIntegrationTest {
         mvc.perform(put("/api/training-sessions/{id}/exercises",sessionId).header("Authorization","Bearer "+trainer).contentType("application/json")
                 .content("{\"exercises\":[{\"exerciseDefinitionId\":"+f.exercise()+",\"exerciseOrder\":1,\"durationMin\":20}]}"))
                 .andExpect(status().isOk());
+        mvc.perform(post("/api/training-sessions/{id}/start",sessionId).header("Authorization","Bearer "+rider)).andExpect(status().isConflict());
+        doReturn(f.start()).when(calendar).now();
         mvc.perform(post("/api/training-sessions/{id}/start",sessionId).header("Authorization","Bearer "+rider)).andExpect(status().isConflict());
         jdbc.update("INSERT INTO dbo.pre_session_check(training_session_id,performed_by_user_id,performed_at,overall_result) VALUES (?,?,CURRENT_TIMESTAMP,'ALL_NORMAL')",sessionId,f.groom());
         mvc.perform(post("/api/training-sessions/{id}/start",sessionId).header("Authorization","Bearer "+rider))
@@ -187,6 +195,28 @@ class TrainingSessionApiIntegrationTest {
                 .andExpect(status().isConflict());
     }
 
+    @Test void trainerCanPlanGroomForFutureSessionWithinTheirAssignmentDates() throws Exception {
+        Fixture f=fixture();String trainer=login(f.trainer()),outsider=login(addUser(RoleCode.TRAINER));
+        Instant tomorrow=f.start().plusSeconds(86400);
+        jdbc.update("UPDATE dbo.trainer_assignment SET effective_from=? WHERE horse_training_program_id=?",tomorrow.atZone(TrainingCalendar.CLUB_ZONE).toLocalDate(),f.program());
+        String body="{\"horseProgramPhaseId\":%d,\"scheduledStart\":\"%s\",\"scheduledEnd\":\"%s\",\"intensity\":\"LOW\",\"workRiderUserId\":%d,\"exercises\":[{\"exerciseDefinitionId\":%d,\"exerciseOrder\":1,\"durationMin\":10}]}"
+                .formatted(f.phase(),tomorrow,tomorrow.plusSeconds(600),f.rider(),f.exercise());
+        String response=mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json").content(body))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long id=json.readTree(response).path("data").path("id").longValue();
+        String path="/api/training-sessions/"+id;
+        mvc.perform(get(path+"/groom-candidates").header("Authorization","Bearer "+trainer)).andExpect(status().isOk());
+        mvc.perform(post(path+"/groom-assignment").header("Authorization","Bearer "+outsider).contentType("application/json").content("{\"groomUserId\":"+f.groom()+"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path+"/groom-assignment").header("Authorization","Bearer "+trainer).contentType("application/json").content("{\"groomUserId\":"+f.groom()+"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.groom.id").value(f.groom()));
+        String groom=login(f.groom());
+        mvc.perform(get("/api/groom/sessions").param("date",tomorrow.atZone(TrainingCalendar.CLUB_ZONE).toLocalDate().toString()).header("Authorization","Bearer "+groom))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(id));
+        mvc.perform(get("/api/groom/sessions").param("date",NOW.atZone(TrainingCalendar.CLUB_ZONE).toLocalDate().toString()).header("Authorization","Bearer "+groom))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+    }
+
     @Test void reductionPersistsOnlyForAssignedTrainerWithLowerIntensityAndPassingMedicalGates() throws Exception {
         Fixture f=fixture();String trainer=login(f.trainer()),rider=login(f.rider()),outsider=login(addUser(RoleCode.TRAINER));
         long session=insertSession(f,"REDUCE-"+f.phase(),"IN_PROGRESS","HIGH");
@@ -236,6 +266,10 @@ class TrainingSessionApiIntegrationTest {
         mvc.perform(post("/api/training-sessions/suitability-check").header("Authorization","Bearer "+outsider).contentType("application/json").content(body))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Private restriction reason"))));
+        String createBody=body.replace("\"exercises\"","\"workRiderUserId\":"+f.rider()+",\"exercises\"");
+        mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+outsider).contentType("application/json").content(createBody))
+                .andExpect(status().isForbidden())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Private restriction reason"))));
         mvc.perform(post("/api/training-sessions/suitability-check").header("Authorization","Bearer "+assigned).contentType("application/json").content(body))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.blockedMessage").value("Private restriction reason"));
         jdbc.update("UPDATE dbo.trainer_assignment SET effective_to=? WHERE horse_training_program_id=?",f.start().atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDate().minusDays(1),f.program());
@@ -247,18 +281,44 @@ class TrainingSessionApiIntegrationTest {
         jdbc.update("INSERT INTO dbo.training_session(session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,scheduled_end,intensity,status) VALUES (?,?,?,?,?,?,?,?)",code,f.phase(),f.trainer(),f.rider(),java.sql.Timestamp.from(f.start()),java.sql.Timestamp.from(f.start().plusSeconds(1800)),intensity,status);
         return jdbc.queryForObject("SELECT id FROM dbo.training_session WHERE session_code=?",Long.class,code);
     }
+    @Test void pastSchedulingAndDraftEndOutsidePeriodAreRejectedWithoutWrites() throws Exception {
+        Fixture f=fixture();String trainer=login(f.trainer()),rider=login(f.rider());
+        String body="{\"horseProgramPhaseId\":%d,\"scheduledStart\":\"%s\",\"scheduledEnd\":\"%s\",\"intensity\":\"LOW\",\"workRiderUserId\":%d,\"exercises\":[{\"exerciseDefinitionId\":%d,\"exerciseOrder\":1,\"durationMin\":10}]}"
+                .formatted(f.phase(),f.start(),f.start().plusSeconds(600),f.rider(),f.exercise());
+        for(Instant start:java.util.List.of(NOW.minusSeconds(86400),NOW.minusSeconds(1),NOW)) {
+            String past=body.replace(f.start().toString(),start.toString());
+            mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json").content(past))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+            mvc.perform(post("/api/training-sessions/suitability-check").header("Authorization","Bearer "+trainer).contentType("application/json").content(past))
+                    .andExpect(status().isBadRequest());
+        }
+        String overflowing=body.replace(f.start().plusSeconds(600).toString(),NOW.plusSeconds(4*86400).toString());
+        for(String endpoint:java.util.List.of("/api/training-sessions","/api/training-sessions/suitability-check","/api/training-sessions/work-rider-recommendations")) {
+            mvc.perform(post(endpoint).header("Authorization","Bearer "+trainer).contentType("application/json").content(overflowing))
+                    .andExpect(status().isConflict());
+        }
+        mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+rider).contentType("application/json").content(body))
+                .andExpect(status().isForbidden());
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.training_session WHERE horse_program_phase_id=?",Integer.class,f.phase()));
+        long existing=insertSession(f,"PAST-"+f.phase(),"SCHEDULED","LOW");
+        mvc.perform(patch("/api/training-sessions/{id}",existing).header("Authorization","Bearer "+trainer).contentType("application/json")
+                        .content("{\"scheduledStart\":\""+NOW.minusSeconds(1)+"\"}"))
+                .andExpect(status().isBadRequest());
+        org.junit.jupiter.api.Assertions.assertEquals(f.start(),jdbc.queryForObject("SELECT scheduled_start FROM dbo.training_session WHERE id=?",java.sql.Timestamp.class,existing).toInstant());
+    }
+
     private void repositoryNotice(long groom,long session){jdbc.update("INSERT INTO dbo.notification(recipient_user_id,category,notification_type,title,message,target_type,target_id) VALUES (?,'SCHEDULE','SESSION_ASSIGNED','Notice only','No permission','TRAINING_SESSION',?)",groom,session);}
 
     private Fixture fixture(){
         long trainer=addUser(RoleCode.TRAINER),rider=addUser(RoleCode.WORK_RIDER),groom=addUser(RoleCode.GROOM);
         long horse=IDS.incrementAndGet(),program=IDS.incrementAndGet(),phase=IDS.incrementAndGet(),exercise=IDS.incrementAndGet();
-        LocalDate today=LocalDate.now();
+        LocalDate today=NOW.atZone(TrainingCalendar.CLUB_ZONE).toLocalDate();
         jdbc.update("INSERT INTO dbo.horse(id,horse_code,name,lifecycle) VALUES (?,?,'Test horse','ACTIVE')",horse,"H"+horse);
         jdbc.update("INSERT INTO dbo.horse_training_program(id,horse_id,template_version_id,created_by_user_id,name,period_start,period_end,status,activated_at) VALUES (?,?,1,?,'Test program',?,?,'ACTIVE',CURRENT_TIMESTAMP)",program,horse,trainer,today.minusDays(2),today.plusDays(2));
         jdbc.update("INSERT INTO dbo.horse_program_phase(id,horse_training_program_id,phase_order,name,start_date,end_date,intensity_min,intensity_max) VALUES (?,?,1,'Base',?,?, 'LOW','HIGH')",phase,program,today.minusDays(1),today.plusDays(1));
         jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (?,?,?,?,?)",IDS.incrementAndGet(),program,trainer,trainer,today.minusDays(5));
         jdbc.update("INSERT INTO dbo.exercise_definition(id,name,exercise_type) VALUES (?,'Walk','Walk')",exercise);
-        return new Fixture(trainer,rider,groom,horse,program,phase,exercise,Instant.now().minusSeconds(300));
+        return new Fixture(trainer,rider,groom,horse,program,phase,exercise,NOW.plusSeconds(300));
     }
     private long addUser(RoleCode role){long id=IDS.incrementAndGet();String email="session-"+id+"@test.invalid";jdbc.update("INSERT INTO dbo.app_user(id,user_code,full_name,email,password_hash,account_status,experience_level) VALUES (?,?,?,?,?,'ACTIVE','INTERMEDIATE')",id,"U"+id,"Session User",email,encoder.encode(PASSWORD));jdbc.update("INSERT INTO dbo.user_role(id,user_id,role_id) VALUES (?,?,?)",id,id,role.ordinal()+1);return id;}
     private String login(long id)throws Exception{String email="session-"+id+"@test.invalid";String raw=mvc.perform(post("/api/auth/login").contentType("application/json").content(json.writeValueAsString(Map.of("email",email,"password",PASSWORD)))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();JsonNode j=json.readTree(raw);return j.path("data").path("accessToken").stringValue();}

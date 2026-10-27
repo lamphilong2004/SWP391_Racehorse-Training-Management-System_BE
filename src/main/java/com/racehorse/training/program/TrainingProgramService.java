@@ -1,6 +1,7 @@
 package com.racehorse.training.program;
 
 import com.racehorse.notification.NotificationPublisher;
+import com.racehorse.training.TrainingCalendar;
 import com.racehorse.notification.NotificationApi.Category;
 import com.racehorse.common.jdbc.GeneratedIdentity;
 import com.racehorse.auth.ActorContext;
@@ -8,6 +9,7 @@ import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
+import com.racehorse.horse.HorseStrength;
 import com.racehorse.training.program.ProgramApi.CreateProgramRequest;
 import com.racehorse.training.program.ProgramApi.ProgramDetail;
 import com.racehorse.training.program.ProgramApi.ProgramPhase;
@@ -33,7 +35,11 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,8 +57,10 @@ public class TrainingProgramService {
     private final JdbcTemplate jdbc;
     private final NotificationPublisher notifications;
     private final CurrentActorProvider actorProvider;
+    private final TrainingCalendar calendar;
 
-    public TrainingProgramService(JdbcTemplate jdbc, CurrentActorProvider actorProvider, NotificationPublisher notifications) {
+    public TrainingProgramService(JdbcTemplate jdbc, CurrentActorProvider actorProvider, NotificationPublisher notifications, TrainingCalendar calendar) {
+        this.calendar = calendar;
         this.notifications = notifications;
         this.jdbc = jdbc;
         this.actorProvider = actorProvider;
@@ -68,7 +76,8 @@ public class TrainingProgramService {
         List<String> fields=new ArrayList<>();
         if (horse.get("breed")!=null&&!horse.get("breed").toString().isBlank()) fields.add("breed");
         if (horse.get("sex")!=null&&!horse.get("sex").toString().isBlank()) fields.add("sex");
-        if (fields.isEmpty()) return List.of();
+        Set<String> declared=new HashSet<>(jdbc.queryForList("SELECT strength_code FROM dbo.horse_strength WHERE horse_id=?",String.class,horseId));
+        if (fields.isEmpty()&&declared.isEmpty()) return List.of();
         List<Map<String,Object>> templates=jdbc.query("""
                 SELECT t.id,t.template_code,v.id AS version_id,v.version_no,v.name,v.suitable_horse_profile,
                        h.breed,h.sex
@@ -80,15 +89,25 @@ public class TrainingProgramService {
                 """,(rs,n)->row("templateId",rs.getLong("id"),"templateCode",rs.getString("template_code"),
                 "versionId",rs.getLong("version_id"),"versionNo",rs.getInt("version_no"),"name",rs.getString("name"),
                 "profile",rs.getString("suitable_horse_profile"),"breed",rs.getString("breed"),"sex",rs.getString("sex")),horseId);
+        Map<Long,List<String>> focus=strengthFocus(templates.stream().map(t->(Long)t.get("versionId")).toList());
         List<ProgramApi.TemplateRecommendation> out=new ArrayList<>();
+        Map<ProgramApi.TemplateRecommendation,Integer> strengthHits=new HashMap<>();
         for(Map<String,Object> template:templates){
-            String profile=(String)template.get("profile");if(profile==null||profile.isBlank())continue;
+            String profile=(String)template.get("profile");
             List<String> reasons=new ArrayList<>();
-            for(String field:fields){Object value=horse.get(field);if(value!=null&&profile.toLowerCase(java.util.Locale.ROOT).contains(value.toString().toLowerCase(java.util.Locale.ROOT)))
-                reasons.add("Horse "+field+" matches the template's suitableHorseProfile.");}
-            if(!reasons.isEmpty())out.add(new ProgramApi.TemplateRecommendation((Long)template.get("templateId"),(String)template.get("templateCode"),
-                    (Long)template.get("versionId"),(Integer)template.get("versionNo"),(String)template.get("name"),"SUITABLE",List.copyOf(reasons)));
+            if(profile!=null&&!profile.isBlank())
+                for(String field:fields){Object value=horse.get(field);if(value!=null&&profile.toLowerCase(java.util.Locale.ROOT).contains(value.toString().toLowerCase(java.util.Locale.ROOT)))
+                    reasons.add("Horse "+field+" matches the template's suitableHorseProfile.");}
+            List<String> hits=focus.getOrDefault((Long)template.get("versionId"),List.of()).stream().filter(declared::contains).toList();
+            if(!hits.isEmpty())reasons.add("Thế mạnh Club Manager đã khai báo trùng trọng tâm của mẫu: "
+                    +String.join(", ",hits.stream().map(HorseStrength::labelOf).toList())+". Khai báo chưa được Head Trainer xác nhận.");
+            if(reasons.isEmpty())continue;
+            ProgramApi.TemplateRecommendation recommendation=new ProgramApi.TemplateRecommendation((Long)template.get("templateId"),(String)template.get("templateCode"),
+                    (Long)template.get("versionId"),(Integer)template.get("versionNo"),(String)template.get("name"),"SUITABLE",List.copyOf(reasons));
+            out.add(recommendation);strengthHits.put(recommendation,hits.size());
         }
+        // Labels only, no score: more matching declared strengths are listed first.
+        out.sort(Comparator.comparingInt((ProgramApi.TemplateRecommendation r)->strengthHits.get(r)).reversed());
         return List.copyOf(out);
     }
 
@@ -207,6 +226,13 @@ public class TrainingProgramService {
         if ("ARCHIVED".equals(row.get("status"))) throw conflict("An archived template cannot receive a new version.");
         Integer current = jdbc.queryForObject("SELECT MAX(version_no) FROM dbo.template_version WHERE training_program_template_id=?", Integer.class, id);
         int next = current + 1;
+        if (request.strengthFocus() == null) {
+            // An editor that does not send strengthFocus keeps the previous version's focus.
+            Long previous = jdbc.queryForObject("SELECT id FROM dbo.template_version WHERE training_program_template_id=? AND version_no=?", Long.class, id, current);
+            request = new TemplateVersionRequest(request.name(), request.goals(), request.suitableHorseProfile(), request.recommendedDistanceUseCase(),
+                    request.recommendedDuration(), request.workloadIntensityGuidance(), request.preferredSurfaces(), request.recoveryGuidance(),
+                    request.requiredSkillIds(), request.phases(), strengthFocus(List.of(previous)).getOrDefault(previous, List.of()));
+        }
         long versionId = insertVersion(id, next, actor.userId(), request);
         audit(actor, "TEMPLATE_VERSION_SAVED", "TRAINING_PROGRAM_TEMPLATE", id, "Template version " + next + " saved.");
         return new TemplateDetail(templateSummary(templateRow(id)), templateVersion(versionId), versionRefs(id));
@@ -226,7 +252,8 @@ public class TrainingProgramService {
         TemplateVersionRequest newVersion = new TemplateVersionRequest(request.name(), old.goals(), old.suitableHorseProfile(),
                 old.recommendedDistanceUseCase(), old.recommendedDuration(), old.workloadIntensityGuidance(),
                 old.preferredSurfaces(), old.recoveryGuidance(), old.requiredSkills().stream().map(ProgramApi.SkillRef::id).toList(),
-                old.phases().stream().map(p -> new TemplatePhaseInput(p.phaseOrder(), p.name(), p.objective(), p.recommendedDuration(), p.intensityGuidance())).toList());
+                old.phases().stream().map(p -> new TemplatePhaseInput(p.phaseOrder(), p.name(), p.objective(), p.recommendedDuration(), p.intensityGuidance())).toList(),
+                old.strengthFocus());
         long versionId = insertVersion(duplicateId, 1, actor.userId(), newVersion);
         audit(actor, "TEMPLATE_CREATED", "TRAINING_PROGRAM_TEMPLATE", duplicateId, "Template duplicated from " + id + ".");
         return new TemplateDetail(templateSummary(templateRow(duplicateId)), templateVersion(versionId), versionRefs(duplicateId));
@@ -513,6 +540,12 @@ public class TrainingProgramService {
                 jdbc.update("INSERT INTO dbo.template_required_skill (template_version_id,skill_id) VALUES (?,?)", versionId, skillId);
             }
         }
+        List<String> focus = HorseStrength.normalize(request.strengthFocus(), new ArrayList<>());
+        if (focus != null) {
+            for (String code : focus) {
+                jdbc.update("INSERT INTO dbo.template_version_strength_focus (template_version_id,strength_code) VALUES (?,?)", versionId, code);
+            }
+        }
         return versionId;
     }
 
@@ -530,7 +563,21 @@ public class TrainingProgramService {
         return new TemplateVersion((Long)v.get("id"),(Integer)v.get("version_no"),(String)v.get("name"),(String)v.get("goals"),
                 (String)v.get("suitable_horse_profile"),(String)v.get("recommended_distance_use_case"),(String)v.get("recommended_duration"),
                 (String)v.get("workload_intensity_guidance"),(String)v.get("preferred_surfaces"),(String)v.get("recovery_guidance"),
-                skills,phases,createdById == null ? null : userRef(createdById),(Instant)v.get("created_at"));
+                skills,phases,createdById == null ? null : userRef(createdById),(Instant)v.get("created_at"),
+                strengthFocus(List.of(versionId)).getOrDefault(versionId, List.of()));
+    }
+
+    /** Template-version strength focus in {@link HorseStrength} catalogue order. */
+    private Map<Long, List<String>> strengthFocus(Collection<Long> versionIds) {
+        if (versionIds.isEmpty()) return Map.of();
+        Map<Long, Set<String>> found = new HashMap<>();
+        jdbc.query("SELECT template_version_id,strength_code FROM dbo.template_version_strength_focus WHERE template_version_id IN ("
+                        + String.join(",", Collections.nCopies(versionIds.size(), "?")) + ")",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> found.computeIfAbsent(rs.getLong(1), k -> new HashSet<>()).add(rs.getString(2)),
+                versionIds.toArray());
+        Map<Long, List<String>> out = new HashMap<>();
+        found.forEach((id, codes) -> out.put(id, Arrays.stream(HorseStrength.values()).map(Enum::name).filter(codes::contains).toList()));
+        return out;
     }
 
     private List<ProgramApi.VersionRef> versionRefs(long templateId) {
@@ -571,12 +618,16 @@ public class TrainingProgramService {
         if (request.requiredSkillIds() != null && new HashSet<>(request.requiredSkillIds()).size() != request.requiredSkillIds().size()) {
             throw validation("requiredSkillIds must be unique.");
         }
+        List<String> invalid = new ArrayList<>();
+        HorseStrength.normalize(request.strengthFocus(), invalid);
+        if (!invalid.isEmpty()) throw validation("strengthFocus contains an unknown strength code.");
     }
 
     private void validateProgramRequest(CreateProgramRequest r) {
         if (r == null || r.horseId() <= 0 || r.templateVersionId() <= 0 || r.name() == null || r.name().isBlank()
                 || r.periodStart() == null || r.periodEnd() == null || r.periodEnd().isBefore(r.periodStart())
                 || r.trainer() == null || r.phases() == null || r.phases().isEmpty()) throw validation("Required program fields are missing or invalid.");
+        calendar.requireProgramStart(r.periodStart());
     }
 
     private void validatePhases(List<ProgramPhaseInput> phases, LocalDate start, LocalDate end) {

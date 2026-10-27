@@ -35,7 +35,8 @@ public final class ProgramApi {
             @Size(max = 500) String preferredSurfaces,
             @Size(max = 1000) String recoveryGuidance,
             List<@Positive Long> requiredSkillIds,
-            @NotEmpty List<@Valid TemplatePhaseInput> phases) {}
+            @NotEmpty List<@Valid TemplatePhaseInput> phases,
+            @Size(max = 14) List<@Size(max = 30) String> strengthFocus) {}
 
     public record DuplicateTemplateRequest(@NotBlank @Size(max = 150) String name, @Positive Integer sourceVersionNo) {}
 
@@ -45,7 +46,7 @@ public final class ProgramApi {
                                   String recommendedDistanceUseCase, String recommendedDuration,
                                   String workloadIntensityGuidance, String preferredSurfaces, String recoveryGuidance,
                                   List<SkillRef> requiredSkills, List<TemplatePhase> phases, UserRef createdBy,
-                                  Instant createdAt) {}
+                                  Instant createdAt, List<String> strengthFocus) {}
     public record SkillRef(long id, String name) {}
     public record TemplatePhase(long id, int phaseOrder, String name, String objective, String recommendedDuration,
                                 String intensityGuidance) {}

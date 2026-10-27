@@ -1,6 +1,10 @@
 package com.racehorse.training.program;
 
 import com.racehorse.TestJwtProperties;
+import com.racehorse.training.TrainingCalendar;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import java.time.Instant;
+import static org.mockito.Mockito.doReturn;
 import com.racehorse.auth.AccountStatus;
 import com.racehorse.auth.PendingRegistrationRepository;
 import com.racehorse.auth.RoleCode;
@@ -42,6 +46,7 @@ class TrainingProgramApiIntegrationTest {
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JsonMapper objectMapper;
     @MockitoBean private PendingRegistrationRepository pendingRegistrationRepository;
+    @MockitoSpyBean private TrainingCalendar calendar;
 
     private MockMvc mockMvc;
 
@@ -53,6 +58,7 @@ class TrainingProgramApiIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        doReturn(Instant.parse("2026-10-20T16:00:00Z")).when(calendar).now();
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(SecurityMockMvcConfigurers.springSecurity()).build();
         createProgramTables();
         for (RoleCode role : RoleCode.values()) jdbc.update("MERGE INTO dbo.role KEY(id) VALUES (?, ?)", role.ordinal() + 1, role.name());
@@ -60,6 +66,12 @@ class TrainingProgramApiIntegrationTest {
 
     @AfterEach
     void cleanRecommendationFixture() {
+        String strengthTemplates = "SELECT training_program_template_id FROM dbo.template_version WHERE name IN ('Stayer','Sprinter','Sprinter v2','Half')";
+        jdbc.update("DELETE FROM dbo.template_version_strength_focus WHERE template_version_id IN (SELECT id FROM dbo.template_version WHERE training_program_template_id IN (" + strengthTemplates + "))");
+        jdbc.update("DELETE FROM dbo.template_version_phase WHERE template_version_id IN (SELECT id FROM dbo.template_version WHERE training_program_template_id IN (" + strengthTemplates + "))");
+        jdbc.update("DELETE FROM dbo.training_program_template WHERE id IN (" + strengthTemplates + ")");
+        jdbc.update("DELETE FROM dbo.template_version WHERE training_program_template_id NOT IN (SELECT id FROM dbo.training_program_template)");
+        jdbc.update("DELETE FROM dbo.horse_strength");
         jdbc.update("DELETE FROM dbo.template_required_skill WHERE template_version_id IN (SELECT id FROM dbo.template_version WHERE training_program_template_id IN (SELECT id FROM dbo.training_program_template WHERE template_code='REC-TPL'))");
         jdbc.update("DELETE FROM dbo.template_version WHERE training_program_template_id IN (SELECT id FROM dbo.training_program_template WHERE template_code='REC-TPL')");
         jdbc.update("DELETE FROM dbo.training_program_template WHERE template_code='REC-TPL'");
@@ -228,6 +240,44 @@ class TrainingProgramApiIntegrationTest {
     }
 
     @Test
+    void declaredStrengthsRankTemplatesByStrengthFocusAndFocusSurvivesNewVersion() throws Exception {
+        String token=login(createUser(RoleCode.HEAD_TRAINER));
+        long horse=createHorse();long clubManager=createUser(RoleCode.CLUB_MANAGER);
+        jdbc.update("INSERT INTO dbo.horse_strength(horse_id,strength_code,declared_by_user_id,declared_at) VALUES (?,'SPRINT',?,CURRENT_TIMESTAMP),(?,'SPEED',?,CURRENT_TIMESTAMP)",horse,clubManager,horse,clubManager);
+        String body="""
+                {"name":"%s","requiredSkillIds":[],"strengthFocus":%s,"phases":[{"phaseOrder":1,"name":"Base","intensityGuidance":"LOW"}]}
+                """;
+        JsonNode stayer=objectMapper.readTree(mockMvc.perform(post("/api/program-templates").header("Authorization","Bearer "+token).contentType("application/json")
+                .content(body.formatted("Stayer","[\"STAYING\"]"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        JsonNode sprinter=objectMapper.readTree(mockMvc.perform(post("/api/program-templates").header("Authorization","Bearer "+token).contentType("application/json")
+                .content(body.formatted("Sprinter","[\"SPEED\",\"SPRINT\",\"SPRINT\"]"))).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.version.strengthFocus.length()").value(2))
+                .andExpect(jsonPath("$.data.version.strengthFocus[0]").value("SPRINT"))
+                .andReturn().getResponse().getContentAsString());
+        long half=objectMapper.readTree(mockMvc.perform(post("/api/program-templates").header("Authorization","Bearer "+token).contentType("application/json")
+                .content(body.formatted("Half","[\"SPEED\"]"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
+                .path("data").path("template").path("id").longValue();
+        long sprinterId=sprinter.path("data").path("template").path("id").longValue();
+
+        mockMvc.perform(get("/api/horses/{id}/template-recommendations",horse).header("Authorization","Bearer "+token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].templateId").value(sprinterId))
+                .andExpect(jsonPath("$.data[0].reasons[0]").value(org.hamcrest.Matchers.containsString("Nước rút, Tốc độ")))
+                .andExpect(jsonPath("$.data[1].templateId").value(half))
+                .andExpect(jsonPath("$.data[?(@.templateId == %d)]".formatted(stayer.path("data").path("template").path("id").longValue())).isEmpty());
+
+        mockMvc.perform(post("/api/program-templates/{id}/versions",sprinterId).header("Authorization","Bearer "+token).contentType("application/json")
+                        .content("""
+                                {"name":"Sprinter v2","requiredSkillIds":[],"phases":[{"phaseOrder":1,"name":"Base"}]}
+                                """))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.version.versionNo").value(2))
+                .andExpect(jsonPath("$.data.version.strengthFocus[1]").value("SPEED"));
+        mockMvc.perform(post("/api/program-templates").header("Authorization","Bearer "+token).contentType("application/json")
+                .content(body.formatted("Bad","[\"FLYING\"]"))).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void unmatchedTrainerNeedsWarningAcknowledgementBeforeAssignment() throws Exception {
         String token=login(createUser(RoleCode.HEAD_TRAINER));
         long horse=createHorse();long trainer=createUser(RoleCode.TRAINER);
@@ -263,11 +313,14 @@ class TrainingProgramApiIntegrationTest {
     }
 
     private void createProgramTables() {
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.user_skill(id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,user_id BIGINT,skill_id BIGINT)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.training_program_template (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, template_code VARCHAR(20) NOT NULL UNIQUE, status VARCHAR(20) NOT NULL, duplicated_from_template_id BIGINT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.template_version (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, training_program_template_id BIGINT NOT NULL, created_by_user_id BIGINT, version_no INT NOT NULL, name NVARCHAR(150) NOT NULL, goals NVARCHAR(2000), suitable_horse_profile NVARCHAR(1000), recommended_distance_use_case NVARCHAR(500), recommended_duration NVARCHAR(100), workload_intensity_guidance NVARCHAR(1000), preferred_surfaces NVARCHAR(500), recovery_guidance NVARCHAR(1000), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.template_version_phase (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, template_version_id BIGINT NOT NULL, phase_order SMALLINT NOT NULL, name NVARCHAR(150) NOT NULL, objective NVARCHAR(1000), recommended_duration NVARCHAR(100), intensity_guidance NVARCHAR(500), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.template_required_skill (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, template_version_id BIGINT NOT NULL, skill_id BIGINT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.skill (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, name NVARCHAR(100) NOT NULL, kind VARCHAR(30) NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.template_version_strength_focus (template_version_id BIGINT NOT NULL, strength_code VARCHAR(30) NOT NULL, PRIMARY KEY (template_version_id, strength_code))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_strength (horse_id BIGINT NOT NULL, strength_code VARCHAR(30) NOT NULL, declared_by_user_id BIGINT NOT NULL, declared_at TIMESTAMP(3) NOT NULL, PRIMARY KEY (horse_id, strength_code))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, horse_code VARCHAR(20) NOT NULL, name NVARCHAR(150) NOT NULL, lifecycle VARCHAR(20) NOT NULL)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_training_program (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, horse_id BIGINT NOT NULL, template_version_id BIGINT NOT NULL, target_race_id BIGINT, created_by_user_id BIGINT NOT NULL, name NVARCHAR(150) NOT NULL, goals NVARCHAR(2000), target_metrics NVARCHAR(1000), period_start DATE NOT NULL, period_end DATE NOT NULL, status VARCHAR(20) NOT NULL, notes NVARCHAR(2000), activated_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_program_phase (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, horse_training_program_id BIGINT NOT NULL, template_version_phase_id BIGINT, phase_order SMALLINT NOT NULL, name NVARCHAR(150) NOT NULL, objective NVARCHAR(1000), start_date DATE NOT NULL, end_date DATE NOT NULL, intensity_min NVARCHAR(30), intensity_max NVARCHAR(30), workload NVARCHAR(500), is_customized BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP)");
@@ -280,6 +333,17 @@ class TrainingProgramApiIntegrationTest {
         long id = NEXT_ID.getAndIncrement();
         jdbc.update("INSERT INTO dbo.horse (id,horse_code,name,lifecycle) VALUES (?,?,?,'ACTIVE')", id, "PRG-" + id, "Program Test Horse");
         return id;
+    }
+
+    @Test void pastProgramStartIsRejectedBeforeAnyProgramIsWritten() throws Exception {
+        String token=login(createUser(RoleCode.HEAD_TRAINER));
+        int before=jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse_training_program",Integer.class);
+        mockMvc.perform(post("/api/training-programs").header("Authorization","Bearer "+token).contentType("application/json")
+                .content("""
+                        {"horseId":1,"templateVersionId":1,"name":"Past program","periodStart":"2026-10-19","periodEnd":"2026-11-30","phases":[{"phaseOrder":1,"name":"Phase","startDate":"2026-10-19","endDate":"2026-11-30"}],"trainer":{"trainerUserId":2,"effectiveFrom":"2026-10-19"}}
+                        """))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+        org.junit.jupiter.api.Assertions.assertEquals(before,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse_training_program",Integer.class));
     }
 
     private long createUser(RoleCode role) {

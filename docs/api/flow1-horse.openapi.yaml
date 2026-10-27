@@ -848,6 +848,14 @@ components:
         foaledDate: { type: [string, 'null'], format: date }
         countryOfOrigin: { type: [string, 'null'], maxLength: 100 }
         registrationNo: { type: [string, 'null'], maxLength: 50, description: Microchip / registration number; unique when present. }
+        strengths:
+          type: [array, 'null']
+          maxItems: 14
+          description: Club Manager-declared strengths (V20261027_01). Omitted or null on update keeps the current declaration; [] clears it. Duplicates are ignored. Not a Head Trainer confirmation.
+          items: { $ref: '#/components/schemas/HorseStrength' }
+    HorseStrength:
+      type: string
+      enum: [SPRINT, MILE, MIDDLE_DISTANCE, STAYING, TURF, DIRT, SYNTHETIC, FRONT_RUNNER, STALKER, CLOSER, SPEED, ENDURANCE, STRENGTH, BALANCE]
     HorseSummary:
       type: object
       required: [id, horseCode, name, lifecycle, trainingAvailability]
@@ -862,6 +870,10 @@ components:
         healthStatus: { oneOf: [{ $ref: '#/components/schemas/HealthStatus' }, { type: 'null' }] }
         trainingAvailability: { $ref: '#/components/schemas/TrainingAvailability' }
         currentBoxCode: { type: [string, 'null'] }
+        strengths:
+          type: array
+          description: Declared strengths in catalogue order; empty when unknown.
+          items: { $ref: '#/components/schemas/HorseStrength' }
     HorseDetail:
       allOf:
         - $ref: '#/components/schemas/HorseSummary'

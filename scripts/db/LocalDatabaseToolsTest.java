@@ -9,7 +9,8 @@ class LocalDatabaseToolsTest {
         Map<String,Object> row=new LinkedHashMap<>();row.put("name","horse");row.put("nullable",false);row.put("ordinal",12);
         if(!LocalDatabase.json(List.of(row)).equals("[{\"name\":\"horse\",\"nullable\":false,\"ordinal\":12}]"))throw new AssertionError("Metadata types/order");
         var plan=LocalDatabase.migrationPlan();
-        if(plan.size()!=3||!plan.get(2).get("version").equals("V20261021_01")||!plan.get(2).get("order").equals(3))throw new AssertionError("Groom migration omitted or unordered");
+        if(plan.size()!=4||!plan.get(2).get("version").equals("V20261021_01")||!plan.get(2).get("order").equals(3))throw new AssertionError("Groom migration omitted or unordered");
+        if(!plan.get(3).get("version").equals("V20261027_01")||!plan.get(3).get("order").equals(4))throw new AssertionError("Strength migration omitted or unordered");
         if(args.length==2&&args[0].equals("--package"))LocalDatabase.verifyPackage(java.nio.file.Path.of(args[1]));
         int[] phase={0},closed={0};
         ResultSet rs=(ResultSet)Proxy.newProxyInstance(LocalDatabaseToolsTest.class.getClassLoader(),new Class[]{ResultSet.class},(p,m,a)->{

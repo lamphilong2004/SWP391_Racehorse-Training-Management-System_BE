@@ -13,9 +13,10 @@ class LocalDatabase {
     static final List<Migration> MIGRATIONS = List.of(
         new Migration("V20261016_01", "database/migrations/V20261016_01__create_registration_request.sql", CORE007_MIGRATION),
         new Migration("V20261020_01", "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql", CORE045_MIGRATION),
-        new Migration("V20261021_01", "database/migrations/V20261021_01__training_session_groom_assignment.sql", "79c4098f5635e521b2f8e9ca81a21df36e5c5cdaa618094dccc9ac851ab00222"));
-    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261021.json";
-    static final String EXPECTED_SCHEMA_HASH = "41045e70a8970bfbad9589c9567766f17d5eb6483f1c0546e9ed38dea8a391ad";
+        new Migration("V20261021_01", "database/migrations/V20261021_01__training_session_groom_assignment.sql", "79c4098f5635e521b2f8e9ca81a21df36e5c5cdaa618094dccc9ac851ab00222"),
+        new Migration("V20261027_01", "database/migrations/V20261027_01__horse_strength_and_template_focus.sql", "f6693efa86935400257660043e6dad36ef5f8f22222bc51764f7fc27b0a92681"));
+    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261027.json";
+    static final String EXPECTED_SCHEMA_HASH = "2dccce3a0a91697f12316dec2e6e075652ba63a4bdcb399e8222d4ea1d96a305";
     static List<Map<String,Object>> migrationPlan() {
         List<Map<String,Object>> plan=new ArrayList<>();
         for(int i=0;i<MIGRATIONS.size();i++) {

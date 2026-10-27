@@ -1,5 +1,5 @@
 {
-  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01-candidate",
+  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01+STRENGTH-V20261027_01-candidate",
   "approvedAt": "2026-10-18",
   "approvedBy": "Lam Phi Long",
   "sourceHead": "6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04",
@@ -20,6 +20,11 @@
       "version": "V20261021_01",
       "order": 3,
       "path": "database/migrations/V20261021_01__training_session_groom_assignment.sql"
+    },
+    {
+      "version": "V20261027_01",
+      "order": 4,
+      "path": "database/migrations/V20261027_01__horse_strength_and_template_focus.sql"
     }
   ],
   "files": [
@@ -58,14 +63,22 @@
     {
       "path": "database/verification/expected-schema-v20261021.json",
       "sha256": "41045e70a8970bfbad9589c9567766f17d5eb6483f1c0546e9ed38dea8a391ad"
+    },
+    {
+      "sha256": "f6693efa86935400257660043e6dad36ef5f8f22222bc51764f7fc27b0a92681",
+      "path": "database/migrations/V20261027_01__horse_strength_and_template_focus.sql"
+    },
+    {
+      "path": "database/verification/expected-schema-v20261027.json",
+      "sha256": "2dccce3a0a91697f12316dec2e6e075652ba63a4bdcb399e8222d4ea1d96a305"
     }
   ],
   "history": "External local receipt only; not permission to upgrade any existing database",
   "verification": {
-    "path": "database/verification/expected-schema-v20261021.json",
-    "sha256": "41045e70a8970bfbad9589c9567766f17d5eb6483f1c0546e9ed38dea8a391ad",
-    "tables": 53,
-    "columns": 512,
-    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required"
+    "path": "database/verification/expected-schema-v20261027.json",
+    "sha256": "2dccce3a0a91697f12316dec2e6e075652ba63a4bdcb399e8222d4ea1d96a305",
+    "tables": 55,
+    "columns": 518,
+    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required + Leader-approved horse strengths and template strength focus (2026-10-27)"
   }
 }

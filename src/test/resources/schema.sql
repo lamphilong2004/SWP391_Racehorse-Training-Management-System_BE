@@ -321,3 +321,18 @@ CREATE TABLE IF NOT EXISTS dbo.notification (
     CONSTRAINT ck_test_notification_target_pair CHECK (
         (target_type IS NULL AND target_id IS NULL) OR (target_type IS NOT NULL AND target_id IS NOT NULL))
 );
+
+-- V20261027_01 declared strengths and template strength focus (H2 copy without SQL Server CHECK lists).
+CREATE TABLE IF NOT EXISTS dbo.horse_strength (
+    horse_id BIGINT NOT NULL,
+    strength_code VARCHAR(30) NOT NULL,
+    declared_by_user_id BIGINT NOT NULL,
+    declared_at TIMESTAMP(3) NOT NULL,
+    PRIMARY KEY (horse_id, strength_code)
+);
+
+CREATE TABLE IF NOT EXISTS dbo.template_version_strength_focus (
+    template_version_id BIGINT NOT NULL,
+    strength_code VARCHAR(30) NOT NULL,
+    PRIMARY KEY (template_version_id, strength_code)
+);

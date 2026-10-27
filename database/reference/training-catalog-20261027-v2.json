@@ -1,0 +1,553 @@
+{
+  "catalogId": "racehorse-training-reference-20261027-v2",
+  "notice": "Mẫu tham khảo do dự án biên soạn từ các nguồn công khai bên dưới, không phải giáo án được tổ chức nguồn chứng nhận. Head Trainer cá thể hóa và duyệt trước khi áp dụng; Veterinarian quyết định hạn chế y tế. Không phải phác đồ phục hồi chấn thương; không ghi dữ liệu tập luyện giả.",
+  "sources": [
+    {
+      "id": "OSU-3983",
+      "title": "Physical Conditioning of Horses — Oklahoma State University Extension",
+      "url": "https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "BHS-FITNESS",
+      "title": "Implementing a fitness programme — British Horse Society",
+      "url": "https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "UKY-ASC275",
+      "title": "Conditioning the Trail or Long-distance Horse — University of Kentucky Extension",
+      "url": "https://publications.mgcafe.uky.edu/asc-275",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "THEHORSE-BLEA",
+      "title": "Condition Your Horse Like a Pro (racehorse section, Jeff Blea DVM) — The Horse",
+      "url": "https://thehorse.com/110066/condition-your-horse-like-a-pro/",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "AQHA-RACE-FIT",
+      "title": "Racehorse Fitness Training — American Quarter Horse Association",
+      "url": "https://www.aqha.com/-/racehorse-fitness-training",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "RACEFORM-STAMINA",
+      "title": "Stamina influence of sires — distance bands (Raceform)",
+      "url": "https://raceform.co.za/statistics/stamina",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "ANIMALS-2022-SCHRURS",
+      "title": "Locomotory Profiles in Thoroughbreds: Peak Stride Length and Frequency in Training and Association with Race Outcomes (Animals, 2022)",
+      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9741461/",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "BRISNET-RUNSTYLE",
+      "title": "Run Style FAQ — Brisnet",
+      "url": "https://support.brisnet.com/hc/en-us/articles/9803583657101-Run-Style-FAQ",
+      "accessedOn": "2026-10-27"
+    },
+    {
+      "id": "RRP-TURF-DIRT",
+      "title": "What Makes a Turf vs. a Dirt Horse? — Retired Racehorse Project",
+      "url": "https://therrp.org/education/track-life/what-makes-a-turf-vs-a-dirt-horse/",
+      "accessedOn": "2026-10-27"
+    }
+  ],
+  "entries": [
+    {
+      "code": "RHREF-BASE-01",
+      "focus": "FOUNDATION",
+      "sourceIds": [
+        "BHS-FITNESS",
+        "OSU-3983"
+      ],
+      "payload": {
+        "name": "Thể lực nền · Làm quen và phát triển nền tảng",
+        "goals": "Xây nền trước khi tăng tải. Mẫu tham khảo RHREF-BASE-01, không phải chương trình được chứng nhận; nguồn BHS-FITNESS và OSU-3983.",
+        "suitableHorseProfile": "Ngựa đã được kiểm tra sức khỏe; Head Trainer cần xác định mức thể lực ban đầu. Không suy ra năng lực từ phả hệ.",
+        "recommendedDistanceUseCase": "Chuẩn bị thể lực chung; chưa mặc định cự ly thi đấu.",
+        "recommendedDuration": "Head Trainer xác định sau đánh giá; không tự chuyển hướng dẫn thành ngày.",
+        "workloadIntensityGuidance": "Bắt đầu bằng đi bộ có kiểm soát, tăng dần theo đáp ứng; chưa thêm tốc độ cao khi nền tảng chưa đủ.",
+        "preferredSurfaces": "Mặt sân phù hợp, ổn định; người phụ trách kiểm tra trước buổi.",
+        "recoveryGuidance": "Theo dõi phục hồi, khởi động và thả lỏng. Nguồn: https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses ; https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/ . Không dùng thay chỉ định thú y.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Đánh giá và làm quen",
+            "objective": "Quan sát đáp ứng khi đi bộ.",
+            "recommendedDuration": "Theo đánh giá đầu kỳ",
+            "intensityGuidance": "Nhẹ, có kiểm soát."
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Phát triển nền",
+            "objective": "Tăng khối lượng từng bước.",
+            "recommendedDuration": "Theo tiến độ được duyệt",
+            "intensityGuidance": "Không tăng nhiều yếu tố cùng lúc."
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Đánh giá chuyển tiếp",
+            "objective": "Xem xét khả năng chuyển giai đoạn.",
+            "recommendedDuration": "Đánh giá cuối khối",
+            "intensityGuidance": "Chỉ tiến triển khi đáp ứng phù hợp."
+          }
+        ],
+        "strengthFocus": []
+      }
+    },
+    {
+      "code": "RHREF-ENDUR-01",
+      "focus": "ENDURANCE",
+      "sourceIds": [
+        "UKY-ASC275",
+        "OSU-3983"
+      ],
+      "payload": {
+        "name": "Sức bền · Duy trì vận động ổn định",
+        "goals": "Phát triển sức bền theo mục tiêu riêng. Mẫu tham khảo RHREF-ENDUR-01; nguồn UKY-ASC275 và OSU-3983. Không áp nguyên chương trình ngựa đường dài cho ngựa đua.",
+        "suitableHorseProfile": "Ngựa có mục tiêu sức bền được Head Trainer xác nhận, đủ điều kiện y tế cho các bài đã chọn.",
+        "recommendedDistanceUseCase": "Cự ly và thời lượng do Head Trainer/Trainer lựa chọn theo thực tế, không tự gán cự ly thi đấu.",
+        "recommendedDuration": "Cá thể hóa theo mục tiêu và đáp ứng",
+        "workloadIntensityGuidance": "Ưu tiên nhịp ổn định; điều chỉnh tần suất, thời lượng và cường độ theo từng ngựa.",
+        "preferredSurfaces": "Sân và địa hình đã được kiểm tra.",
+        "recoveryGuidance": "Đánh giá khả năng phục hồi giữa buổi và giữa các ngày. Nguồn: https://publications.mgcafe.uky.edu/asc-275 . Tài liệu này bàn về ngựa trail/đường dài; mẫu chỉ vận dụng nguyên tắc cá thể hóa, không sao chép thành phác đồ đua.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Mốc sức bền ban đầu",
+            "objective": "Xác định khối lượng đang đáp ứng được.",
+            "recommendedDuration": "Theo đánh giá",
+            "intensityGuidance": "Không bắt đầu ở mức tối đa."
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Phát triển sức bền",
+            "objective": "Duy trì chất lượng khi tăng khối lượng.",
+            "recommendedDuration": "Theo tiến độ",
+            "intensityGuidance": "Tăng tải từng bước, theo dõi phản ứng."
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Đối chiếu mục tiêu",
+            "objective": "So sánh kết quả quan sát được.",
+            "recommendedDuration": "Cuối khối",
+            "intensityGuidance": "Không bịa chỉ số thiếu đo đạc."
+          }
+        ],
+        "strengthFocus": [
+          "STAYING",
+          "ENDURANCE"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-STR-01",
+      "focus": "STRENGTH",
+      "sourceIds": [
+        "OSU-3983",
+        "BHS-FITNESS"
+      ],
+      "payload": {
+        "name": "Sức mạnh · Kiểm soát vận động và địa hình",
+        "goals": "Phát triển khả năng vận động có kiểm soát. Mẫu tham khảo RHREF-STR-01; nguồn OSU-3983 và BHS-FITNESS.",
+        "suitableHorseProfile": "Ngựa có nền tảng phù hợp và mục tiêu sức mạnh được xác nhận; không có hạn chế xung đột bài tập.",
+        "recommendedDistanceUseCase": "Không gắn mặc định với cự ly đua.",
+        "recommendedDuration": "Theo đánh giá thể lực và địa hình",
+        "workloadIntensityGuidance": "Có thể dùng địa hình dốc phù hợp để thay đổi tải; chỉ tăng dần sau khi đánh giá.",
+        "preferredSurfaces": "Địa hình có độ bám tốt; không mặc định mọi ngựa đều phù hợp tập dốc.",
+        "recoveryGuidance": "Luân phiên khối lượng phù hợp và thời gian hồi phục. Nguồn: https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses . Hạn chế y tế luôn được ưu tiên.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Kiểm soát tải ban đầu",
+            "objective": "Đánh giá vận động trên sân hiện có.",
+            "recommendedDuration": "Theo đánh giá",
+            "intensityGuidance": "Tải thấp trước."
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Phát triển sức mạnh",
+            "objective": "Chọn tải và địa hình phù hợp.",
+            "recommendedDuration": "Theo tiến độ",
+            "intensityGuidance": "Tăng dần, không tự áp tải bổ sung."
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Củng cố chất lượng",
+            "objective": "Đối chiếu chất lượng và khả năng phục hồi.",
+            "recommendedDuration": "Cuối khối",
+            "intensityGuidance": "Giảm tải nếu chất lượng suy giảm."
+          }
+        ],
+        "strengthFocus": [
+          "STRENGTH"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-BAL-01",
+      "focus": "BALANCE",
+      "sourceIds": [
+        "BHS-FITNESS"
+      ],
+      "payload": {
+        "name": "Thăng bằng · Nhịp và chuyển tiếp",
+        "goals": "Cải thiện chất lượng vận động. Mẫu tham khảo RHREF-BAL-01; nguồn BHS-FITNESS. Không tự thêm môn thi đấu khác vào hệ thống.",
+        "suitableHorseProfile": "Ngựa cần cải thiện thăng bằng/nhịp theo đánh giá thực tế của Head Trainer.",
+        "recommendedDistanceUseCase": "Kỹ thuật nền, chưa mặc định thành tích cự ly.",
+        "recommendedDuration": "Theo mức kỹ thuật hiện có",
+        "workloadIntensityGuidance": "Ưu tiên chất lượng, các đoạn có kiểm soát và chuyển tiếp phù hợp.",
+        "preferredSurfaces": "Sân ổn định, không chuyển mặt sân đột ngột.",
+        "recoveryGuidance": "Giữ cơ hội đánh giá sau từng buổi. Nguồn: https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/ . Không dùng thay đánh giá thú y.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Nhịp nền",
+            "objective": "Quan sát nhịp và sự ổn định.",
+            "recommendedDuration": "Theo đánh giá",
+            "intensityGuidance": "Nhẹ, ưu tiên chất lượng."
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Chuyển tiếp có kiểm soát",
+            "objective": "Duy trì thăng bằng qua chuyển tiếp.",
+            "recommendedDuration": "Theo tiến độ",
+            "intensityGuidance": "Trainer chọn bài phù hợp."
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Củng cố kỹ thuật",
+            "objective": "Đánh giá lại tính nhất quán.",
+            "recommendedDuration": "Cuối khối",
+            "intensityGuidance": "Không tăng tốc để che lỗi kỹ thuật."
+          }
+        ],
+        "strengthFocus": [
+          "BALANCE"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-SPEED-01",
+      "focus": "SPEED",
+      "sourceIds": [
+        "OSU-3983"
+      ],
+      "payload": {
+        "name": "Tốc độ · Tăng tốc có kiểm soát",
+        "goals": "Phát triển tốc độ trên nền tảng đã được đánh giá. Mẫu tham khảo RHREF-SPEED-01; nguồn OSU-3983. Không mặc định năng lực từ giống hoặc phả hệ.",
+        "suitableHorseProfile": "Head Trainer đã xác nhận nền tảng và mục tiêu tốc độ; ngựa đủ điều kiện thực hiện các bài được chọn.",
+        "recommendedDistanceUseCase": "Các đoạn tốc độ được cá thể hóa; không tự ấn định cự ly hay tốc độ đích.",
+        "recommendedDuration": "Chỉ triển khai sau khi nền tảng phù hợp",
+        "workloadIntensityGuidance": "Xen các đoạn nhanh được kiểm soát với hồi phục; không mặc định chạy hết sức.",
+        "preferredSurfaces": "Mặt sân thích hợp đã được kiểm tra.",
+        "recoveryGuidance": "Trainer theo dõi hồi phục trước khi lặp hoặc tăng tải. Nguồn: https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses . Không tự sinh ngưỡng nhịp tim, tốc độ hoặc công thức an toàn.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Xác nhận nền tảng",
+            "objective": "Xác nhận điều kiện trước bài tốc độ.",
+            "recommendedDuration": "Theo đánh giá",
+            "intensityGuidance": "Chưa tăng tốc khi nền tảng chưa đủ."
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Các đoạn tốc độ",
+            "objective": "Thực hiện mục tiêu từng đoạn.",
+            "recommendedDuration": "Theo kế hoạch cá thể",
+            "intensityGuidance": "Tải do người phụ trách chọn."
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Đánh giá và điều chỉnh",
+            "objective": "Đối chiếu kết quả và phục hồi.",
+            "recommendedDuration": "Cuối khối",
+            "intensityGuidance": "Không suy diễn chỉ số chưa đo."
+          }
+        ],
+        "strengthFocus": [
+          "SPRINT",
+          "SPEED"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-MAINT-01",
+      "focus": "MAINTENANCE",
+      "sourceIds": [
+        "BHS-FITNESS",
+        "UKY-ASC275"
+      ],
+      "payload": {
+        "name": "Duy trì thể lực · Vận động nhẹ xen kẽ",
+        "goals": "Tổ chức khối lượng duy trì giữa các buổi chính. Mẫu tham khảo RHREF-MAINT-01; nguồn BHS-FITNESS và UKY-ASC275. Không phải phác đồ điều trị/phục hồi chấn thương.",
+        "suitableHorseProfile": "Ngựa đã có nền tảng, được phép vận động và có mục tiêu duy trì được xác nhận.",
+        "recommendedDistanceUseCase": "Không đặt mục tiêu thành tích mới.",
+        "recommendedDuration": "Theo lịch thực tế của chương trình",
+        "workloadIntensityGuidance": "Tổ chức các buổi nhẹ phù hợp giữa những buổi chính; theo dõi phản ứng thực tế.",
+        "preferredSurfaces": "Sân quen thuộc, điều kiện phù hợp.",
+        "recoveryGuidance": "Khởi động, thả lỏng và xem xét đáp ứng. Nguồn: https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/ . Ngựa có vấn đề sức khỏe cần quy trình y tế riêng; mẫu không tự gỡ hạn chế.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Rà khối lượng hiện tại",
+            "objective": "Xem lại các buổi chính đã có.",
+            "recommendedDuration": "Theo lịch chương trình",
+            "intensityGuidance": "Không nhân đôi tải đang có."
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Vận động duy trì",
+            "objective": "Giữ chất lượng ở tải phù hợp.",
+            "recommendedDuration": "Theo tiến độ",
+            "intensityGuidance": "Điều chỉnh theo quan sát."
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Rà soát kế hoạch tiếp",
+            "objective": "Báo cáo để Head Trainer quyết định.",
+            "recommendedDuration": "Cuối khối",
+            "intensityGuidance": "Không tự đổi chiến lược chương trình."
+          }
+        ],
+        "strengthFocus": []
+      }
+    },
+    {
+      "code": "RHREF-SPRINT-01",
+      "focus": "SPRINT",
+      "sourceIds": [
+        "THEHORSE-BLEA",
+        "AQHA-RACE-FIT",
+        "RACEFORM-STAMINA",
+        "ANIMALS-2022-SCHRURS"
+      ],
+      "payload": {
+        "name": "Nước rút · Chuẩn bị cự ly ngắn (dưới 1.400 m)",
+        "goals": "Chuẩn bị ngựa có thế mạnh nước rút: nền galop trước, sau đó các buổi breeze ngắn tăng dần để phát triển khả năng tăng tốc. Mẫu tham khảo RHREF-SPRINT-01; nguồn THEHORSE-BLEA, AQHA-RACE-FIT, RACEFORM-STAMINA, ANIMALS-2022-SCHRURS.",
+        "suitableHorseProfile": "Ngựa đã kích hoạt, Veterinarian không hạn chế bài tốc độ, Club Manager khai báo thế mạnh nước rút hoặc tốc độ. Head Trainer xác nhận lại sau quan sát; không suy ra năng lực từ phả hệ.",
+        "recommendedDistanceUseCase": "Cự ly thi đấu dưới 1.400 m theo nhóm cự ly của RACEFORM-STAMINA. Nghiên cứu ANIMALS-2022-SCHRURS ghi nhận ngựa nước rút có sải ngắn hơn, tần số cao hơn và đi các furlong nhanh hơn khi xuất phát đứng.",
+        "recommendedDuration": "Khoảng 8–12 tuần, Head Trainer điều chỉnh theo đáp ứng",
+        "workloadIntensityGuidance": "Bắt đầu bằng vài tuần jog và galop dài tốc độ thấp, tăng quãng đường mỗi 2–3 tuần (AQHA-RACE-FIT). Breeze đầu tiên khoảng ¼ dặm (~400 m), mỗi lần thêm khoảng ⅛ dặm (~200 m) khi thể lực, độ lành lặn và tinh thần cho phép, ở khoảng 75–80% tốc độ đua, khoảng 6–7 ngày một lần (THEHORSE-BLEA). Không tăng nhiều yếu tố cùng lúc.",
+        "preferredSurfaces": "Mặt sân đã được kiểm tra trước buổi; nếu biết mặt sân thi đấu, ưu tiên tập trên mặt sân tương tự.",
+        "recoveryGuidance": "Chu kỳ tham khảo sau mỗi buổi breeze: hôm sau đi bộ, 1–2 ngày chạy nước kiệu (jog), 2–3 ngày galop, rồi mới breeze tiếp (THEHORSE-BLEA). Trước mỗi buổi nhanh: xem ngựa có xử lý tốt buổi trước, mức thở dốc, ăn uống, sức khỏe chung và mọi dấu hiệu chưa lành lặn. Hạn chế của Veterinarian luôn được ưu tiên.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Nền jog và galop",
+            "objective": "Cho hệ cơ xương thích nghi trước khi thêm tốc độ; quan sát đáp ứng.",
+            "recommendedDuration": "Vài tuần đầu, theo mức chuẩn bị",
+            "intensityGuidance": "Thấp: jog, galop dài nhịp ổn định"
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Breeze ngắn tăng dần",
+            "objective": "Phát triển tăng tốc: breeze ~400 m, thêm ~200 m mỗi lần khi đáp ứng tốt.",
+            "recommendedDuration": "Khoảng 6–7 ngày/lần breeze",
+            "intensityGuidance": "Trung bình–cao: breeze 75–80% tốc độ đua, xen ngày nhẹ"
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Duy trì tốc độ và đánh giá",
+            "objective": "Giữ độ sắc của tốc độ, đánh giá sẵn sàng thi đấu cùng Head Trainer.",
+            "recommendedDuration": "Theo lịch thi đấu được duyệt",
+            "intensityGuidance": "Cao có kiểm soát; giữ chu kỳ hồi phục"
+          }
+        ],
+        "strengthFocus": [
+          "SPRINT",
+          "FRONT_RUNNER",
+          "SPEED"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-ROUTE-01",
+      "focus": "MILE",
+      "sourceIds": [
+        "THEHORSE-BLEA",
+        "AQHA-RACE-FIT",
+        "RACEFORM-STAMINA",
+        "BRISNET-RUNSTYLE"
+      ],
+      "payload": {
+        "name": "Cự ly dặm – trung bình · 1.400–2.399 m",
+        "goals": "Cân bằng sức bền và tốc độ cho ngựa thi đấu cự ly dặm hoặc trung bình, tập giữ vị trí bám đuổi rồi tăng tốc. Mẫu tham khảo RHREF-ROUTE-01; nguồn THEHORSE-BLEA, AQHA-RACE-FIT, RACEFORM-STAMINA, BRISNET-RUNSTYLE.",
+        "suitableHorseProfile": "Ngựa đã kích hoạt có khai báo cự ly dặm, cự ly trung bình hoặc lối chạy bám đuổi; không bị Veterinarian hạn chế bài nhanh. Head Trainer xác nhận lại sau quan sát.",
+        "recommendedDistanceUseCase": "Nhóm cự ly 1.400–1.999 m (dặm) và 2.000–2.399 m (trung bình) theo RACEFORM-STAMINA. Lối chạy bám đuổi: giữ gần nhóm đầu rồi bứt lên ở đoạn cuối (BRISNET-RUNSTYLE).",
+        "recommendedDuration": "Khoảng 10–14 tuần, Head Trainer điều chỉnh theo đáp ứng",
+        "workloadIntensityGuidance": "Giai đoạn nền dài hơn mẫu nước rút: galop chậm quãng dài để phát triển hiếu khí, tăng quãng đường mỗi 2–3 tuần; sau đó xen các buổi nhanh vào giữa các ngày chậm (AQHA-RACE-FIT). Breeze bắt đầu ~400 m, tăng ~200 m mỗi lần, 75–80% tốc độ đua, khoảng 6–7 ngày/lần (THEHORSE-BLEA).",
+        "preferredSurfaces": "Mặt sân đã kiểm tra; ưu tiên mặt sân trùng với mặt sân ngựa được khai báo chạy tốt.",
+        "recoveryGuidance": "Chu kỳ tham khảo sau mỗi buổi breeze: hôm sau đi bộ, 1–2 ngày chạy nước kiệu (jog), 2–3 ngày galop, rồi mới breeze tiếp (THEHORSE-BLEA). Duy trì các buổi chậm quãng dài ngay cả khi đã có bài nhanh để giữ sức chịu đựng của cơ và xương. Hạn chế của Veterinarian luôn được ưu tiên.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Nền hiếu khí",
+            "objective": "Galop chậm quãng dài, tăng quãng đường từng bước.",
+            "recommendedDuration": "Khoảng 4–6 tuần",
+            "intensityGuidance": "Thấp–trung bình"
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Kết hợp nhịp và tăng tốc",
+            "objective": "Xen breeze vào giữa các ngày chậm; tập giữ nhịp ổn định rồi tăng tốc đoạn cuối.",
+            "recommendedDuration": "Khoảng 6–7 ngày/lần breeze",
+            "intensityGuidance": "Trung bình–cao, không liên tiếp hai ngày nhanh"
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Hoàn thiện và đánh giá",
+            "objective": "Đánh giá khả năng giữ tốc độ ở cự ly mục tiêu do Head Trainer chọn.",
+            "recommendedDuration": "Theo lịch thi đấu được duyệt",
+            "intensityGuidance": "Cao có kiểm soát; giữ chu kỳ hồi phục"
+          }
+        ],
+        "strengthFocus": [
+          "MILE",
+          "MIDDLE_DISTANCE",
+          "STALKER"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-STAY-01",
+      "focus": "STAYING",
+      "sourceIds": [
+        "AQHA-RACE-FIT",
+        "THEHORSE-BLEA",
+        "RACEFORM-STAMINA",
+        "BRISNET-RUNSTYLE",
+        "ANIMALS-2022-SCHRURS"
+      ],
+      "payload": {
+        "name": "Đường dài · Cự ly từ 2.400 m",
+        "goals": "Phát triển sức bền cho ngựa đường dài và lối chạy bứt phá cuối: khối lượng hiếu khí lớn, bài nhanh thưa hơn, giữ sức cho đoạn cuối. Mẫu tham khảo RHREF-STAY-01; nguồn AQHA-RACE-FIT, THEHORSE-BLEA, RACEFORM-STAMINA, BRISNET-RUNSTYLE, ANIMALS-2022-SCHRURS.",
+        "suitableHorseProfile": "Ngựa đã kích hoạt có khai báo đường dài, sức bền hoặc lối chạy bứt phá cuối. Nhiều ngựa chuyển sang cự ly dài hơn khi trưởng thành (ANIMALS-2022-SCHRURS); Head Trainer xác nhận lại sau quan sát.",
+        "recommendedDistanceUseCase": "Cự ly từ 2.400 m theo nhóm cự ly của RACEFORM-STAMINA. Lối chạy bứt phá cuối: đi phía sau rồi tăng tốc một lần ở cuối cuộc đua (BRISNET-RUNSTYLE).",
+        "recommendedDuration": "Khoảng 12–16 tuần, Head Trainer điều chỉnh theo đáp ứng",
+        "workloadIntensityGuidance": "Ưu tiên galop chậm quãng dài để tăng khả năng hiếu khí, sức chịu của chi và thích nghi cơ; tăng quãng đường mỗi 2–3 tuần (AQHA-RACE-FIT). Thêm breeze dài dần ở 75–80% tốc độ đua khi nền đã đủ (THEHORSE-BLEA). Không bịa chỉ số tim mạch khi không đo được.",
+        "preferredSurfaces": "Mặt sân ổn định, đã kiểm tra; tránh đổi mặt sân đột ngột trong giai đoạn tăng khối lượng.",
+        "recoveryGuidance": "Chu kỳ tham khảo sau mỗi buổi breeze: hôm sau đi bộ, 1–2 ngày chạy nước kiệu (jog), 2–3 ngày galop, rồi mới breeze tiếp (THEHORSE-BLEA). Theo dõi phục hồi giữa các ngày vì khối lượng tích lũy lớn; giảm tải khi ngựa ăn kém hoặc thở dốc kéo dài. Hạn chế của Veterinarian luôn được ưu tiên.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Nền hiếu khí mở rộng",
+            "objective": "Galop chậm quãng dài, tăng quãng đường từng bước.",
+            "recommendedDuration": "Khoảng 6–8 tuần",
+            "intensityGuidance": "Thấp–trung bình, nhịp đều"
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Sức bền và tăng tốc cuối",
+            "objective": "Giữ nhịp quãng dài, kết thúc bằng đoạn tăng tốc ngắn có kiểm soát.",
+            "recommendedDuration": "Theo tiến độ được duyệt",
+            "intensityGuidance": "Trung bình–cao, bài nhanh thưa"
+          },
+          {
+            "phaseOrder": 3,
+            "name": "Hoàn thiện cự ly",
+            "objective": "Đánh giá khả năng giữ sức ở cự ly mục tiêu.",
+            "recommendedDuration": "Theo lịch thi đấu được duyệt",
+            "intensityGuidance": "Cao có kiểm soát; ưu tiên hồi phục"
+          }
+        ],
+        "strengthFocus": [
+          "STAYING",
+          "CLOSER",
+          "ENDURANCE"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-TURF-01",
+      "focus": "TURF",
+      "sourceIds": [
+        "RRP-TURF-DIRT",
+        "THEHORSE-BLEA"
+      ],
+      "payload": {
+        "name": "Mặt sân · Làm quen và tập trên sân cỏ",
+        "goals": "Giúp ngựa có thế mạnh sân cỏ làm quen mặt sân thi đấu và duy trì chất lượng sải trên cỏ. Mẫu tham khảo RHREF-TURF-01; nguồn RRP-TURF-DIRT, THEHORSE-BLEA.",
+        "suitableHorseProfile": "Ngựa đã kích hoạt có khai báo thế mạnh sân cỏ. Huấn luyện viên thường nhận ra sở thích mặt sân qua cách ngựa di chuyển trên sân (RRP-TURF-DIRT); Head Trainer xác nhận.",
+        "recommendedDistanceUseCase": "Kết hợp với mẫu cự ly phù hợp; mẫu này chỉ tập trung vào mặt sân.",
+        "recommendedDuration": "Khoảng 4–6 tuần, có thể chạy song song khối cự ly",
+        "workloadIntensityGuidance": "Bắt đầu bằng đi bộ, jog và galop nhẹ trên cỏ; chỉ thêm breeze trên cỏ khi ngựa di chuyển tự tin. Mức độ cứng–mềm của sân cỏ thay đổi theo thời tiết; ghi nhận điều kiện sân mỗi buổi.",
+        "preferredSurfaces": "Sân cỏ đã kiểm tra độ cứng và độ trơn trước buổi.",
+        "recoveryGuidance": "Chu kỳ tham khảo sau mỗi buổi breeze: hôm sau đi bộ, 1–2 ngày chạy nước kiệu (jog), 2–3 ngày galop, rồi mới breeze tiếp (THEHORSE-BLEA). Theo dõi dáng đi và cơ sau các buổi đầu trên cỏ. Hạn chế của Veterinarian luôn được ưu tiên.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Làm quen sân cỏ",
+            "objective": "Đi bộ, jog, galop nhẹ để ngựa quen mặt sân.",
+            "recommendedDuration": "Khoảng 1–2 tuần",
+            "intensityGuidance": "Thấp"
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Galop và breeze trên cỏ",
+            "objective": "Đưa các bài galop và breeze của khối cự ly lên sân cỏ.",
+            "recommendedDuration": "Theo tiến độ được duyệt",
+            "intensityGuidance": "Trung bình–cao có kiểm soát"
+          }
+        ],
+        "strengthFocus": [
+          "TURF"
+        ]
+      }
+    },
+    {
+      "code": "RHREF-DIRT-01",
+      "focus": "DIRT",
+      "sourceIds": [
+        "RRP-TURF-DIRT",
+        "THEHORSE-BLEA"
+      ],
+      "payload": {
+        "name": "Mặt sân · Tập trên sân đất và sân tổng hợp",
+        "goals": "Giúp ngựa có thế mạnh sân đất hoặc sân tổng hợp làm quen mặt sân thi đấu và chuyển đổi giữa hai loại sân. Mẫu tham khảo RHREF-DIRT-01; nguồn RRP-TURF-DIRT, THEHORSE-BLEA.",
+        "suitableHorseProfile": "Ngựa đã kích hoạt có khai báo thế mạnh sân đất hoặc sân tổng hợp; Head Trainer xác nhận sau quan sát.",
+        "recommendedDistanceUseCase": "Kết hợp với mẫu cự ly phù hợp; mẫu này chỉ tập trung vào mặt sân.",
+        "recommendedDuration": "Khoảng 4–6 tuần, có thể chạy song song khối cự ly",
+        "workloadIntensityGuidance": "Tập dần trên mặt sân thi đấu; khi chuyển giữa sân tổng hợp và sân đất, giảm tốc độ các buổi đầu để ngựa thích nghi với độ bám và độ lún khác nhau.",
+        "preferredSurfaces": "Sân đất hoặc sân tổng hợp đã kiểm tra; ghi nhận tình trạng sân (khô, ướt) mỗi buổi.",
+        "recoveryGuidance": "Chu kỳ tham khảo sau mỗi buổi breeze: hôm sau đi bộ, 1–2 ngày chạy nước kiệu (jog), 2–3 ngày galop, rồi mới breeze tiếp (THEHORSE-BLEA). Theo dõi dáng đi sau khi đổi loại sân. Hạn chế của Veterinarian luôn được ưu tiên.",
+        "requiredSkillIds": [],
+        "phases": [
+          {
+            "phaseOrder": 1,
+            "name": "Làm quen mặt sân",
+            "objective": "Đi bộ, jog, galop nhẹ trên mặt sân mục tiêu.",
+            "recommendedDuration": "Khoảng 1–2 tuần",
+            "intensityGuidance": "Thấp"
+          },
+          {
+            "phaseOrder": 2,
+            "name": "Galop và breeze trên mặt sân",
+            "objective": "Đưa các bài của khối cự ly lên mặt sân thi đấu.",
+            "recommendedDuration": "Theo tiến độ được duyệt",
+            "intensityGuidance": "Trung bình–cao có kiểm soát"
+          }
+        ],
+        "strengthFocus": [
+          "DIRT",
+          "SYNTHETIC"
+        ]
+      }
+    }
+  ]
+}

@@ -326,6 +326,8 @@ paths:
       description: |
         Checks (BR-12, BR-13, BR-D20): horse ACTIVE; Training Availability not LOCKED (409 with the Vet reason); template
         version belongs to an ACTIVE template; phases inside the program period and non-overlapping; trainer holds TRAINER.
+        `periodStart` must be today or later in Asia/Ho_Chi_Minh; invalid dates return 400.
+        There is no arbitrary six-month maximum. Historical programs remain readable.
         One transaction creates the program (ACTIVE, `activated_at` now, pinned `templateVersionId`), its phases and the open
         trainer assignment. The template is never modified (BR-D25). Notification PROGRAM_ASSIGNED to the Trainer.
         Audit `PROGRAM_CREATED`, `TRAINER_ASSIGNED`.
@@ -816,6 +818,9 @@ paths:
         column for it); intensity within the phase range (BR-D30). Creates the session SCHEDULED (generated `sessionCode`)
         and its exercises with `suitabilityCategory`. Notification SESSION_ASSIGNED to the Work Rider.
         Audit `SESSION_CREATED`.
+        `scheduledStart` must be strictly in the future. Both start and end must fall inside the selected phase and
+        program periods using Asia/Ho_Chi_Minh calendar dates. These checks also apply to draft suitability and rider
+        recommendation requests. Assigned-Trainer authorization precedes returning clinical restriction reasons.
       x-roles: [TRAINER]
       requestBody:
         required: true
@@ -867,6 +872,7 @@ paths:
         ADDITION beyond the CORE-005 playbook API list: BR-D30 lets the Trainer change session date/time, surface, focus,
         intensity (within the phase range) and the Work Rider. SCHEDULED only. Same LOCKED / rider-conflict / intensity
         checks as create. Notifies the old and new rider when the rider changes.
+        The resulting `scheduledStart` must be in the future, including when a previously overdue session is edited.
       x-roles: [TRAINER]
       requestBody:
         required: true
@@ -1700,6 +1706,11 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/TemplatePhaseInput' }
+        strengthFocus:
+          type: [array, 'null']
+          maxItems: 14
+          description: Strength codes (flow1 HorseStrength) this template develops. On a new version, null keeps the previous version's focus. Used only for labelled recommendations.
+          items: { type: string }
     TemplateSummary:
       type: object
       required: [id, templateCode, status, latestVersionNo, name]
@@ -1737,6 +1748,9 @@ components:
         phases:
           type: array
           items: { $ref: '#/components/schemas/TemplatePhase' }
+        strengthFocus:
+          type: array
+          items: { type: string }
         createdBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
         createdAt: { type: string, format: date-time }
     TemplateDetail:

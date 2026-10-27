@@ -1,0 +1,125 @@
+{
+  "catalogId": "racehorse-training-reference-20261027-v1",
+  "notice": "Mẫu tham khảo do dự án biên soạn, không phải giáo án được tổ chức nguồn chứng nhận. Head Trainer cá thể hóa và duyệt trước khi áp dụng. Không phải phác đồ phục hồi chấn thương; không ghi dữ liệu tập luyện giả.",
+  "sources": [
+    {"id":"OSU-3983","title":"Physical Conditioning of Horses — Oklahoma State University Extension","url":"https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses","accessedOn":"2026-10-27"},
+    {"id":"BHS-FITNESS","title":"Implementing a fitness programme — British Horse Society","url":"https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/","accessedOn":"2026-10-27"},
+    {"id":"UKY-ASC275","title":"Conditioning the Trail or Long-distance Horse — University of Kentucky Extension","url":"https://publications.mgcafe.uky.edu/asc-275","accessedOn":"2026-10-27"}
+  ],
+  "entries": [
+    {
+      "code":"RHREF-BASE-01","focus":"FOUNDATION","sourceIds":["BHS-FITNESS","OSU-3983"],
+      "payload":{
+        "name":"Thể lực nền · Làm quen và phát triển nền tảng",
+        "goals":"Xây nền trước khi tăng tải. Mẫu tham khảo RHREF-BASE-01, không phải chương trình được chứng nhận; nguồn BHS-FITNESS và OSU-3983.",
+        "suitableHorseProfile":"Ngựa đã được kiểm tra sức khỏe; Head Trainer cần xác định mức thể lực ban đầu. Không suy ra năng lực từ phả hệ.",
+        "recommendedDistanceUseCase":"Chuẩn bị thể lực chung; chưa mặc định cự ly thi đấu.",
+        "recommendedDuration":"Head Trainer xác định sau đánh giá; không tự chuyển hướng dẫn thành ngày.",
+        "workloadIntensityGuidance":"Bắt đầu bằng đi bộ có kiểm soát, tăng dần theo đáp ứng; chưa thêm tốc độ cao khi nền tảng chưa đủ.",
+        "preferredSurfaces":"Mặt sân phù hợp, ổn định; người phụ trách kiểm tra trước buổi.",
+        "recoveryGuidance":"Theo dõi phục hồi, khởi động và thả lỏng. Nguồn: https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses ; https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/ . Không dùng thay chỉ định thú y.",
+        "requiredSkillIds":[],
+        "phases":[
+          {"phaseOrder":1,"name":"Đánh giá và làm quen","objective":"Quan sát đáp ứng khi đi bộ.","recommendedDuration":"Theo đánh giá đầu kỳ","intensityGuidance":"Nhẹ, có kiểm soát."},
+          {"phaseOrder":2,"name":"Phát triển nền","objective":"Tăng khối lượng từng bước.","recommendedDuration":"Theo tiến độ được duyệt","intensityGuidance":"Không tăng nhiều yếu tố cùng lúc."},
+          {"phaseOrder":3,"name":"Đánh giá chuyển tiếp","objective":"Xem xét khả năng chuyển giai đoạn.","recommendedDuration":"Đánh giá cuối khối","intensityGuidance":"Chỉ tiến triển khi đáp ứng phù hợp."}
+        ]
+      }
+    },
+    {
+      "code":"RHREF-ENDUR-01","focus":"ENDURANCE","sourceIds":["UKY-ASC275","OSU-3983"],
+      "payload":{
+        "name":"Sức bền · Duy trì vận động ổn định",
+        "goals":"Phát triển sức bền theo mục tiêu riêng. Mẫu tham khảo RHREF-ENDUR-01; nguồn UKY-ASC275 và OSU-3983. Không áp nguyên chương trình ngựa đường dài cho ngựa đua.",
+        "suitableHorseProfile":"Ngựa có mục tiêu sức bền được Head Trainer xác nhận, đủ điều kiện y tế cho các bài đã chọn.",
+        "recommendedDistanceUseCase":"Cự ly và thời lượng do Head Trainer/Trainer lựa chọn theo thực tế, không tự gán cự ly thi đấu.",
+        "recommendedDuration":"Cá thể hóa theo mục tiêu và đáp ứng",
+        "workloadIntensityGuidance":"Ưu tiên nhịp ổn định; điều chỉnh tần suất, thời lượng và cường độ theo từng ngựa.",
+        "preferredSurfaces":"Sân và địa hình đã được kiểm tra.",
+        "recoveryGuidance":"Đánh giá khả năng phục hồi giữa buổi và giữa các ngày. Nguồn: https://publications.mgcafe.uky.edu/asc-275 . Tài liệu này bàn về ngựa trail/đường dài; mẫu chỉ vận dụng nguyên tắc cá thể hóa, không sao chép thành phác đồ đua.",
+        "requiredSkillIds":[],
+        "phases":[
+          {"phaseOrder":1,"name":"Mốc sức bền ban đầu","objective":"Xác định khối lượng đang đáp ứng được.","recommendedDuration":"Theo đánh giá","intensityGuidance":"Không bắt đầu ở mức tối đa."},
+          {"phaseOrder":2,"name":"Phát triển sức bền","objective":"Duy trì chất lượng khi tăng khối lượng.","recommendedDuration":"Theo tiến độ","intensityGuidance":"Tăng tải từng bước, theo dõi phản ứng."},
+          {"phaseOrder":3,"name":"Đối chiếu mục tiêu","objective":"So sánh kết quả quan sát được.","recommendedDuration":"Cuối khối","intensityGuidance":"Không bịa chỉ số thiếu đo đạc."}
+        ]
+      }
+    },
+    {
+      "code":"RHREF-STR-01","focus":"STRENGTH","sourceIds":["OSU-3983","BHS-FITNESS"],
+      "payload":{
+        "name":"Sức mạnh · Kiểm soát vận động và địa hình",
+        "goals":"Phát triển khả năng vận động có kiểm soát. Mẫu tham khảo RHREF-STR-01; nguồn OSU-3983 và BHS-FITNESS.",
+        "suitableHorseProfile":"Ngựa có nền tảng phù hợp và mục tiêu sức mạnh được xác nhận; không có hạn chế xung đột bài tập.",
+        "recommendedDistanceUseCase":"Không gắn mặc định với cự ly đua.",
+        "recommendedDuration":"Theo đánh giá thể lực và địa hình",
+        "workloadIntensityGuidance":"Có thể dùng địa hình dốc phù hợp để thay đổi tải; chỉ tăng dần sau khi đánh giá.",
+        "preferredSurfaces":"Địa hình có độ bám tốt; không mặc định mọi ngựa đều phù hợp tập dốc.",
+        "recoveryGuidance":"Luân phiên khối lượng phù hợp và thời gian hồi phục. Nguồn: https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses . Hạn chế y tế luôn được ưu tiên.",
+        "requiredSkillIds":[],
+        "phases":[
+          {"phaseOrder":1,"name":"Kiểm soát tải ban đầu","objective":"Đánh giá vận động trên sân hiện có.","recommendedDuration":"Theo đánh giá","intensityGuidance":"Tải thấp trước."},
+          {"phaseOrder":2,"name":"Phát triển sức mạnh","objective":"Chọn tải và địa hình phù hợp.","recommendedDuration":"Theo tiến độ","intensityGuidance":"Tăng dần, không tự áp tải bổ sung."},
+          {"phaseOrder":3,"name":"Củng cố chất lượng","objective":"Đối chiếu chất lượng và khả năng phục hồi.","recommendedDuration":"Cuối khối","intensityGuidance":"Giảm tải nếu chất lượng suy giảm."}
+        ]
+      }
+    },
+    {
+      "code":"RHREF-BAL-01","focus":"BALANCE","sourceIds":["BHS-FITNESS"],
+      "payload":{
+        "name":"Thăng bằng · Nhịp và chuyển tiếp",
+        "goals":"Cải thiện chất lượng vận động. Mẫu tham khảo RHREF-BAL-01; nguồn BHS-FITNESS. Không tự thêm môn thi đấu khác vào hệ thống.",
+        "suitableHorseProfile":"Ngựa cần cải thiện thăng bằng/nhịp theo đánh giá thực tế của Head Trainer.",
+        "recommendedDistanceUseCase":"Kỹ thuật nền, chưa mặc định thành tích cự ly.",
+        "recommendedDuration":"Theo mức kỹ thuật hiện có",
+        "workloadIntensityGuidance":"Ưu tiên chất lượng, các đoạn có kiểm soát và chuyển tiếp phù hợp.",
+        "preferredSurfaces":"Sân ổn định, không chuyển mặt sân đột ngột.",
+        "recoveryGuidance":"Giữ cơ hội đánh giá sau từng buổi. Nguồn: https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/ . Không dùng thay đánh giá thú y.",
+        "requiredSkillIds":[],
+        "phases":[
+          {"phaseOrder":1,"name":"Nhịp nền","objective":"Quan sát nhịp và sự ổn định.","recommendedDuration":"Theo đánh giá","intensityGuidance":"Nhẹ, ưu tiên chất lượng."},
+          {"phaseOrder":2,"name":"Chuyển tiếp có kiểm soát","objective":"Duy trì thăng bằng qua chuyển tiếp.","recommendedDuration":"Theo tiến độ","intensityGuidance":"Trainer chọn bài phù hợp."},
+          {"phaseOrder":3,"name":"Củng cố kỹ thuật","objective":"Đánh giá lại tính nhất quán.","recommendedDuration":"Cuối khối","intensityGuidance":"Không tăng tốc để che lỗi kỹ thuật."}
+        ]
+      }
+    },
+    {
+      "code":"RHREF-SPEED-01","focus":"SPEED","sourceIds":["OSU-3983"],
+      "payload":{
+        "name":"Tốc độ · Tăng tốc có kiểm soát",
+        "goals":"Phát triển tốc độ trên nền tảng đã được đánh giá. Mẫu tham khảo RHREF-SPEED-01; nguồn OSU-3983. Không mặc định năng lực từ giống hoặc phả hệ.",
+        "suitableHorseProfile":"Head Trainer đã xác nhận nền tảng và mục tiêu tốc độ; ngựa đủ điều kiện thực hiện các bài được chọn.",
+        "recommendedDistanceUseCase":"Các đoạn tốc độ được cá thể hóa; không tự ấn định cự ly hay tốc độ đích.",
+        "recommendedDuration":"Chỉ triển khai sau khi nền tảng phù hợp",
+        "workloadIntensityGuidance":"Xen các đoạn nhanh được kiểm soát với hồi phục; không mặc định chạy hết sức.",
+        "preferredSurfaces":"Mặt sân thích hợp đã được kiểm tra.",
+        "recoveryGuidance":"Trainer theo dõi hồi phục trước khi lặp hoặc tăng tải. Nguồn: https://extension.okstate.edu/fact-sheets/physical-conditioning-of-horses . Không tự sinh ngưỡng nhịp tim, tốc độ hoặc công thức an toàn.",
+        "requiredSkillIds":[],
+        "phases":[
+          {"phaseOrder":1,"name":"Xác nhận nền tảng","objective":"Xác nhận điều kiện trước bài tốc độ.","recommendedDuration":"Theo đánh giá","intensityGuidance":"Chưa tăng tốc khi nền tảng chưa đủ."},
+          {"phaseOrder":2,"name":"Các đoạn tốc độ","objective":"Thực hiện mục tiêu từng đoạn.","recommendedDuration":"Theo kế hoạch cá thể","intensityGuidance":"Tải do người phụ trách chọn."},
+          {"phaseOrder":3,"name":"Đánh giá và điều chỉnh","objective":"Đối chiếu kết quả và phục hồi.","recommendedDuration":"Cuối khối","intensityGuidance":"Không suy diễn chỉ số chưa đo."}
+        ]
+      }
+    },
+    {
+      "code":"RHREF-MAINT-01","focus":"MAINTENANCE","sourceIds":["BHS-FITNESS","UKY-ASC275"],
+      "payload":{
+        "name":"Duy trì thể lực · Vận động nhẹ xen kẽ",
+        "goals":"Tổ chức khối lượng duy trì giữa các buổi chính. Mẫu tham khảo RHREF-MAINT-01; nguồn BHS-FITNESS và UKY-ASC275. Không phải phác đồ điều trị/phục hồi chấn thương.",
+        "suitableHorseProfile":"Ngựa đã có nền tảng, được phép vận động và có mục tiêu duy trì được xác nhận.",
+        "recommendedDistanceUseCase":"Không đặt mục tiêu thành tích mới.",
+        "recommendedDuration":"Theo lịch thực tế của chương trình",
+        "workloadIntensityGuidance":"Tổ chức các buổi nhẹ phù hợp giữa những buổi chính; theo dõi phản ứng thực tế.",
+        "preferredSurfaces":"Sân quen thuộc, điều kiện phù hợp.",
+        "recoveryGuidance":"Khởi động, thả lỏng và xem xét đáp ứng. Nguồn: https://www.bhs.org.uk/horse-care-and-welfare/health-care-management/horse-health/horse-fitness/implementing-a-fitness-programme/ . Ngựa có vấn đề sức khỏe cần quy trình y tế riêng; mẫu không tự gỡ hạn chế.",
+        "requiredSkillIds":[],
+        "phases":[
+          {"phaseOrder":1,"name":"Rà khối lượng hiện tại","objective":"Xem lại các buổi chính đã có.","recommendedDuration":"Theo lịch chương trình","intensityGuidance":"Không nhân đôi tải đang có."},
+          {"phaseOrder":2,"name":"Vận động duy trì","objective":"Giữ chất lượng ở tải phù hợp.","recommendedDuration":"Theo tiến độ","intensityGuidance":"Điều chỉnh theo quan sát."},
+          {"phaseOrder":3,"name":"Rà soát kế hoạch tiếp","objective":"Báo cáo để Head Trainer quyết định.","recommendedDuration":"Cuối khối","intensityGuidance":"Không tự đổi chiến lược chương trình."}
+        ]
+      }
+    }
+  ]
+}
