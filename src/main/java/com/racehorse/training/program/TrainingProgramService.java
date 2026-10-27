@@ -298,11 +298,12 @@ public class TrainingProgramService {
     public ProgramDetail createProgram(CreateProgramRequest request) {
         ActorContext actor = requireRole(RoleCode.HEAD_TRAINER);
         validateProgramRequest(request);
-        Map<String, Object> horse = jdbc.query("SELECT lifecycle, horse_code, name FROM dbo.horse WHERE id=?",
-                rs -> rs.next() ? row("lifecycle",rs.getString("lifecycle"),"horse_code",rs.getString("horse_code"),"name",rs.getString("name")) : null,
+        Map<String, Object> horse = jdbc.query("SELECT lifecycle, horse_code, name, health_status FROM dbo.horse WHERE id=?",
+                rs -> rs.next() ? row("lifecycle",rs.getString("lifecycle"),"horse_code",rs.getString("horse_code"),"name",rs.getString("name"),"health_status",String.valueOf(rs.getString("health_status"))) : null,
                 request.horseId());
         if (horse == null) throw notFound("Horse was not found.");
         if (!"ACTIVE".equals(horse.get("lifecycle"))) throw conflict("Only ACTIVE horses can receive a training program.");
+        if (Set.of("INJURED","QUARANTINED").contains(horse.get("health_status"))) throw conflict("The horse is INJURED or QUARANTINED; the Veterinarian must re-examine it before a training program is created.");
         Integer overlapping = jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse_training_program WHERE horse_id=? AND status IN ('ACTIVE','PAUSED') AND period_start<=? AND period_end>=?",
                 Integer.class, request.horseId(), request.periodEnd(), request.periodStart());
         if (overlapping != null && overlapping > 0) throw conflict("The horse already has an ACTIVE or PAUSED program in this period. Complete it or choose later dates.");

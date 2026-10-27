@@ -275,6 +275,9 @@ public class TrainingSessionService {
         long horseId=longValue(phase,"horse_id"); String locked=repository.restrictionReason(horseId);
         String availability=(String)jdbc.queryForList("SELECT restriction_level FROM dbo.medical_restriction WHERE horse_id=? AND lifted_at IS NULL",horseId).stream().findFirst().map(m->m.get("restriction_level")).orElse("AVAILABLE");
         if("LOCKED".equals(availability)) return new SessionApi.SuitabilityResult("LOCKED",true,locked,List.of(),List.of());
+        List<String> healthRows=jdbc.queryForList("SELECT health_status FROM dbo.horse WHERE id=?",String.class,horseId);
+        String health=healthRows.isEmpty()?null:healthRows.getFirst();
+        if(Set.of("INJURED","QUARANTINED").contains(String.valueOf(health))) return new SessionApi.SuitabilityResult("LOCKED",true,"The horse is "+health+"; the Veterinarian must re-examine it before training.",List.of(),List.of());
         if(items==null) items=List.of();
         List<Long> ids=items.stream().map(SessionApi.ExerciseInput::exerciseDefinitionId).distinct().toList();
         Map<Long,Map<String,Object>> defs=new HashMap<>(); for(Map<String,Object>d:repository.exerciseDefinitions(ids))defs.put(longValue(d,"id"),d);

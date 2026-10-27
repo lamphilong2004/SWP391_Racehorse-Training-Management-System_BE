@@ -60,6 +60,7 @@ class TrainingSessionApiIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.user_role(id BIGINT PRIMARY KEY,user_id BIGINT,role_id BIGINT,assigned_at TIMESTAMP)");
         jdbc.execute("ALTER TABLE dbo.app_user ADD COLUMN IF NOT EXISTS experience_level NVARCHAR(50)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse(id BIGINT PRIMARY KEY,horse_code VARCHAR(20),name NVARCHAR(150),lifecycle VARCHAR(20))");
+        jdbc.execute("ALTER TABLE dbo.horse ADD COLUMN IF NOT EXISTS health_status VARCHAR(20)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_training_program(id BIGINT PRIMARY KEY,horse_id BIGINT,template_version_id BIGINT,created_by_user_id BIGINT,name NVARCHAR(150),period_start DATE,period_end DATE,status VARCHAR(20),activated_at TIMESTAMP)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.horse_program_phase(id BIGINT PRIMARY KEY,horse_training_program_id BIGINT,phase_order SMALLINT,name NVARCHAR(150),start_date DATE,end_date DATE,intensity_min NVARCHAR(30),intensity_max NVARCHAR(30))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS dbo.trainer_assignment(id BIGINT PRIMARY KEY,horse_training_program_id BIGINT,trainer_user_id BIGINT,effective_from DATE,effective_to DATE)");
@@ -300,6 +301,18 @@ class TrainingSessionApiIntegrationTest {
         mvc.perform(post("/api/training-sessions/{id}/start",second).header("Authorization","Bearer "+rider2Token))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("older than 12 hours")));
         org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.training_session WHERE id IN (?,?) AND status<>'SCHEDULED'",Integer.class,first,second));
+    }
+
+    @Test void injuredOrQuarantinedHorsesCannotBeScheduledUntilReexamined() throws Exception {
+        Fixture f=fixture();String trainer=login(f.trainer());
+        jdbc.update("UPDATE dbo.horse SET health_status='INJURED' WHERE id=?",f.horse());
+        String body="{\"horseProgramPhaseId\":%d,\"scheduledStart\":\"%s\",\"scheduledEnd\":\"%s\",\"intensity\":\"LOW\",\"workRiderUserId\":%d,\"exercises\":[{\"exerciseDefinitionId\":%d,\"exerciseOrder\":1,\"durationMin\":10}]}"
+                .formatted(f.phase(),f.start(),f.start().plusSeconds(1800),f.rider(),f.exercise());
+        mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json").content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("INJURED")));
+        jdbc.update("UPDATE dbo.horse SET health_status='FIT' WHERE id=?",f.horse());
+        mvc.perform(post("/api/training-sessions").header("Authorization","Bearer "+trainer).contentType("application/json").content(body))
+                .andExpect(status().isCreated());
     }
 
     private long insertSession(Fixture f,String code,String status,String intensity){
