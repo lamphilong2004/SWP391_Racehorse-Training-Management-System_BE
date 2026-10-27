@@ -40,5 +40,5 @@ function Assert-LocalDatabasePackage([object]$Manifest) {
         $actual=$Manifest.migrations[$i];$expected=$plan[$i]
         if($actual.order -ne $expected.order -or $actual.version -cne $expected.version -or $actual.path -cne $expected.path -or $seen[$actual.path] -ine $expected.sha256){throw 'MIGRATION_PLAN_MISMATCH'}
     }
-    if($Manifest.verification.path -cne 'database/verification/expected-schema-v20261021.json' -or $seen[$Manifest.verification.path] -ine $Manifest.verification.sha256){throw 'VERIFICATION_MANIFEST_MISMATCH'}
+    if($Manifest.verification.path -cne 'database/verification/expected-schema-v20261027.json' -or $seen[$Manifest.verification.path] -ine $Manifest.verification.sha256){throw 'VERIFICATION_MANIFEST_MISMATCH'}
 }
