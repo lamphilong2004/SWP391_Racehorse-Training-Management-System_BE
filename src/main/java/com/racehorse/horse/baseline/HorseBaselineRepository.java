@@ -53,6 +53,11 @@ public class HorseBaselineRepository {
                 """, Boolean.class, horseId, trainerUserId));
     }
 
+    public LocalDateTime horseCreatedAt(long horseId) {
+        return jdbc.query("SELECT created_at FROM dbo.horse WHERE id=?", (rs, n) -> rs.getObject(1, LocalDateTime.class), horseId)
+                .stream().findFirst().orElse(null);
+    }
+
     public boolean hasBaseline(long horseId) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT CASE WHEN EXISTS (

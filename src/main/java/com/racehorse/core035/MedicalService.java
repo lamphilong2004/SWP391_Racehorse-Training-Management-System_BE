@@ -195,6 +195,7 @@ public class MedicalService {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.examinedAt() == null || request.symptoms() == null || request.symptoms().isBlank())
             throw error(ErrorCode.VALIDATION_ERROR, "Invalid examination request.");
+        if (request.examinedAt().isAfter(Instant.now().plusSeconds(60))) throw error(ErrorCode.VALIDATION_ERROR, "examinedAt cannot be in the future.");
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         long examId = exams.insert(c.horseId, c.id, actor.id(), ExamType.EXAMINATION,
                 request.examinedAt(), request.symptoms(), request.diagnosis(), request.severity(),
@@ -210,6 +211,7 @@ public class MedicalService {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.examinedAt() == null || request.findings() == null || request.findings().isBlank() || request.recoveryStatus() == null)
             throw error(ErrorCode.VALIDATION_ERROR, "Invalid re-examination request.");
+        if (request.examinedAt().isAfter(Instant.now().plusSeconds(60))) throw error(ErrorCode.VALIDATION_ERROR, "examinedAt cannot be in the future.");
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         long examId = exams.insert(c.horseId, c.id, actor.id(), ExamType.RE_EXAMINATION,
                 request.examinedAt(), request.findings(), request.diagnosis(), request.severity(),

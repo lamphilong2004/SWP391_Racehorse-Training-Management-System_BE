@@ -53,7 +53,7 @@ public class HorseBaselineService {
             throw conflict("A veterinarian baseline already exists for this horse.");
         }
 
-        LocalDateTime recordedAt = utcNow();
+        LocalDateTime recordedAt = examinationTime(horseId, request.examinedAt());
         try {
             long examinationId = repository.insertBaseline(
                     horseId, actor.userId(), recordedAt, request.healthStatus(), request.clinicalNotes());
@@ -126,6 +126,20 @@ public class HorseBaselineService {
         if (!repository.horseExists(horseId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Horse not found.");
         }
+    }
+
+    /** Real examination time: defaults to now; refused in the future (1 min clock tolerance) or before registration. */
+    private LocalDateTime examinationTime(long horseId, Instant examinedAt) {
+        if (examinedAt == null) return utcNow();
+        if (examinedAt.isAfter(Instant.now().plusSeconds(60))) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "examinedAt cannot be in the future.");
+        }
+        LocalDateTime value = LocalDateTime.ofInstant(examinedAt.truncatedTo(java.time.temporal.ChronoUnit.MILLIS), ZoneOffset.UTC);
+        LocalDateTime registered = repository.horseCreatedAt(horseId);
+        if (registered != null && value.isBefore(registered.minusMinutes(1))) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "examinedAt cannot be before the horse was registered.");
+        }
+        return value;
     }
 
     private static LocalDateTime utcNow() {

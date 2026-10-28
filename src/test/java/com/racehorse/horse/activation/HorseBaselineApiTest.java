@@ -207,6 +207,26 @@ class HorseBaselineApiTest extends HorseActivationTestSupport {
         assertEquals(0L, activatedHorseCount(horseId));
     }
 
+    @Test
+    void baselineAcceptsRealPastExaminationTimeButNotFuture() throws Exception {
+        long horseId = readyHorse();
+        long veterinarianId = createAccount(RoleCode.VETERINARIAN);
+        // Registered two days ago (UTC, as SQL Server stores created_at), examined an hour ago.
+        jdbc.update("UPDATE dbo.horse SET created_at=? WHERE id=?", java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).minusDays(2), horseId);
+        mvc.perform(post("/api/horses/{horseId}/baseline-examinations", horseId)
+                        .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId))
+                        .contentType("application/json")
+                        .content("{\"weightKg\": 480, \"healthStatus\": \"FIT\", \"examinedAt\": \"" + java.time.Instant.now().plusSeconds(3600) + "\"}"))
+                .andExpect(status().isBadRequest());
+        java.time.Instant earlier = java.time.Instant.now().minusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        mvc.perform(post("/api/horses/{horseId}/baseline-examinations", horseId)
+                        .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId))
+                        .contentType("application/json")
+                        .content("{\"weightKg\": 480, \"healthStatus\": \"FIT\", \"examinedAt\": \"" + earlier + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.recordedAt").value(earlier.toString()));
+    }
+
     private long readyHorse() {
         long horseId = createHorse("Ready Baseline Horse");
         long ownerId = createAccount(RoleCode.HORSE_OWNER);
