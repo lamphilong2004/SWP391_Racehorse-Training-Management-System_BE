@@ -52,19 +52,21 @@ public class AccountService {
     public UserDetail create(UserInput input) {
         ActorContext actor=manager(); validateSkills(input);
         String email=normalize(input.email());
+        String initialHash=managerPassword(input,email);
         GeneratedKeyHolder keys=new GeneratedKeyHolder();
         try {
             jdbc.update(connection -> {
-                PreparedStatement ps=connection.prepareStatement("INSERT INTO dbo.app_user (user_code,full_name,email,password_hash,account_status,experience_years,experience_level,created_at) VALUES (?,?,?,NULL,'ACTIVE',?,?,?)", new String[]{"id"});
+                PreparedStatement ps=connection.prepareStatement("INSERT INTO dbo.app_user (user_code,full_name,email,password_hash,account_status,experience_years,experience_level,created_at) VALUES (?,?,?,?,'ACTIVE',?,?,?)", new String[]{"id"});
                 ps.setString(1,"NEW-"+UUID.randomUUID().toString().replace("-","").substring(0,16));
-                ps.setString(2,input.fullName().strip()); ps.setString(3,email);
-                ps.setObject(4,input.experienceYears());ps.setString(5,input.experienceLevel());ps.setObject(6,now());return ps;
+                ps.setString(2,input.fullName().strip()); ps.setString(3,email); ps.setString(4,initialHash);
+                ps.setObject(5,input.experienceYears());ps.setString(6,input.experienceLevel());ps.setObject(7,now());return ps;
             },keys);
         } catch(DataIntegrityViolationException ex) { throw duplicateEmail(); }
         long id=GeneratedIdentity.requireId(keys);
         jdbc.update("UPDATE dbo.app_user SET user_code=? WHERE id=?", "U-"+String.format(Locale.ROOT,"%03d",id), id);
         assignRole(id,input.roleCode(),actor.userId()); replaceSkills(id,input.skillIds());
         audit(actor.userId(),"USER_CREATED",id);
+        if(initialHash!=null) audit(actor.userId(),"USER_PASSWORD_SET_BY_MANAGER",id);
         return user(id);
     }
     @Transactional(isolation=Isolation.SERIALIZABLE)
@@ -77,7 +79,13 @@ public class AccountService {
                 input.fullName().strip(),normalize(input.email()),input.experienceYears(),input.experienceLevel(),now(),id);
         } catch(DataIntegrityViolationException ex) { throw duplicateEmail(); }
         if(!before.roles().equals(List.of(input.roleCode()))) assignRole(id,input.roleCode(),actor.userId());
-        replaceSkills(id,input.skillIds()); audit(actor.userId(),"USER_UPDATED",id); return user(id);
+        replaceSkills(id,input.skillIds()); audit(actor.userId(),"USER_UPDATED",id);
+        String newHash=managerPassword(input,normalize(input.email()));
+        if(newHash!=null) {
+            jdbc.update("UPDATE dbo.app_user SET password_hash=?,updated_at=? WHERE id=?",newHash,now(),id);
+            audit(actor.userId(),"USER_PASSWORD_SET_BY_MANAGER",id);
+        }
+        return user(id);
     }
     @Transactional(isolation=Isolation.SERIALIZABLE)
     public UserDetail status(long id, StatusInput input) {
@@ -174,6 +182,16 @@ public class AccountService {
         jdbc.update("INSERT INTO dbo.audit_log(actor_user_id,actor_role,action,target_type,target_id,safe_summary,source) VALUES(?,NULL,?,'USER',?,'Account change.','WEB')",actor,action,target);
     }
     static String normalize(String email) { return Normalizer.normalize(email.strip(),Normalizer.Form.NFC).toLowerCase(Locale.ROOT); }
+    /** BCrypt hash of a Club Manager-set password, or null when none was given (DEC-012). */
+    private String managerPassword(UserInput input,String email) {
+        if(input.password()==null||input.password().isEmpty()) return null;
+        try { validatePassword(input.password(),input.confirmPassword(),email); }
+        catch(BusinessException ex) {
+            String field="newPassword".equals(ex.details().isEmpty()?null:ex.details().getFirst().field())?"password":"confirmPassword";
+            throw invalid(field,ex.getMessage());
+        }
+        return passwords.encode(input.password());
+    }
     static void validatePassword(String value,String confirmation,String email) {
         if(value==null || value.length()<8 || value.length()>64 || value.getBytes(StandardCharsets.UTF_8).length>72 ||
             !value.codePoints().anyMatch(Character::isLetter)||!value.codePoints().anyMatch(Character::isDigit)||value.equalsIgnoreCase(email))

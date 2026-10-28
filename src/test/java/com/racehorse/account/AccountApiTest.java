@@ -75,9 +75,9 @@ class AccountApiTest {
         jdbc.update("UPDATE dbo.app_user SET account_status='INACTIVE' WHERE id=10001");
         mvc.perform(get("/api/account").header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
     }
-    @Test void createNullHashAssignsSingleRoleAndNeverAcceptsManagerPassword() throws Exception {
+    @Test void createWithoutPasswordKeepsNullHashAndAssignsSingleRole() throws Exception {
         String body=mvc.perform(post("/api/admin/users").header("Authorization","Bearer "+manager).contentType(MediaType.APPLICATION_JSON)
-            .content(userJson("New@Example.test","TRAINER","[10000]").replace("}",",\"password\":\"Injected123\"}")))
+            .content(userJson("New@Example.test","TRAINER","[10000]")))
             .andExpect(status().isCreated()).andExpect(jsonPath("$.data.roles.length()").value(1))
             .andExpect(jsonPath("$.data.skills[0].id").value(10000)).andExpect(content().string(not(containsString("password"))))
             .andReturn().getResponse().getContentAsString();
@@ -85,6 +85,33 @@ class AccountApiTest {
         assertThat(jdbc.queryForObject("SELECT password_hash FROM dbo.app_user WHERE id=?",String.class,id)).isNull();
         mvc.perform(get("/api/admin/users/"+id).header("Authorization","Bearer "+manager)).andExpect(status().isOk()).andExpect(jsonPath("$.data.email").value("new@example.test"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.audit_log WHERE target_id=? AND action IN ('USER_CREATED','ROLE_ASSIGNED')",Integer.class,id)).isEqualTo(2);
+    }
+    @Test void managerSetsInitialPasswordUserLogsInAndCanChangeIt() throws Exception {
+        String weak=userJson("rider@example.test","WORK_RIDER","[10001]").replace("}",",\"password\":\"short\",\"confirmPassword\":\"short\"}");
+        mvc.perform(post("/api/admin/users").header("Authorization","Bearer "+manager).contentType(MediaType.APPLICATION_JSON).content(weak))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.details[0].field").value("password"));
+        String mismatch=userJson("rider@example.test","WORK_RIDER","[10001]").replace("}",",\"password\":\"Rider1234\",\"confirmPassword\":\"Rider9999\"}");
+        mvc.perform(post("/api/admin/users").header("Authorization","Bearer "+manager).contentType(MediaType.APPLICATION_JSON).content(mismatch))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.details[0].field").value("confirmPassword"));
+        String ok=userJson("rider@example.test","WORK_RIDER","[10001]").replace("}",",\"password\":\"Rider1234\",\"confirmPassword\":\"Rider1234\"}");
+        String body=mvc.perform(post("/api/admin/users").header("Authorization","Bearer "+manager).contentType(MediaType.APPLICATION_JSON).content(ok))
+            .andExpect(status().isCreated()).andExpect(content().string(not(containsString("Rider1234"))))
+            .andReturn().getResponse().getContentAsString();
+        long id=json.readTree(body).path("data").path("id").asLong();
+        String hash=jdbc.queryForObject("SELECT password_hash FROM dbo.app_user WHERE id=?",String.class,id);
+        assertThat(encoder.matches("Rider1234",hash)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dbo.audit_log WHERE target_id=? AND action='USER_PASSWORD_SET_BY_MANAGER'",Integer.class,id)).isEqualTo(1);
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"rider@example.test\",\"password\":\"Rider1234\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+        String rider=tokens.issue(id,List.of(RoleCode.WORK_RIDER)).value();
+        mvc.perform(put("/api/account/password").header("Authorization","Bearer "+rider).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"Rider1234\",\"newPassword\":\"MyOwn5678\",\"confirmPassword\":\"MyOwn5678\"}"))
+            .andExpect(status().is2xxSuccessful());
+        assertThat(encoder.matches("MyOwn5678",jdbc.queryForObject("SELECT password_hash FROM dbo.app_user WHERE id=?",String.class,id))).isTrue();
+        // Edit without a password keeps the user's own password.
+        mvc.perform(put("/api/admin/users/"+id).header("Authorization","Bearer "+manager).contentType(MediaType.APPLICATION_JSON).content(userJson("rider@example.test","WORK_RIDER","[10001]")))
+            .andExpect(status().isOk());
+        assertThat(encoder.matches("MyOwn5678",jdbc.queryForObject("SELECT password_hash FROM dbo.app_user WHERE id=?",String.class,id))).isTrue();
     }
     @Test void updateReplacesRoleAndSkillsWithoutChangingPassword() throws Exception {
         String before=jdbc.queryForObject("SELECT password_hash FROM dbo.app_user WHERE id=10001",String.class);

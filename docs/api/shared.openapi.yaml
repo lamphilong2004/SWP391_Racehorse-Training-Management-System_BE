@@ -1013,7 +1013,7 @@ components:
             updatedAt: { type: [string, 'null'], format: date-time }
     CreateUserRequest:
       type: object
-      description: No password field (DEC-008 §6 R6).
+      description: DEC-012 — the Club Manager may set the initial password (write-only; omitted = DEC-008 reset-link path).
       required: [fullName, email, roleCode]
       properties:
         fullName: { type: string, minLength: 1, maxLength: 150 }
@@ -1025,8 +1025,11 @@ components:
           type: array
           description: Only for TRAINER (TRAINER_SPECIALIZATION) and WORK_RIDER (RIDER_SKILL).
           items: { type: integer, format: int64 }
+        password: { type: [string, 'null'], writeOnly: true, minLength: 8, maxLength: 64, description: '8–64 characters with a letter and a digit, not the email. Stored as BCrypt; never returned.' }
+        confirmPassword: { type: [string, 'null'], writeOnly: true, maxLength: 64, description: Must equal password when password is given. }
     UpdateUserRequest:
       type: object
+      description: DEC-012 — a non-empty password resets the user's password; omit it to keep the current one.
       required: [fullName, email, roleCode]
       properties:
         fullName: { type: string, minLength: 1, maxLength: 150 }
@@ -1037,6 +1040,8 @@ components:
         skillIds:
           type: array
           items: { type: integer, format: int64 }
+        password: { type: [string, 'null'], writeOnly: true, minLength: 8, maxLength: 64, description: '8–64 characters with a letter and a digit, not the email. Stored as BCrypt; never returned.' }
+        confirmPassword: { type: [string, 'null'], writeOnly: true, maxLength: 64, description: Must equal password when password is given. }
     SetUserStatusRequest:
       type: object
       required: [accountStatus]
