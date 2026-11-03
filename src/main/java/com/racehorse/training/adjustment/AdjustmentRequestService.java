@@ -5,6 +5,7 @@ import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.auth.RoleCode;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
+import com.racehorse.common.jdbc.GeneratedIdentity;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementSetter;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.sql.DataSource;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -34,13 +34,15 @@ public class AdjustmentRequestService {
     private final CurrentActorProvider actors;
     private final boolean sqlServer;
 
-    public AdjustmentRequestService(JdbcTemplate jdbc, CurrentActorProvider actors, DataSource dataSource) {
+    public AdjustmentRequestService(JdbcTemplate jdbc, CurrentActorProvider actors) {
         this.jdbc = jdbc; this.actors = actors;
-        boolean server = false;
-        try (var connection = dataSource.getConnection()) {
-            server = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("microsoft");
-        } catch (Exception ignored) { }
-        this.sqlServer = server;
+        String databaseProduct = jdbc.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
+                        connection.getMetaData().getDatabaseProductName());
+        if (databaseProduct == null || databaseProduct.isBlank()) {
+            throw new IllegalStateException("Database product metadata is required.");
+        }
+        this.sqlServer = databaseProduct.toLowerCase(Locale.ROOT).contains("sql server");
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
@@ -164,16 +166,14 @@ public class AdjustmentRequestService {
     private long insertId(String sql, PreparedStatementSetter binder) {
         if (sqlServer) {
             String output = sql.replaceFirst("(?i)\\bVALUES\\b", "OUTPUT INSERTED.id VALUES");
+            if (output.equals(sql)) throw new IllegalArgumentException("An identity insert must use a VALUES clause.");
             Long id = jdbc.query(output, binder, rs -> rs.next() ? rs.getLong(1) : null);
             if (id == null) throw new IllegalStateException("SQL Server did not return the adjustment request identity.");
             return id;
         }
         KeyHolder holder = new GeneratedKeyHolder();
         jdbc.update(connection -> { PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS); binder.setValues(ps); return ps; }, holder);
-        Object id = holder.getKeyList().stream().flatMap(m -> m.entrySet().stream()).filter(e -> e.getKey().equalsIgnoreCase("id"))
-                .map(java.util.Map.Entry::getValue).findFirst().orElse(null);
-        if (!(id instanceof Number number)) throw new IllegalStateException("Database did not return adjustment request identity.");
-        return number.longValue();
+        return GeneratedIdentity.requireId(holder);
     }
     private static void setLong(PreparedStatement ps, int index, Long value) throws java.sql.SQLException {
         if (value == null) ps.setNull(index, java.sql.Types.BIGINT); else ps.setLong(index, value);

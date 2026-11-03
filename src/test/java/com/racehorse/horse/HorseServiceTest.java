@@ -2,6 +2,7 @@ package com.racehorse.horse;
 
 import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.common.error.BusinessException;
+import com.racehorse.horse.activation.HorseActivationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
@@ -11,7 +12,8 @@ import static org.mockito.Mockito.*;
 
 class HorseServiceTest {
     private final HorseRepository repository=mock(HorseRepository.class);
-    private final HorseService service=new HorseService(repository,mock(CurrentActorProvider.class));
+    private final HorseService service=new HorseService(
+            repository, mock(CurrentActorProvider.class), mock(HorseActivationService.class));
     private final HorseIdentityRequest identity=new HorseIdentityRequest("TEST-01","Test Horse",null,null,null,null,null);
 
     @Test void wrapperSqlColumnListDoesNotMisidentifyDuplicateHorseCode(){

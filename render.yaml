@@ -8,14 +8,21 @@ services:
     branch: dev
     dockerfilePath: ./Dockerfile
     autoDeployTrigger: 'off'
-    # Liveness only: Render probes every few seconds, and a SQL probe would keep Azure serverless from
-    # auto-pausing. Startup already fails without a reachable DB (Hibernate validate), so deploys still fail.
+    # Process liveness; staging startup still requires the private SQL route and Hibernate validate.
     healthCheckPath: /api/health
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: staging
       - key: DB_URL
+        value: jdbc:sqlserver://127.0.0.1:11433;databaseName=racehorse_demo;encrypt=true;trustServerCertificate=false;hostNameInCertificate=PHILONG-100604;loginTimeout=10
+      - key: TS_AUTHKEY
         sync: false
+      - key: TRUSTSTORE_PASSWORD
+        sync: false
+      - key: TRUSTSTORE_BASE64_FILE
+        value: /etc/secrets/racehorse-truststore.p12.b64
+      - key: NETWORK_STARTUP_TIMEOUT_SECONDS
+        value: '60'
       - key: DB_USERNAME
         sync: false
       - key: DB_PASSWORD

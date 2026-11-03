@@ -1,0 +1,5 @@
+# Simulator creates explicitly marked SIMULATOR metric samples for demonstration only.
+app:
+  realtime:
+    simulator:
+      enabled: true

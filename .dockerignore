@@ -7,5 +7,9 @@
 **/*.pfx
 **/*.jks
 **/*.key
+**/*.b64
+**/*.cer
+**/*.pem
+**/*.crt
 **/.env*
 # Allowlisted build context: no Git metadata, local credentials, receipts or certificates.

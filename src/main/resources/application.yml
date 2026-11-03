@@ -19,6 +19,10 @@ spring:
           time_zone: UTC
   jackson:
     time-zone: UTC
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 server:
   error:

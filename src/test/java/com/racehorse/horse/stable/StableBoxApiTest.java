@@ -198,8 +198,13 @@ class StableBoxApiTest {
                 2, "A-02", "North");
         jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard) VALUES (?, ?, ?)",
                 3, "B-01", "South");
-        jdbcTemplate.update("INSERT INTO dbo.horse (id, horse_code, name) VALUES (?, ?, ?)",
-                101, "RH-101", "Silver Comet");
+        jdbcTemplate.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (?, ?, ?, ?)",
+                101, "RH-101", "Silver Comet", "DRAFT");
+        jdbcTemplate.update("""
+                INSERT INTO dbo.app_user
+                    (id, user_code, full_name, email, account_status)
+                VALUES (?, ?, ?, ?, ?)
+                """, 501, "SB-ACTOR", "Stable Box Actor", "stable-box-actor@example.test", "ACTIVE");
         jdbcTemplate.update("""
                 INSERT INTO dbo.horse_stable_assignment
                     (id, horse_id, stable_box_id, assigned_by_user_id, effective_from, effective_to)
