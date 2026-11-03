@@ -42,6 +42,10 @@ public class Core026Repository {
         return jdbc.query("SELECT horse_id FROM dbo.care_task WHERE id=?", (rs,n)->rs.getLong(1), id).stream().findFirst();
     }
 
+    public boolean assignedCareTask(long id,long groomId,java.time.LocalDate today) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM dbo.care_task t WHERE t.id=? AND t.assigned_groom_user_id=? AND t.task_date<=? AND NOT EXISTS(SELECT 1 FROM dbo.care_task_change ch WHERE ch.care_task_id=t.id AND ch.change_type='CANCEL')",Integer.class,id,groomId,today)==1;
+    }
+
     public Optional<CheckContext> precheck(long id) {
         return jdbc.query("""
                 SELECT pc.id,pc.training_session_id,pc.performed_by_user_id,pc.performed_at,pc.observations,pc.overall_result,

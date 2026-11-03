@@ -4,7 +4,7 @@
 
 Leader approved DB-01 and the CORE-007 technical migration on 2026-10-18.
 This package is pending clean-install evidence and Leader approval before team rollout.
-Release source: `release/be-main-api128-20261022`; use the exact reviewed commit from its PR, not a moving branch for a team rollout.
+Historical release source: `release/be-main-api128-20261022`. The current Flow4 candidate is `feat/flow4-local-review`, [BE PR35](https://github.com/lamphilong2004/SWP391_Racehorse-Training-Management-System_BE/pull/35). Pin the exact independently reviewed commit before a team rollout; the candidate is not yet a merged/approved main release. The earlier clean-install gate does not certify this newer manifest automatically.
 CORE-001/011 ownership and original contribution history remain Dung's. This work
 reuses the CORE-007 seed SQL and BCrypt generator; it does not replace the demo seeder.
 
@@ -51,12 +51,15 @@ reference seed is idempotent (insert-missing only) and can be rerun on its own.
 
 Apply order: DB with `SQL_Latin1_General_CP1_CI_AS` -> unchanged DB-01 (51 business
 tables /493 columns) -> unchanged V20261016_01 (registration_request,14 columns)
--> V20261020_01 (nullable care-task Groom assignment) -> V20261021_01 (session Groom assignment).
-The expected result is 53 tables/512 columns, verified against the versioned structural
+-> V20261020_01 (nullable care-task Groom assignment) -> V20261021_01 (session Groom assignment)
+-> V20261027_01 (horse strengths and template focus) -> V20261029_01 (care-task change history).
+The current candidate expects56 tables/526columns, verified against the versioned structural
 snapshot pinned by `database/migrations/manifest.json`. The normalized email column
 retains `Latin1_General_100_BIN2`; currency CHECK expressions retain their binary
-collation. Optional modules' tables remain in the canonical51; no optional feature
-implementation or sample business records are added.
+collation. Other modules' existing tables remain in the canonical51. Flow4 was reopened
+by the Leader and its current implementation is a review candidate; Flow5 is not enabled.
+Installation does not add sample business scenario records. The optional local test-account
+and reference seeds remain separate from runtime business persistence.
 
 The installer refuses any existing target, including an empty or partly installed DB.
 It validates approved file hashes and compares live structural metadata, including

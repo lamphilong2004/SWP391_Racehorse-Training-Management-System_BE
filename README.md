@@ -1,17 +1,19 @@
 # SWP391 Racehorse Training & Management System — Backend
 
-Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3 + shared infrastructure).
+Spring Boot REST API for the Racehorse Training & Management System (Flows 1–3, the Flow 4 review candidate, and shared infrastructure).
 
 ## Stack
 
 - Java (compiled for **Java 21 LTS**; runs on JDK 21 or newer)
 - Spring Boot **4.1.1** (Spring MVC, Validation, Data JPA)
-- Microsoft SQL Server (approved schema DB-01, 51 tables)
+- Microsoft SQL Server (unchanged DB-01:51 business tables; the current candidate's versioned migrations/snapshot total56 tables)
 - springdoc-openapi 3.1.1 (Swagger UI)
 
 ## Approved local-first installation
 
 Use [LOCAL-FIRST-DATABASE](docs/LOCAL-FIRST-DATABASE.md). Existing database setup commands below are legacy; the wrappers now require a new `racehorse_local_*` target and dedicated JDBC truststore environment. No existing database is migrated automatically.
+
+The [Flow 4 candidate](docs/STABLE-CARE-FLOW4.md) adds care, nutrition, dated Groom work and manual inventory workflows. Its current PR still requires independent review and fresh SQL/browser verification. Schema manifest checks and H2 tests are not a real SQL Server Gate. Flow5 is not implemented by this candidate.
 
 ## Run locally
 

@@ -90,7 +90,8 @@ public class Core026Service {
         }else if(request.careTaskId()!=null){
             long horse=repository.careTaskHorse(request.careTaskId()).orElseThrow(()->notFound("Care task was not found."));
             if(horse!=request.horseId())throw validation("The source context must belong to horseId.");
-            if(actor.roles().contains(RoleCode.GROOM))throw forbidden("Groom care-task assignment is unavailable until its approved assignment mapping is deployed.");
+            if(actor.roles().contains(RoleCode.GROOM)&&!repository.assignedCareTask(request.careTaskId(),actor.userId(),calendar.today()))
+                throw forbidden("Only the assigned Groom can report an incident for a care task due today or earlier.");
         }
         authorizeReport(actor,request.horseId(),session,check,request.careTaskId()!=null,programId);
         if(repository.incidentForSourceExists(request.preSessionCheckId(),request.trainingSessionId(),request.careTaskId()))
@@ -159,6 +160,8 @@ public class Core026Service {
             throw forbidden("The session is outside the Work Rider's assignment scope.");
         }
         if(actor.roles().contains(RoleCode.GROOM)){
+            // The care-task branch verifies horse identity, assigned Groom and due date before reaching this method.
+            if(careTask)return;
             if(session!=null&&repository.hasGroomSessionNotice(actor.userId(),session.id()))return;
             // BR-35: a Groom may report an abnormality seen during feeding or stable care for an ACTIVE horse that is in a stable box today.
             if(session==null&&check==null&&!careTask&&repository.horseInStableToday(horseId))return;
