@@ -12,7 +12,8 @@ public class CurrentActorProvider {
 
     public Optional<ActorContext> currentActor() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!authentication.isAuthenticated() || !(authentication.getPrincipal() instanceof CurrentUser currentUser)) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof CurrentUser currentUser)) {
             return Optional.empty();
         }
 

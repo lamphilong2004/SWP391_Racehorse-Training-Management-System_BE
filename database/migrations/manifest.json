@@ -1,5 +1,5 @@
 {
-  "version": "DB-01+CORE007-V20261016_01-local-v1",
+  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01-local-v2",
   "approvedAt": "2026-10-18",
   "approvedBy": "Lam Phi Long",
   "sourceHead": "6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04",
@@ -10,6 +10,11 @@
       "version": "V20261016_01",
       "order": 1,
       "path": "database/migrations/V20261016_01__create_registration_request.sql"
+    },
+    {
+      "version": "V20261020_01",
+      "order": 2,
+      "path": "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"
     }
   ],
   "files": [
@@ -18,19 +23,23 @@
       "path": "database/schema.sql"
     },
     {
-      "sha256": "18a5d3eba5aad92967c6a6d2f6646410a98828d69e3c5be8fa3c61a7ef418604",
+      "sha256": "431c6d0b0f84309b2820e2697e26dd52ab6072fdd664d0eef9d850abcc98b34c",
       "path": "database/migrations/V20261016_01__create_registration_request.sql"
     },
     {
-      "sha256": "d524eafa2e2056a69b561818458dec2d995b8d8b4a0a33737c55c6a97a74288b",
+      "sha256": "decb437690c9e8e4249caba168c6095f1c21bb627bfd575c4b14f6fa2f736488",
+      "path": "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql"
+    },
+    {
+      "sha256": "18d05ebe2088574b9781f56f29b1e0ec2daedc1a5f38ed1b9da74e54300e4671",
       "path": "database/verification/snapshot.sql"
     },
     {
-      "sha256": "50e046f55c54247494ba66732b179837b178aed8a3cdfc9607054ac8284b9af3",
+      "sha256": "687654c020e91dcd8bcd362393ea2fa3372ec9eec1174ec21e8f3fe0bb016d86",
       "path": "database/verification/expected-schema.json"
     },
     {
-      "sha256": "b951793780914a0f881ffae3b36d5187313cb5936dd1821c48f69638664da683",
+      "sha256": "adb4886e8997f2628eef83dd4e0c67ae5a8e023e9f997e6f5f30cbfc8e8efae3",
       "path": "database/seeds/core007-auth-smoke.sql"
     },
     {
