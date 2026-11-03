@@ -16,12 +16,15 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.regex.Pattern;
 import static com.racehorse.stablecare.StableCareApi.*;
 
 @Service
 public class StableCareService {
+    private static final Pattern TASK_TIME = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d(?=$|\\s|[·—–-])");
     private final JdbcTemplate jdbc;
     private final CurrentActorProvider actors;
     private final TrainingCalendar calendar;
@@ -58,6 +61,15 @@ public class StableCareService {
                 throw error(ErrorCode.CONFLICT,"Horse must have exactly one stable assignment on every task date.");
     }
     private record Period(LocalDate from,LocalDate to){}
+    private static LocalTime scheduledTime(String slot) {
+        if (slot == null) return null;
+        var time = TASK_TIME.matcher(slot.strip());
+        return time.find() ? LocalTime.parse(time.group()) : null;
+    }
+    private static void requireScheduledTime(String slot) {
+        if (scheduledTime(slot) == null)
+            throw error(ErrorCode.VALIDATION_ERROR,"Start the task slot with a valid HH:mm time in Vietnam time.");
+    }
     @Transactional(readOnly=true) public List<Plan> plans(long horseId,boolean nutrition){
         readCare();String table=nutrition?"nutrition_plan":"care_plan";
         return jdbc.query("SELECT p.id FROM dbo."+table+" p WHERE p.horse_id=? ORDER BY p.effective_from DESC,p.id DESC",
@@ -90,6 +102,7 @@ public class StableCareService {
     }
     @Transactional(isolation=Isolation.SERIALIZABLE) public Plan care(Long id,CarePlanRequest r){
         var actor=require(RoleCode.CLUB_MANAGER);period(r.horseId(),r.groomUserId(),r.from(),r.to());
+        for(var i:r.items())requireScheduledTime(i.timeSlot());
         if(id!=null)editable(id,r.horseId(),false);
         var distinct=new HashSet<String>();
         for(var i:r.items()){
@@ -108,6 +121,7 @@ public class StableCareService {
     }
     @Transactional(isolation=Isolation.SERIALIZABLE) public Plan nutrition(Long id,NutritionRequest r){
         var actor=require(RoleCode.CLUB_MANAGER,RoleCode.HEAD_TRAINER);period(r.horseId(),r.groomUserId(),r.from(),r.to());
+        for(var i:r.items())requireScheduledTime(i.meal());
         if(id!=null)editable(id,r.horseId(),true);
         if(count("SELECT COUNT(*) FROM dbo.care_task WHERE horse_id=? AND nutrition_plan_item_id IS NOT NULL AND task_date BETWEEN ? AND ?",r.horseId(),r.from(),r.to())>0)
             throw error(ErrorCode.CONFLICT,"A nutrition plan already covers this horse in the selected period.");
@@ -140,9 +154,14 @@ public class StableCareService {
             throw error(ErrorCode.NOT_FOUND,"Assigned daily-care task was not found.");
         var rows=queryTasks(" AND t.id=? AND t.assigned_groom_user_id=?",id,actor.userId());
         if(rows.isEmpty())throw error(ErrorCode.NOT_FOUND,"Assigned daily-care task was not found.");
-        var task=rows.getFirst();if(task.taskDate().isAfter(calendar.today()))throw error(ErrorCode.CONFLICT,"Future tasks cannot be completed early.");
+        var task=rows.getFirst();
         if(task.cancelledAt()!=null)throw error(ErrorCode.CONFLICT,"This task is cancelled and cannot be completed.");
         if(task.completedAt()!=null)return task;
+        var clubNow=calendar.now().atZone(TrainingCalendar.CLUB_ZONE);
+        var time=scheduledTime(task.slot());
+        if(task.taskDate().isAfter(clubNow.toLocalDate())
+                || task.taskDate().equals(clubNow.toLocalDate()) && time!=null && clubNow.toLocalTime().isBefore(time))
+            throw error(ErrorCode.CONFLICT,"This task cannot be completed before its scheduled date and time in Vietnam.");
         if(jdbc.update("UPDATE dbo.care_task SET completed_by_user_id=?,completed_at=?,updated_at=? WHERE id=? AND assigned_groom_user_id=? AND completed_at IS NULL",actor.userId(),now(),now(),id,actor.userId())==1)
             audit(actor,"DAILY_CARE_COMPLETED","CARE_TASK",id,"Daily task completed; no stock, precheck or medical restriction changed.");
         return queryTasks(" AND t.id=? AND t.assigned_groom_user_id=?",id,actor.userId()).stream().findFirst()
