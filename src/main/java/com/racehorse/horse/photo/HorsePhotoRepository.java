@@ -65,6 +65,16 @@ public class HorsePhotoRepository {
                 rs.getObject("uploaded_at", LocalDateTime.class).toInstant(ZoneOffset.UTC)), horseId);
     }
 
+    public Optional<String> findLatestReference(long horseId) {
+        List<String> references = jdbc.query("""
+                SELECT TOP (1) file_reference
+                FROM dbo.horse_photo
+                WHERE horse_id = ?
+                ORDER BY uploaded_at DESC, id DESC
+                """, (rs, rowNum) -> rs.getString("file_reference"), horseId);
+        return Optional.ofNullable(DataAccessUtils.singleResult(references));
+    }
+
     public record PhotoRow(long id, String fileReference, Instant uploadedAt) {
     }
 }

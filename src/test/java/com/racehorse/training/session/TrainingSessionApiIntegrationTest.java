@@ -167,6 +167,24 @@ class TrainingSessionApiIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals("PAUSED",jdbc.queryForObject("SELECT status FROM dbo.training_session WHERE id=?",String.class,session));
     }
 
+    @Test void photoReadRespectsRiderAndGroomSessionAssignments() throws Exception {
+        Fixture f = fixture();
+        long session = insertSession(f, "PHOTO-" + f.phase(), "SCHEDULED", "LOW");
+        String sessionPath = "/api/training-sessions/" + session;
+        String photoPath = sessionPath + "/horse-photo";
+        String groom = login(f.groom());
+        mvc.perform(get(photoPath)).andExpect(status().isUnauthorized());
+        mvc.perform(get(photoPath).header("Authorization", "Bearer " + login(addUser(RoleCode.WORK_RIDER))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(photoPath).header("Authorization", "Bearer " + login(f.rider())))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(photoPath).header("Authorization", "Bearer " + groom)).andExpect(status().isForbidden());
+        mvc.perform(post(sessionPath + "/groom-assignment").header("Authorization", "Bearer " + login(f.trainer()))
+                        .contentType("application/json").content("{\"groomUserId\":" + f.groom() + "}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(photoPath).header("Authorization", "Bearer " + groom)).andExpect(status().isNoContent());
+    }
+
     @Test void explicitGroomAssignmentScopesListDetailAndPrecheckAndRevokesOldGroom() throws Exception {
         Fixture f=fixture();String trainer=login(f.trainer()),groom=login(f.groom());
         long otherId=addUser(RoleCode.GROOM);String other=login(otherId);

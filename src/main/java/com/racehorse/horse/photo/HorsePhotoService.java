@@ -3,7 +3,11 @@ package com.racehorse.horse.photo;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
 import com.racehorse.horse.HorseService;
+import com.racehorse.horse.owner.OwnerHorseService;
+import com.racehorse.training.session.TrainingSessionService;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -22,6 +26,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Profile({"dev", "test"})
@@ -32,14 +37,20 @@ public class HorsePhotoService {
     private final HorsePhotoRepository repository;
     private final LocalHorsePhotoStorage storage;
     private final HorseService horses;
+    private final OwnerHorseService owners;
+    private final TrainingSessionService sessions;
 
     public HorsePhotoService(
             HorsePhotoRepository repository,
             LocalHorsePhotoStorage storage,
-            HorseService horses) {
+            HorseService horses,
+            OwnerHorseService owners,
+            TrainingSessionService sessions) {
         this.repository = repository;
         this.storage = storage;
         this.horses = horses;
+        this.owners = owners;
+        this.sessions = sessions;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +65,33 @@ public class HorsePhotoService {
                 })
                 .toList();
     }
+
+    @Transactional(readOnly = true)
+    public Optional<PhotoContent> primaryForStaff(long horseId) {
+        horses.detail(horseId);
+        return primary(horseId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<PhotoContent> primaryForOwner(long horseId) {
+        owners.getOwnedProfile(horseId);
+        return primary(horseId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<PhotoContent> primaryForSession(long sessionId) {
+        return primary(sessions.get(sessionId).horse().id());
+    }
+
+    private Optional<PhotoContent> primary(long horseId) {
+        return repository.findLatestReference(horseId).map(reference -> {
+            MediaType type = reference.endsWith(".jpg") ? MediaType.IMAGE_JPEG
+                    : reference.endsWith(".png") ? MediaType.IMAGE_PNG : MediaType.parseMediaType("image/webp");
+            return new PhotoContent(storage.resource(reference), type);
+        });
+    }
+
+    public record PhotoContent(Resource resource, MediaType type) {}
 
     @Transactional(readOnly = true)
     public void authorizeStoredPhoto(String fileReference) {

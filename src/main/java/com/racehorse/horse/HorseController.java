@@ -22,8 +22,15 @@ public class HorseController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('CLUB_MANAGER')")
-    @Operation(operationId="createHorse",summary="Create a DRAFT horse identity")
+    @Operation(operationId="createHorse",summary="Create a DRAFT horse identity",
+            description="When horseCode is omitted, the server assigns the next RH number.")
     public ApiResponse<Map<String,Object>> create(@Valid @RequestBody HorseIdentityRequest body){return ApiResponse.ok(service.create(body));}
+    @GetMapping("/next-code")
+    @PreAuthorize("hasRole('CLUB_MANAGER')")
+    @Operation(operationId="previewNextHorseCode",summary="Preview the next horse code without reserving it")
+    public ApiResponse<Map<String,String>> nextCode() {
+        return ApiResponse.ok(Map.of("horseCode", service.previewHorseCode()));
+    }
     @GetMapping
     @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER','TRAINER','VETERINARIAN','GROOM')")
     @Operation(operationId="listHorses",summary="Horse register, Trainer assignment scoped")
