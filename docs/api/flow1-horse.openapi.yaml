@@ -435,8 +435,10 @@ paths:
       operationId: assignStableBox
       summary: Assign or move the horse to a box (Flow 1.2, BR-03)
       description: |
-        One transaction: close the horse's open assignment (if any) and open the new one. The target box must be free
-        (ux_horse_stable_assignment__open_per_box) → otherwise 409. After a successful write, the System re-evaluates the
+        Assignment dates are inclusive. On a move, close the previous open assignment with effective_to equal to the day
+        before the new effective_from; reject a date that would place effective_to before the previous effective_from.
+        Reject any overlapping assignment period for the horse or target box. Close the previous assignment and insert
+        the new open-ended assignment atomically in one transaction. After a successful write, the System re-evaluates the
         activation conditions. If the horse is DRAFT and all mandatory conditions are satisfied, the System transitions it
         to ACTIVE and sets `horse.activated_at`; CORE-016 owns this transition. A stable assignment does not necessarily
         activate the horse. The write response does not guarantee the updated activation checklist; clients can GET
@@ -463,13 +465,13 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: The box is occupied (BR-03).
+          description: The horse or target box has an overlapping assignment period (BR-03).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
               example:
                 success: false
-                error: { code: CONFLICT, message: This stable box is already occupied., details: [{ field: stableBoxId, message: occupied }] }
+                error: { code: CONFLICT, message: The requested assignment overlaps an existing assignment., details: [{ field: stableBoxId, message: overlap }] }
 
   /api/horses/pending-activation:
     get:
