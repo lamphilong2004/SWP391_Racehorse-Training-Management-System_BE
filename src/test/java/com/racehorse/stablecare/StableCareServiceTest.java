@@ -69,6 +69,16 @@ class StableCareServiceTest {
         var p=tx.execute(s->service.care(null,care(day)));
         tx.execute(s->service.care(p.id(),care(day.plusDays(1))));assertEquals(1,service.tasks(day).size());assertEquals(1,service.tasks(day.plusDays(1)).size());
     }
+    @Test void completionIsBlockedUntilTheVietnamSlotAndAllowedAtItsBoundary(){
+        var request=new CarePlanRequest(10,2,day,day,"SIMULATED",List.of(new CareItem("CLEANING","10:30 · ca sáng","Observe and clean")));
+        tx.execute(s->service.care(null,request));actor(2,RoleCode.GROOM);
+        var task=service.tasks(day).getFirst();
+        when(calendar.now()).thenReturn(Instant.parse("2026-10-28T03:29:59Z"));
+        assertThrows(BusinessException.class,()->tx.execute(s->service.complete(task.id())));
+        assertNull(service.tasks(day).getFirst().completedAt());
+        when(calendar.now()).thenReturn(Instant.parse("2026-10-28T03:30:00Z"));
+        assertNotNull(tx.execute(s->service.complete(task.id())).completedAt());
+    }
     @Test void missingBoxCoverageAndPastDatesCannotCreatePartialPlans(){
         assertThrows(BusinessException.class,()->tx.execute(s->service.care(null,new CarePlanRequest(10,2,day.minusDays(1),day,"",care(day).items()))));
         jdbc.update("UPDATE dbo.horse_stable_assignment SET effective_to=?",day);
