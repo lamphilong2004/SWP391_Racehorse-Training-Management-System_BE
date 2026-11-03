@@ -124,6 +124,44 @@ class HorseRegistrationApiTest {
     }
 
     @Test
+    void assignsSequentialCodesOnCreateAndKeepsExistingCodes() throws Exception {
+        String manager = tokenFor(RoleCode.CLUB_MANAGER);
+        jdbc.update("INSERT INTO dbo.horse(horse_code,name,lifecycle) VALUES (?,?,'DRAFT')", "RH-0009", "Existing numbered horse");
+        jdbc.update("INSERT INTO dbo.horse(horse_code,name,lifecycle) VALUES (?,?,'DRAFT')", "RH-DEMO", "Existing custom horse");
+        for (String expected : new String[]{"RH-010", "RH-011"}) {
+            mockMvc.perform(post("/api/horses")
+                            .header("Authorization", "Bearer " + manager)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"name\":\"Draft arrival\"}"))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.data.horseCode").value(expected))
+                    .andExpect(jsonPath("$.data.lifecycle").value("DRAFT"));
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse WHERE horse_code=?", Integer.class, expected));
+        }
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse WHERE horse_code='RH-DEMO'", Integer.class));
+    }
+
+    @Test
+    void previewsTheNextCodeWithoutReservingIt() throws Exception {
+        String manager = tokenFor(RoleCode.CLUB_MANAGER);
+        for (int i = 1; i <= 4; i++) {
+            jdbc.update("INSERT INTO dbo.horse(horse_code,name,lifecycle) VALUES (?,?,'DRAFT')", "REVIEW-" + i, "Existing horse");
+        }
+        mockMvc.perform(get("/api/horses/next-code").header("Authorization", "Bearer " + tokenFor(RoleCode.TRAINER)))
+                .andExpect(status().isForbidden());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(get("/api/horses/next-code").header("Authorization", "Bearer " + manager))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.horseCode").value("RH-005"));
+        }
+        assertEquals(4, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse", Integer.class));
+        mockMvc.perform(post("/api/horses").header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Next draft\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.horseCode").value("RH-005"));
+    }
+
+    @Test
     void clubManagerDeclaresStrengthsOnCreateAndEditWithAudit() throws Exception {
         String manager = tokenFor(RoleCode.CLUB_MANAGER);
         String created = mockMvc.perform(post("/api/horses")

@@ -84,7 +84,7 @@ class SwaggerRuntimeSmokeTest {
     }
 
     @Test
-    void all128RequiredContractOperationsAreMappedAndEnforceAuthentication() throws Exception {
+    void all132RequiredContractOperationsAreMappedAndEnforceAuthentication() throws Exception {
         HttpClient client=HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
         URI base=URI.create("http://localhost:"+port);
         java.util.Map<?,?> api=jsonMapper.readValue(get(client,base.resolve("/v3/api-docs")).body(),java.util.Map.class);
@@ -114,7 +114,8 @@ class SwaggerRuntimeSmokeTest {
                 assertTrue(!jsonMapper.readTree(response.body()).get("success").asBoolean(),key+" error envelope");
             }
         }
-        assertEquals(128,required.size(),"Update the approved inventory explicitly, never silently drop operations.");
+        // 128 + 4 (2026-11-03): next horse code preview, staff primary photo, owner horse photo, session horse photo.
+        assertEquals(132,required.size(),"Update the approved inventory explicitly, never silently drop operations.");
     }
 
     private void assertOperation(JsonNode api, String path, String method, String operationId) {

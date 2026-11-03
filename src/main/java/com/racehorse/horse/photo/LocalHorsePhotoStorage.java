@@ -3,11 +3,13 @@ package com.racehorse.horse.photo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
@@ -53,6 +55,14 @@ public class LocalHorsePhotoStorage {
 
     public boolean exists(String fileReference) {
         return Files.isRegularFile(resolve(fileReference));
+    }
+
+    public FileSystemResource resource(String fileReference) {
+        Path file = resolve(fileReference);
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalStateException("A stored horse photo is missing from local storage.");
+        }
+        return new FileSystemResource(file);
     }
 
     public void delete(String fileReference) {

@@ -30,6 +30,11 @@ public class HorseService {
         if(actor.roles().stream().anyMatch(r->Set.of(RoleCode.CLUB_MANAGER,RoleCode.HEAD_TRAINER,RoleCode.VETERINARIAN,RoleCode.GROOM).contains(r)))return null;
         return actor.userId();
     }
+    @Transactional(readOnly = true)
+    public String previewHorseCode() {
+        return repository.nextHorseCode(false);
+    }
+
     @Transactional
     public Map<String,Object> create(HorseIdentityRequest input) {
         List<String> strengths=validStrengths(input);
@@ -52,10 +57,14 @@ public class HorseService {
     }
     @Transactional
     public Map<String,Object> update(long horseId, HorseIdentityRequest input) {
+        HorseIdentityRequest normalized = input.normalized();
+        if (normalized.horseCode() == null) {
+            throw validation("horseCode", "must not be blank");
+        }
         requireHorse(horseId);
         List<String> strengths=validStrengths(input);
         try {
-            if (repository.updateIdentity(horseId, input.normalized()) != 1) {
+            if (repository.updateIdentity(horseId, normalized) != 1) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "Horse not found.");
             }
         } catch (DataIntegrityViolationException error) {

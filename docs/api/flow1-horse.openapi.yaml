@@ -14,7 +14,7 @@ info:
     `x-roles` = allowed role codes (enforced by Spring Security), zero-based paging. There is no SYSTEM role.
 
     Key rules:
-    - Create returns lifecycle DRAFT (BR-02). Duplicate `horseCode` → 409 CONFLICT (BR-01).
+    - Create returns lifecycle DRAFT (BR-02). If omitted, `horseCode` is assigned by the server in RH-001 format, continuing above the record count and any existing numbered RH codes. An explicitly supplied duplicate code returns 409 CONFLICT (BR-01).
     - **Automatic activation** (DEC-009 §1, approved 2026-10-10; BR-05, business-rules.md line 20, confirmed by the Leader):
       the System changes `horse.lifecycle` from DRAFT to ACTIVE only when all five mandatory conditions are satisfied:
       valid identity (Flow 1 §1.1); valid pedigree, valid owner, and an assigned free stable box (Flow 1 §1.2); and a valid
@@ -123,6 +123,30 @@ paths:
                 success: false
                 error: { code: CONFLICT, message: A horse with this code already exists., details: [{ field: horseCode, message: already exists }] }
 
+  /api/horses/next-code:
+    get:
+      tags: [Horses]
+      operationId: previewNextHorseCode
+      summary: Preview the next horse code
+      description: Read-only preview. Concurrent registrations can advance the number before the form is saved.
+      x-roles: [CLUB_MANAGER]
+      responses:
+        '200':
+          description: Next available horse code at the time of the request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    required: [horseCode]
+                    properties:
+                      horseCode: { type: string, example: RH-005 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /api/horses/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -157,7 +181,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/HorseIdentityRequest' }
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/HorseIdentityRequest'
+                - required: [horseCode]
+                  properties:
+                    horseCode: { type: string, minLength: 1 }
       responses:
         '200':
           description: Updated horse.
@@ -604,6 +633,22 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/horses/{id}/photos/primary:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Horses]
+      operationId: getPrimaryHorsePhoto
+      summary: Read the latest uploaded photo (dev/test)
+      description: Uses the same horse scope as the staff photo list.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, GROOM]
+      responses:
+        '200': { $ref: '#/components/responses/HorsePhotoContent' }
+        '204': { description: The horse has no uploaded photo. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/owner/horses:
     get:
       tags: [Owner]
@@ -646,6 +691,38 @@ paths:
                       data: { $ref: '#/components/schemas/OwnerHorseProfile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/OwnerForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/owner/horses/{id}/photo:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Owner]
+      operationId: getOwnedHorsePhoto
+      summary: Read the latest uploaded photo of an owned horse (dev/test)
+      description: Requires the same active account and current ownership as the Owner horse profile.
+      x-roles: [HORSE_OWNER]
+      responses:
+        '200': { $ref: '#/components/responses/HorsePhotoContent' }
+        '204': { description: The owned horse has no uploaded photo. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/OwnerForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/training-sessions/{id}/horse-photo:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Horse Photos]
+      operationId: getSessionHorsePhoto
+      summary: Read the latest photo of the horse in an assigned session (dev/test)
+      description: Uses the existing session read scope for each role.
+      x-roles: [CLUB_MANAGER, HEAD_TRAINER, TRAINER, VETERINARIAN, WORK_RIDER, GROOM]
+      responses:
+        '200': { $ref: '#/components/responses/HorsePhotoContent' }
+        '204': { description: The horse in this session has no uploaded photo. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/owner/horses/{id}/health-summary:
@@ -728,6 +805,18 @@ components:
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
 
   responses:
+    HorsePhotoContent:
+      description: Bytes of the latest uploaded horse photo.
+      headers:
+        Cache-Control:
+          schema: { type: string, example: no-store }
+      content:
+        image/jpeg:
+          schema: { type: string, format: binary }
+        image/png:
+          schema: { type: string, format: binary }
+        image/webp:
+          schema: { type: string, format: binary }
     ValidationError:
       description: Field validation failed (VALIDATION_ERROR).
       content:
@@ -839,9 +928,9 @@ components:
     # ---------- Horse ----------
     HorseIdentityRequest:
       type: object
-      required: [horseCode, name]
+      required: [name]
       properties:
-        horseCode: { type: string, minLength: 1, maxLength: 20, description: Unique (BR-01). }
+        horseCode: { type: [string, 'null'], maxLength: 20, description: Unique (BR-01). Omit on create to assign the next RH number. }
         name: { type: string, minLength: 1, maxLength: 150 }
         breed: { type: [string, 'null'], maxLength: 100 }
         sex: { type: [string, 'null'], maxLength: 20, description: "Free text; value list NEEDS CLARIFICATION (physical-schema §11 #3)." }

@@ -113,6 +113,26 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
         mvc.perform(get("/api/horses/{id}/photos", horseId)
                         .with(authenticatedAs(RoleCode.HORSE_OWNER, ownerId)))
                 .andExpect(status().isForbidden());
+        mvc.perform(get("/api/owner/horses/{id}/photo", horseId)
+                        .with(authenticatedAs(RoleCode.HORSE_OWNER, ownerId)))
+                .andExpect(status().isForbidden());
+        addOwnership(horseId, ownerId);
+        mvc.perform(get("/api/owner/horses/{id}/photo", horseId)
+                        .with(authenticatedAs(RoleCode.HORSE_OWNER, ownerId)))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertEquals("image/png", result.getResponse().getContentType()))
+                .andExpect(result -> assertEquals("no-store", result.getResponse().getHeader("Cache-Control")))
+                .andExpect(result -> assertArrayEquals(png, result.getResponse().getContentAsByteArray()));
+        mvc.perform(get("/api/horses/{id}/photos/primary", horseId)
+                        .with(authenticatedAs(RoleCode.CLUB_MANAGER, managerId)))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertArrayEquals(png, result.getResponse().getContentAsByteArray()));
+        mvc.perform(get("/api/owner/horses/{id}/photo", horseId)).andExpect(status().isUnauthorized());
+        long noPhoto = createHorse("Owned Horse Without Photo");
+        addOwnership(noPhoto, ownerId);
+        mvc.perform(get("/api/owner/horses/{id}/photo", noPhoto)
+                        .with(authenticatedAs(RoleCode.HORSE_OWNER, ownerId)))
+                .andExpect(status().isNoContent());
     }
 
     private long createActiveProgram(long horseId, long createdByUserId) {

@@ -10,7 +10,7 @@ import java.util.List;
  * {@link HorseStrength} codes; null on update keeps the current declaration, an empty list clears it.
  */
 public record HorseIdentityRequest(
-        @NotBlank @Size(max=20) String horseCode,
+        @Size(max=20) String horseCode,
         @NotBlank @Size(max=150) String name,
         @Size(max=100) String breed,
         @Size(max=20) String sex,

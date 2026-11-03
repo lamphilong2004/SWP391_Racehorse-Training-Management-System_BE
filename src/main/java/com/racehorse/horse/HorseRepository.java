@@ -10,6 +10,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * SQL-backed projections only; no lifecycle transition or synthetic medical metrics. The current box is the
@@ -17,6 +18,7 @@ import java.util.*;
  */
 @Repository
 public class HorseRepository {
+    private static final Pattern NUMBERED_CODE = Pattern.compile("RH-[0-9]{1,17}", Pattern.CASE_INSENSITIVE);
     private final JdbcTemplate jdbc;
     public HorseRepository(JdbcTemplate jdbc) { this.jdbc=jdbc; }
 
@@ -42,14 +44,32 @@ public class HorseRepository {
             JOIN dbo.horse_training_program p ON p.id=ph.horse_training_program_id WHERE p.horse_id=h.id AND s.status='COMPLETED') AS last_training_at
         """+FROM;
 
+    String nextHorseCode(boolean allocating) {
+        Long horseCount = jdbc.queryForObject("SELECT COUNT(*) FROM dbo.horse", Long.class);
+        // On create, hold the SQL Server update range lock through the insert and commit.
+        String source = allocating ? "dbo.horse WITH (UPDLOCK, HOLDLOCK)" : "dbo.horse";
+        List<String> codes = jdbc.queryForList(
+                "SELECT horse_code FROM " + source + " WHERE horse_code LIKE 'RH-%'", String.class);
+        long highest = codes.stream()
+                .filter(code -> NUMBERED_CODE.matcher(code).matches())
+                .mapToLong(code -> Long.parseLong(code.substring(3)))
+                .max().orElse(0);
+        long last = Math.max(Objects.requireNonNull(horseCount), highest);
+        if (last >= 99_999_999_999_999_999L) {
+            throw new IllegalStateException("Horse code sequence is exhausted.");
+        }
+        return String.format(Locale.ROOT, "RH-%03d", last + 1);
+    }
+
     public long insert(HorseIdentityRequest v) {
+        String horseCode = v.horseCode() == null ? nextHorseCode(true) : v.horseCode();
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
             INSERT INTO dbo.horse(horse_code,name,breed,sex,foaled_date,country_of_origin,registration_no,lifecycle)
             VALUES(?,?,?,?,?,?,?,'DRAFT')
             """, Statement.RETURN_GENERATED_KEYS);
-            statement.setString(1, v.horseCode());
+            statement.setString(1, horseCode);
             statement.setString(2, v.name());
             statement.setString(3, v.breed());
             statement.setString(4, v.sex());
