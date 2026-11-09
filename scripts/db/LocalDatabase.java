@@ -89,7 +89,9 @@ class LocalDatabase {
         StringBuilder s=new StringBuilder("\"");for(char ch:value.toString().toCharArray()){switch(ch){case '"'->s.append("\\\"");case '\\'->s.append("\\\\");case '/'->s.append("\\/");case '\n'->s.append("\\n");case '\r'->s.append("\\r");case '\t'->s.append("\\t");default->{if(ch<32)s.append(String.format("\\u%04x",(int)ch));else s.append(ch);}}}return s.append('"').toString();
     }
     static void executeBatch(Statement s,String sql) throws Exception {
-        boolean result=s.execute(sql);
+        finishBatch(s,s.execute(sql));
+    }
+    static void finishBatch(Statement s,boolean result) throws Exception {
         while(true) {
             if(result) {try(ResultSet rows=s.getResultSet()){while(rows.next()) { /* drain without logging data */ }}}
             else if(s.getUpdateCount()==-1) break;
@@ -109,6 +111,64 @@ class LocalDatabase {
         String actual=snapshot(c,root),expected=Files.readString(root.resolve(EXPECTED_SCHEMA)).strip();
         require(actual.equals(expected),"SCHEMA_DRIFT_DETECTED");
     }
+    static void validateRetirement(String oldDb,String newDb,String confirmation,String expectedMachine,String actualMachine) {
+        require(oldDb.matches("(?i)racehorse_[a-z0-9_]{1,100}"),"OLD_RACEHORSE_DATABASE_NAME_REQUIRED");
+        require(!oldDb.equalsIgnoreCase(newDb),"OLD_AND_NEW_DATABASE_MUST_DIFFER");
+        require(oldDb.equals(confirmation),"EXACT_OLD_DATABASE_CONFIRMATION_REQUIRED");
+        require(actualMachine.equalsIgnoreCase(expectedMachine),"EXPLICIT_LOCAL_MACHINE_CONFIRMATION_REQUIRED");
+    }
+    static void requireIdle(Connection c,String db) throws Exception {
+        // No KILL, SINGLE_USER or ROLLBACK IMMEDIATE. Busy databases remain untouched.
+        try(PreparedStatement q=c.prepareStatement("SELECT COUNT_BIG(*) FROM sys.dm_exec_sessions WHERE is_user_process=1 AND (database_id=DB_ID(?) OR session_id IN (SELECT session_id FROM sys.dm_exec_requests WHERE database_id=DB_ID(?)) OR session_id IN (SELECT st.session_id FROM sys.dm_tran_session_transactions st JOIN sys.dm_tran_database_transactions dt ON dt.transaction_id=st.transaction_id WHERE dt.database_id=DB_ID(?)))")) {
+            q.setQueryTimeout(15);for(int i=1;i<=3;i++)q.setString(i,db);
+            try(ResultSet r=q.executeQuery()){require(r.next()&&r.getLong(1)==0,"OLD_DATABASE_HAS_CONNECTIONS_OR_TRANSACTIONS_STOP_MANUALLY");}
+        }
+    }
+    static String databaseGuid(Connection c,String db) throws Exception {
+        try(PreparedStatement q=c.prepareStatement("SELECT CONVERT(varchar(36),r.database_guid) FROM sys.databases d JOIN sys.database_recovery_status r ON r.database_id=d.database_id WHERE d.name=? AND d.state_desc='ONLINE'")) {
+            q.setQueryTimeout(15);q.setString(1,db);
+            try(ResultSet r=q.executeQuery()){require(r.next()&&r.getString(1)!=null,"OLD_DATABASE_ONLINE_IDENTITY_REQUIRED");return r.getString(1);}
+        }
+    }
+    static void retire(Path root,String newDb) throws Exception {
+        String oldDb=env("RH_OLD_DATABASE");
+        validateRetirement(oldDb,newDb,env("RH_RETIRE_CONFIRMATION"),env("RH_RETIRE_MACHINE"),machine());
+        Path backup=Path.of(env("RH_RETIRE_BACKUP")).toAbsolutePath();
+        require(Path.of(env("RH_RETIRE_BACKUP")).isAbsolute()&&!backup.toString().startsWith("\\\\")&&backup.getFileName().toString().endsWith(".bak")
+                &&Files.isDirectory(backup.getParent())&&!Files.exists(backup),"NEW_ABSOLUTE_BACKUP_FILE_REQUIRED");
+        try(Connection fresh=connect(newDb)){verify(fresh,root);}
+        // Prove this is a Racehorse database, not merely a similarly named database.
+        try(Connection old=connect(oldDb);Statement s=old.createStatement()) {
+            s.setQueryTimeout(15);
+            try(ResultSet r=s.executeQuery("SELECT COUNT(*) FROM sys.tables WHERE schema_id=SCHEMA_ID('dbo') AND name IN ('horse','app_user','medical_case','training_session')")) {
+                require(r.next()&&r.getInt(1)==4,"OLD_RACEHORSE_TABLE_IDENTITY_REQUIRED");
+            }
+        }
+        try(Connection master=connect("master")){retireOldDatabase(master,oldDb,backup);}
+        System.out.println("OLD_LOCAL_DATABASE_RETIRED_AFTER_COPY_ONLY_BACKUP_VERIFYONLY; new database unchanged");
+    }
+    static void retireOldDatabase(Connection master,String oldDb,Path backup) throws Exception {
+            String guid=databaseGuid(master,oldDb);requireIdle(master,oldDb);
+            try(PreparedStatement q=master.prepareStatement("BACKUP DATABASE ["+oldDb+"] TO DISK=? WITH COPY_ONLY,CHECKSUM,NOFORMAT,NOINIT")) {
+                q.setQueryTimeout(180);q.setString(1,backup.toString());finishBatch(q,q.execute());
+            }
+            try(PreparedStatement q=master.prepareStatement("RESTORE VERIFYONLY FROM DISK=? WITH CHECKSUM")) {
+                q.setQueryTimeout(180);q.setString(1,backup.toString());finishBatch(q,q.execute());
+            }
+            try(PreparedStatement q=master.prepareStatement("RESTORE HEADERONLY FROM DISK=?")) {
+                q.setQueryTimeout(30);q.setString(1,backup.toString());
+                try(ResultSet r=q.executeQuery()) {
+                    require(r.next()&&oldDb.equals(r.getString("DatabaseName"))&&r.getInt("BackupType")==1
+                            &&r.getBoolean("HasBackupChecksums")&&!r.getBoolean("IsDamaged")&&!r.next(),"SINGLE_VERIFIED_FULL_BACKUP_REQUIRED");
+                }
+            }
+            require(guid.equals(databaseGuid(master,oldDb)),"OLD_DATABASE_CHANGED_DURING_BACKUP");
+            requireIdle(master,oldDb);
+            try(Statement s=master.createStatement()){s.setQueryTimeout(15);s.execute("DROP DATABASE ["+oldDb+"]");}
+            try(PreparedStatement q=master.prepareStatement("SELECT DB_ID(?)")) {
+                q.setString(1,oldDb);try(ResultSet r=q.executeQuery()){require(r.next()&&r.getObject(1)==null,"OLD_DATABASE_DROP_NOT_CONFIRMED");}
+            }
+    }
     public static void main(String[] args) {
         try { run(args); }
         catch(Exception e) {
@@ -124,6 +184,7 @@ class LocalDatabase {
         verifyPackage(root);
         if(op.equals("plan")){System.out.println(json(migrationPlan()));return;}
         String db=database();
+        if(op.equals("retire")){retire(root,db);return;}
         if(op.equals("install")) {
             // A master connection checks local identity and strict TLS BEFORE any CREATE.
             try(Connection c=connect("master");PreparedStatement q=c.prepareStatement("SELECT DB_ID(?)")) {

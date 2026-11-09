@@ -11,6 +11,9 @@ application-local.yml
 *.pfx
 *.jks
 *.key
+*.bak
+*.trn
+*.dpapi*
 *.b64
 
 # Private dev-only reset outbox; never commit tokens or local secrets.
