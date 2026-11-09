@@ -74,9 +74,10 @@ Dùng các sự cố có sẵn trong Bộ Y, không cần chờ sự cố của 
 
 ## 5. Long — Flow 4 + Quản trị hệ thống (Bộ L)
 
-- [ ] `clubmanager` → `/stable`: tạo **kế hoạch chăm sóc** cho ngựa **L-chăm-sóc**; `headtrainer`: **kế hoạch dinh dưỡng**
-- [ ] **Công việc theo ngày** `/care/daily`: đổi Groom / hủy việc có lý do, lịch sử thay đổi
-- [ ] `groom` → **Chăm sóc hằng ngày**: hoàn thành việc **L-việc-đến-giờ** (việc tương lai bị chặn)
+- [ ] `clubmanager` → **Tổng quan**: khối **Chăm sóc hôm nay** (tổng việc, còn lại, **quá giờ**, đã xong; danh sách việc quá giờ; vật tư dưới ngưỡng)
+- [ ] `/stable` → chọn **L-chăm-sóc**: xem kế hoạch **Chăm sóc** và **Dinh dưỡng** có sẵn; **Tạo kế hoạch chăm sóc** thêm 1 việc mới (ví dụ Chăm sóc chân · 16:00) → ô **Bước tiếp theo**; `headtrainer` mở **Dinh dưỡng** của cùng ngựa (Head Trainer chỉ xem kế hoạch chăm sóc)
+- [ ] **Chăm sóc hằng ngày** `/care/daily` (Club Manager): việc **Quá giờ** nằm trên cùng kèm cảnh báo; lọc **Groom phụ trách**; **Thao tác** → đổi Groom / hủy việc có lý do → **Lịch sử**
+- [ ] `groom` → **Tổng quan** (khối Chăm sóc hôm nay) → **Mở chăm sóc hằng ngày** → tìm `L-`: **Hoàn thành** việc quá giờ và việc cần làm (ghi giờ + người làm); việc 23:30 **Chưa đến giờ** không có nút Hoàn thành
 - [ ] **Sự cố A4:** Groom **Báo bất thường** tại chuồng cho **L-chăm-sóc** → biên nhận
 - [ ] **Kho** `/inventory`: nhập / xuất kho; Groom gửi yêu cầu bổ sung
 - [ ] **Phân quyền:** đăng nhập vài vai trò, mỗi vai trò có Tổng quan và menu riêng; vào URL không có quyền → bị chặn (FE và BE)
@@ -100,7 +101,7 @@ Bảng SUMMARY cuối script liệt kê ngựa, mã buổi tập và số ca c�
 | H | Hoàng | H-chưa-có-chương-trình (hạn chế đã gỡ); H-có-chương-trình (trainer1, 2 đề xuất chờ duyệt); H-khóa; H-hạn-chế (cấm Breeze nước rút) |
 | T | Tiến | T-tập-đủ (chưa kiểm tra, workrider1); T-kiểm-tra-bất-thường (chưa kiểm tra); T-báo-vấn-đề (đã kiểm tra đạt, workrider2); 1 buổi đã hoàn thành chờ đánh giá |
 | Y | Đức | Y-nhẹ-và-tối-thiểu (2 sự cố); Y-đầy-đủ (sự cố mức cao); Y-ca-đang-mở (ca mở + 1 sự cố để gắn); Y-ca-sẵn-sàng-đóng (đã xong việc Groom, đang Khóa) |
-| L | Long | L-chăm-sóc (1 việc đã đến giờ); vật tư Cỏ khô demo; 2 yêu cầu đăng ký chờ duyệt |
+| L | Long | L-chăm-sóc (1 việc quá giờ, 1 việc cần làm, 1 việc chưa đến giờ, khẩu phần); vật tư Cỏ khô demo; 2 yêu cầu đăng ký chờ duyệt |
 
 ## Đối chiếu yêu cầu: phần app CHƯA đáp ứng (nói thẳng nếu thầy hỏi)
 

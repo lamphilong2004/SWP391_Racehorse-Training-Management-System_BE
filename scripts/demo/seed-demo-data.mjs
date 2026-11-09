@@ -240,10 +240,16 @@ async function setY() {
 async function setL() {
   const l = await activeHorse('L-chăm-sóc');
   const cm = as('cm');
-  const due = new Date(Date.now() + VN - 10 * 60_000).toISOString().slice(11, 16);
+  // Slots are plain HH:mm (Vietnam time). Overdue = still open more than 60 minutes after its slot.
+  const at = (minutes) => new Date(Date.now() + VN + minutes * 60_000).toISOString().slice(11, 16);
+  const late = at(-90), due = at(-10);
   await call(cm, 'POST', '/api/stable-care/care-plans', { horseId: l.id, groomUserId: ids['groom@gmail.com'], from: today(), to: plusDays(7), notes: 'Kế hoạch demo',
-    items: [{ taskType: 'CLEANING', timeSlot: `${due} · Vệ sinh chuồng`, instructions: 'Dọn chất độn, kiểm tra máng nước.' }, { taskType: 'BATHING', timeSlot: '23:30 · Tắm', instructions: 'Tắm và lau khô.' }] });
-  note('L', `L-chăm-sóc (việc ${due} đã đến giờ, việc 23:30 chưa tới)`, `${l.name} · ${l.horseCode}`);
+    items: [{ taskType: 'LEG_SOAKING', timeSlot: late, instructions: 'Ngâm chân nước mát 10 phút, lau khô kỹ.' },
+      { taskType: 'CLEANING', timeSlot: due, instructions: 'Dọn chất độn, kiểm tra máng nước.' },
+      { taskType: 'BATHING', timeSlot: '23:30', instructions: 'Tắm và lau khô.' }] });
+  await call(cm, 'POST', '/api/stable-care/nutrition-plans', { horseId: l.id, groomUserId: ids['groom@gmail.com'], from: today(), to: plusDays(7), notes: 'Khẩu phần demo',
+    items: [{ meal: due, component: 'HAY', quantity: 4, unit: 'kg' }, { meal: due, component: 'GRAIN', quantity: 2, unit: 'kg' }] });
+  note('L', `L-chăm-sóc (quá giờ ${late}, cần làm ${due}, chưa tới 23:30; khẩu phần ${due})`, `${l.name} · ${l.horseCode}`);
   const stock = items((await call(cm, 'GET', '/api/stable-care/inventory')).data);
   let item = stock.find((s) => s.name === 'Cỏ khô demo');
   if (!item) {
