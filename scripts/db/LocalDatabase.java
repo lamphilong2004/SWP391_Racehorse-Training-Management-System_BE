@@ -15,9 +15,10 @@ class LocalDatabase {
         new Migration("V20261020_01", "database/migrations/V20261020_01__add_care_task_assigned_groom_user_id.sql", CORE045_MIGRATION),
         new Migration("V20261021_01", "database/migrations/V20261021_01__training_session_groom_assignment.sql", "79c4098f5635e521b2f8e9ca81a21df36e5c5cdaa618094dccc9ac851ab00222"),
         new Migration("V20261027_01", "database/migrations/V20261027_01__horse_strength_and_template_focus.sql", "f6693efa86935400257660043e6dad36ef5f8f22222bc51764f7fc27b0a92681"),
-        new Migration("V20261029_01", "database/migrations/V20261029_01__care_task_change_history.sql", "eeb23c420f390f34bf795fd65bde6a55d81afd9e4611f3ac81483b8930a1bc30"));
-    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261029.json";
-    static final String EXPECTED_SCHEMA_HASH = "93fd0ab6d174413dfa559f39e23c33756441a6ff0c717442582cb144decbbb07";
+        new Migration("V20261029_01", "database/migrations/V20261029_01__care_task_change_history.sql", "eeb23c420f390f34bf795fd65bde6a55d81afd9e4611f3ac81483b8930a1bc30"),
+        new Migration("V20261109_01", "database/migrations/V20261109_01__incident_in_ride_types.sql", "564085d17383e32bbc1bd9b30f7a3825b3bd191f48877df7f173af2e7df406c4"));
+    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261109.json";
+    static final String EXPECTED_SCHEMA_HASH = "6f261a9bb504fa2188abc6b1edd0e0c3c0bdb881aa50d74ac117511f29db43b4";
     static List<Map<String,Object>> migrationPlan() {
         List<Map<String,Object>> plan=new ArrayList<>();
         for(int i=0;i<MIGRATIONS.size();i++) {

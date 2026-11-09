@@ -161,7 +161,8 @@ public class Core026Repository {
     public Optional<Incident> incident(long id) {
         return jdbc.query("""
                 SELECT id,incident_code,horse_id,reported_by_user_id,medical_case_id,pre_session_check_id,training_session_id,
-                    care_task_id,incident_type,observed_severity,description,observed_at,reported_at,status
+                    care_task_id,incident_type,observed_severity,description,observed_at,reported_at,status,
+                    (SELECT full_name FROM dbo.app_user u WHERE u.id=dbo.incident.reported_by_user_id) AS reported_by_name,(SELECT MIN(r.role_code) FROM dbo.user_role ur JOIN dbo.role r ON r.id=ur.role_id WHERE ur.user_id=dbo.incident.reported_by_user_id) AS reported_by_role
                 FROM dbo.incident WHERE id=?
                 """,(rs,n)->map(rs),id).stream().findFirst();
     }
@@ -177,7 +178,7 @@ public class Core026Repository {
 
     public List<Incident> incidents(int page,int size,Long reporter) {
         String filter=reporter==null?"":" WHERE reported_by_user_id=?";
-        String sql="SELECT id,incident_code,horse_id,reported_by_user_id,medical_case_id,pre_session_check_id,training_session_id,care_task_id,incident_type,observed_severity,description,observed_at,reported_at,status FROM dbo.incident"+filter+" ORDER BY reported_at DESC,id DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+        String sql="SELECT id,incident_code,horse_id,reported_by_user_id,medical_case_id,pre_session_check_id,training_session_id,care_task_id,incident_type,observed_severity,description,observed_at,reported_at,status,(SELECT full_name FROM dbo.app_user u WHERE u.id=dbo.incident.reported_by_user_id) AS reported_by_name,(SELECT MIN(r.role_code) FROM dbo.user_role ur JOIN dbo.role r ON r.id=ur.role_id WHERE ur.user_id=dbo.incident.reported_by_user_id) AS reported_by_role FROM dbo.incident"+filter+" ORDER BY reported_at DESC,id DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
         if(reporter==null)return jdbc.query(sql,(rs,n)->map(rs),page*size,size);
         return jdbc.query(sql,(rs,n)->map(rs),reporter,page*size,size);
     }
@@ -208,7 +209,8 @@ public class Core026Repository {
                 longOrNull(rs,"medical_case_id"),longOrNull(rs,"pre_session_check_id"),longOrNull(rs,"training_session_id"),longOrNull(rs,"care_task_id"),
                 rs.getString("incident_type"),rs.getString("observed_severity"),rs.getString("description"),
                 java.time.OffsetDateTime.ofInstant(rs.getTimestamp("observed_at").toInstant(),java.time.ZoneOffset.UTC),
-                java.time.OffsetDateTime.ofInstant(rs.getTimestamp("reported_at").toInstant(),java.time.ZoneOffset.UTC),rs.getString("status"));
+                java.time.OffsetDateTime.ofInstant(rs.getTimestamp("reported_at").toInstant(),java.time.ZoneOffset.UTC),rs.getString("status"),
+                rs.getString("reported_by_name"),rs.getString("reported_by_role"));
     }
     private static Long longOrNull(ResultSet rs,String col)throws SQLException { long v=rs.getLong(col);return rs.wasNull()?null:v; }
     private static void nullableLong(java.sql.PreparedStatement ps,int i,Long value)throws SQLException { if(value==null)ps.setNull(i,java.sql.Types.BIGINT);else ps.setLong(i,value); }

@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS dbo.incident (
         status VARCHAR(20) NOT NULL,
         created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP(3),
-        CONSTRAINT ck_test_incident_type CHECK (incident_type IN ('OFF_FEED','COLIC_SIGNS','FEVER','HOOF_OR_LEG_PROBLEM','OTHER')),
+        CONSTRAINT ck_test_incident_type CHECK (incident_type IN ('OFF_FEED','COLIC_SIGNS','FEVER','HOOF_OR_LEG_PROBLEM','OTHER','LAMENESS','INJURY','BREATHING_PROBLEM','BEHAVIOUR_PROBLEM','EXHAUSTION')),
         CONSTRAINT ck_test_incident_severity CHECK (observed_severity IN ('LOW','MEDIUM','HIGH')),
         CONSTRAINT ck_test_incident_status CHECK (status IN ('REPORTED','UNDER_REVIEW','RESOLVED')),
         CONSTRAINT ck_test_incident_single_context CHECK (

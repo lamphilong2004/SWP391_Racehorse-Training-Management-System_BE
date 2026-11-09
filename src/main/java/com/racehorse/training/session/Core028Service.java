@@ -30,7 +30,7 @@ import static com.racehorse.training.session.Core028Api.*;
 @Service
 public class Core028Service {
     private static final Set<String> STATUSES=Set.of("SCHEDULED","IN_PROGRESS","PAUSED","COMPLETED","INTERRUPTED");
-    private static final Set<String> INCIDENT_TYPES=Set.of("OFF_FEED","COLIC_SIGNS","FEVER","HOOF_OR_LEG_PROBLEM","OTHER");
+    private static final Set<String> INCIDENT_TYPES=com.racehorse.medical.incident.IncidentTypes.ALL;
     private static final Set<String> SEVERITIES=Set.of("LOW","MEDIUM","HIGH");
     private static final Set<String> FEEDBACK_FIELDS=Set.of("horseResponse","balance","breathing","strideFeeling","abnormalBehavior","preInterruptionDescription","notes");
     private final JdbcTemplate jdbc;private final CurrentActorProvider actors;private final JsonMapper json;

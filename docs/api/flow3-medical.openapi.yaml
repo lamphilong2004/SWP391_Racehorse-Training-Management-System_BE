@@ -2481,6 +2481,14 @@ components:
           type: integer
           format: int64
           minimum: 1
+        reportedByName:
+          type: string
+          nullable: true
+          description: Reporter's full name (DEC-013), so readers without user-directory access can see who reported.
+        reportedByRole:
+          type: string
+          nullable: true
+          description: Reporter's role code (DEC-013), e.g. GROOM, WORK_RIDER, TRAINER.
         medicalCaseId:
           type: integer
           format: int64
@@ -3078,6 +3086,12 @@ components:
         - FEVER
         - HOOF_OR_LEG_PROBLEM
         - OTHER
+        - LAMENESS
+        - INJURY
+        - BREATHING_PROBLEM
+        - BEHAVIOUR_PROBLEM
+        - EXHAUSTION
+      description: The first five come from 1_Scope!C15; the in-ride types were added by DEC-013 (2026-11-09).
     ObservedSeverity:
       type: string
       enum:
