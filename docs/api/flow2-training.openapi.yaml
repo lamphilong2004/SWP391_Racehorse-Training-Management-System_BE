@@ -1662,7 +1662,7 @@ components:
     BlockedReason:
       type: string
       enum: [AVAILABILITY_LOCKED, PRE_CHECK_MISSING, PRE_CHECK_ABNORMAL, EXERCISE_MEDICAL_BLOCK, PROGRAM_NOT_ACTIVE]
-    IncidentType: { type: string, enum: [OFF_FEED, COLIC_SIGNS, FEVER, HOOF_OR_LEG_PROBLEM, OTHER] }
+    IncidentType: { type: string, enum: [OFF_FEED, COLIC_SIGNS, FEVER, HOOF_OR_LEG_PROBLEM, OTHER, LAMENESS, INJURY, BREATHING_PROBLEM, BEHAVIOUR_PROBLEM, EXHAUSTION] }
     ObservedSeverity: { type: string, enum: [LOW, MEDIUM, HIGH] }
     Intensity:
       type: string
