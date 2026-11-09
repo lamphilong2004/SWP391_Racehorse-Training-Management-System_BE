@@ -28,7 +28,7 @@ import static com.racehorse.medical.incident.IncidentApi.*;
 @Service
 public class Core026Service {
     private static final Set<String> CHECK_KEYS=Set.of("GENERAL_CONDITION","APPETITE_BEHAVIOUR","LEGS_HOOVES","MOVEMENT","TEMPERATURE");
-    private static final Set<String> INCIDENT_TYPES=Set.of("OFF_FEED","COLIC_SIGNS","FEVER","HOOF_OR_LEG_PROBLEM","OTHER");
+    private static final Set<String> INCIDENT_TYPES=com.racehorse.medical.incident.IncidentTypes.ALL;
     private static final Set<String> SEVERITIES=Set.of("LOW","MEDIUM","HIGH");
     private final Core026Repository repository;
     private final CurrentActorProvider actors;

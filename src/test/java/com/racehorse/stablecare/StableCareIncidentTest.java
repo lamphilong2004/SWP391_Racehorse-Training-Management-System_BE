@@ -23,7 +23,7 @@ class StableCareIncidentTest {
         assertThrows(BusinessException.class,()->service.create(request));
         verify(repo,never()).insertIncident(any(),anyLong());
         when(repo.assignedCareTask(10,2,day)).thenReturn(true);when(repo.insertIncident(request,2)).thenReturn(99L);
-        when(repo.incident(99)).thenReturn(Optional.of(new IncidentApi.Incident(99,"INC99",20,2,null,null,null,10L,"OTHER","LOW","SIMULATED",OffsetDateTime.now(),OffsetDateTime.now(),"REPORTED")));
+        when(repo.incident(99)).thenReturn(Optional.of(new IncidentApi.Incident(99,"INC99",20,2,null,null,null,10L,"OTHER","LOW","SIMULATED",OffsetDateTime.now(),OffsetDateTime.now(),"REPORTED",null)));
         assertEquals(99,service.create(request).id());
         var wrongHorse=new IncidentApi.CreateRequest(21L,null,null,10L,"OTHER","LOW","SIMULATED",OffsetDateTime.now());
         assertThrows(BusinessException.class,()->service.create(wrongHorse));

@@ -69,11 +69,14 @@ class Core028ApiIntegrationTest {
         mvc.perform(post("/api/training-sessions/{id}/report-issue",otherSession).header("Authorization","Bearer "+riderToken).contentType("application/json")
                 .content("{\"incidentType\":\"FEVER\",\"observedSeverity\":\"MEDIUM\",\"description\":\"Horse unwell\"}"))
                 .andExpect(status().isForbidden());
+        mvc.perform(post("/api/training-sessions/{id}/report-issue",session).header("Authorization","Bearer "+riderToken).contentType("application/json")
+                .content("{\"incidentType\":\"TIRED\",\"observedSeverity\":\"MEDIUM\",\"description\":\"Unknown type\"}"))
+                .andExpect(status().isBadRequest());
         String result=mvc.perform(post("/api/training-sessions/{id}/report-issue",session).header("Authorization","Bearer "+riderToken).contentType("application/json")
-                .content("{\"incidentType\":\"FEVER\",\"observedSeverity\":\"MEDIUM\",\"description\":\"Horse unwell\"}"))
+                .content("{\"incidentType\":\"LAMENESS\",\"observedSeverity\":\"MEDIUM\",\"description\":\"Uneven gait after warm-up\"}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.sessionStatus").value("INTERRUPTED"))
                 .andReturn().getResponse().getContentAsString();long incident=json.readTree(result).path("data").path("incidentId").longValue();
-        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.incident WHERE id=? AND status='REPORTED' AND training_session_id=?",Integer.class,incident,session));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.incident WHERE id=? AND status='REPORTED' AND training_session_id=? AND incident_type='LAMENESS'",Integer.class,incident,session));
         assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE notification_type='INCIDENT_REPORTED' AND target_id=?",Integer.class,session));
         String feedback="{\"responses\":{\"horseResponse\":\"Calm\",\"notes\":\"Stopped early\"}}";
         mvc.perform(post("/api/training-sessions/{id}/rider-feedback",session).header("Authorization","Bearer "+riderToken).contentType("application/json").content(feedback))
