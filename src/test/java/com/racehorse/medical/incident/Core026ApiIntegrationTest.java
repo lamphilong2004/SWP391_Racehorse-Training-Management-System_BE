@@ -117,6 +117,7 @@ class Core026ApiIntegrationTest {
         String created=mvc.perform(post("/api/incidents").header("Authorization","Bearer "+groom).contentType("application/json").content(offFeed.formatted(2,Instant.now())))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.incidentType").value("OFF_FEED"))
                 .andExpect(jsonPath("$.data.reportedByName").value(jdbc.queryForObject("SELECT full_name FROM dbo.app_user WHERE id=260003",String.class)))
+                .andExpect(jsonPath("$.data.reportedByRole").value("GROOM"))
                 .andReturn().getResponse().getContentAsString();
         long incidentId=json.readTree(created).path("data").path("id").longValue();
         org.junit.jupiter.api.Assertions.assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE notification_type='INCIDENT_REPORTED' AND recipient_user_id=? AND target_id=?",Integer.class,vetId,incidentId));

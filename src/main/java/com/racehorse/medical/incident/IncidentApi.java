@@ -27,7 +27,7 @@ public final class IncidentApi {
                            Long medicalCaseId, Long preSessionCheckId, Long trainingSessionId, Long careTaskId,
                            String incidentType, String observedSeverity, String description,
                            OffsetDateTime observedAt, OffsetDateTime reportedAt, String status,
-                           String reportedByName) {}
+                           String reportedByName, String reportedByRole) {}
 
     public record Page(List<Incident> items, int page, int size, long totalElements) {}
 

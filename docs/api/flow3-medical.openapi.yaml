@@ -2485,6 +2485,10 @@ components:
           type: string
           nullable: true
           description: Reporter's full name (DEC-013), so readers without user-directory access can see who reported.
+        reportedByRole:
+          type: string
+          nullable: true
+          description: Reporter's role code (DEC-013), e.g. GROOM, WORK_RIDER, TRAINER.
         medicalCaseId:
           type: integer
           format: int64
