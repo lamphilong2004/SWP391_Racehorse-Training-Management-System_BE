@@ -150,12 +150,15 @@ public class MedicalService {
 
     @Transactional
     public CaseDetail close(long id) {
-        vet(); MedicalCaseEntity c = open(id);
+        Actor actor = vet(); MedicalCaseEntity c = open(id);
         requireClosureConditions(c.id);
         c.status = CaseStatus.CLOSED;
         LocalDateTime stamp = now();
         c.closedAt = stamp.isBefore(c.openedAt) ? c.openedAt : stamp;
         c.updatedAt = c.closedAt;
+        // DEC-014: closing the case also resolves the incidents it was opened for or linked to, in the same transaction.
+        sql.update("update dbo.incident set status='RESOLVED',reviewed_by_user_id=?,updated_at=? where medical_case_id=? and status<>'RESOLVED'",
+                actor.id(), c.closedAt, c.id);
         cases.flush();
         return detail(c);
     }
@@ -179,9 +182,6 @@ public class MedicalService {
         }
         if (exists("select case when exists(select 1 from dbo.medical_restriction where medical_case_id=? and lifted_at is null) then 1 else 0 end", caseId)) {
             throw error(ErrorCode.BUSINESS_RULE_VIOLATION, "All restrictions linked to the case must be lifted before closure.");
-        }
-        if (exists("select case when exists(select 1 from dbo.incident where medical_case_id=? and status<>'RESOLVED') then 1 else 0 end", caseId)) {
-            throw error(ErrorCode.BUSINESS_RULE_VIOLATION, "All incidents linked to the case must be resolved before closure.");
         }
     }
 

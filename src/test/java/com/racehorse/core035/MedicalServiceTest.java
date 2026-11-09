@@ -180,7 +180,7 @@ class MedicalServiceTest {
                 List.of(new GroomInstruction("Wash", LocalDate.now(), null, 30L)), null)));
         assertEquals(1, sql.queryForObject("select count(*) from dbo.treatment_plan", Integer.class));
     }
-    @Test void closureRequiresRecoveryTasksRestrictionsAndIncidentsToBeResolved() {
+    @Test void closureRequiresRecoveryTasksAndRestrictionsAndResolvesLinkedIncidents() {
         long id = opened().id();
         service.examine(id, new ExamCreate("Initial exam", null, null, Instant.now(), null, null));
         service.injure(id, new InjuryCreate("Foreleg", ClinicalSeverity.MODERATE,
@@ -191,9 +191,8 @@ class MedicalServiceTest {
         fails(ErrorCode.BUSINESS_RULE_VIOLATION, () -> service.close(id));
         sql.update("update dbo.medical_restriction set lifted_at=? where id=1", LocalDateTime.now());
         sql.update("insert into dbo.incident(id,medical_case_id,status) values (1,?,'UNDER_REVIEW')", id);
-        fails(ErrorCode.BUSINESS_RULE_VIOLATION, () -> service.close(id));
-        sql.update("update dbo.incident set status='RESOLVED' where id=1");
         assertEquals(CaseStatus.CLOSED, service.close(id).status());
+        assertEquals("RESOLVED", sql.queryForObject("select status from dbo.incident where id=1", String.class));
     }
 
     @Test void treatmentPlanClosureWaitsForEveryTaskCompletion() {
