@@ -16,7 +16,7 @@ public class StableCareController {
     public StableCareController(StableCareService service) { this.service=service; }
     @GetMapping("/horses") @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER','VETERINARIAN')")
     public ApiResponse<List<StableCareApi.Horse>> horses(){return ApiResponse.ok(service.horses());}
-    @GetMapping("/grooms") @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER')")
+    @GetMapping("/grooms") @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER','VETERINARIAN')")
     public ApiResponse<List<StableCareApi.Person>> grooms(){return ApiResponse.ok(service.grooms());}
     @GetMapping("/care-plans") @PreAuthorize("hasAnyRole('CLUB_MANAGER','HEAD_TRAINER','VETERINARIAN')")
     public ApiResponse<List<StableCareApi.Plan>> carePlans(@RequestParam long horseId){return ApiResponse.ok(service.plans(horseId,false));}
