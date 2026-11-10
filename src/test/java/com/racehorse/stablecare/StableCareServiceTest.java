@@ -180,4 +180,11 @@ class StableCareServiceTest {
         assertThrows(IllegalStateException.class,()->tx.execute(s->service.reassign(id,new ReassignTaskRequest(2,3,"Rollback"))));
         assertEquals(2,service.tasks(day).getFirst().groomUserId());assertTrue(service.changes(id).isEmpty());
     }
+    @Test void veterinarianCanListActiveGroomsForTreatmentTasksButGroomCannot(){
+        actor(5,RoleCode.VETERINARIAN);
+        var grooms=service.grooms();
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(2L,3L),grooms.stream().map(StableCareApi.Person::id).toList());
+        actor(2,RoleCode.GROOM);
+        org.junit.jupiter.api.Assertions.assertThrows(com.racehorse.common.error.BusinessException.class,()->service.grooms());
+    }
 }

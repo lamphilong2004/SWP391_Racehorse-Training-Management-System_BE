@@ -42,7 +42,7 @@ public class StableCareService {
         readCare();return jdbc.query("SELECT id,name,horse_code FROM dbo.horse ORDER BY name,id",(r,n)->new Horse(r.getLong(1),r.getString(2),r.getString(3)));
     }
     @Transactional(readOnly=true) public List<Person> grooms(){
-        require(RoleCode.CLUB_MANAGER,RoleCode.HEAD_TRAINER);
+        require(RoleCode.CLUB_MANAGER,RoleCode.HEAD_TRAINER,RoleCode.VETERINARIAN);
         return jdbc.query("""
             SELECT u.id,u.full_name FROM dbo.app_user u WHERE u.account_status='ACTIVE'
             AND EXISTS(SELECT 1 FROM dbo.user_role ur JOIN dbo.role r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.role_code='GROOM')
