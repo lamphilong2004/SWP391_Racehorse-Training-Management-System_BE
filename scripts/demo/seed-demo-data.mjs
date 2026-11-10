@@ -192,6 +192,9 @@ async function setH() {
 }
 async function setT() {
   const a = await activeHorse('T-tập-đủ'); const pa = await program(a, 'thực hiện');
+  // No global heart-rate default is configured (app.medical.thresholds.* unset), so the Vet sets a per-horse critical
+  // threshold (Q-07 override) to make the realtime alert visible in the demo. 180 bpm is the Figma SCR-MED-014 prototype value.
+  await call(as('veterinarian@gmail.com'), 'PUT', `/api/horses/${a.id}/medical-thresholds`, { metricType: 'HEART_RATE', thresholdValue: 180, reason: 'Ngưỡng nhịp tim riêng cho buổi giám sát demo', effectiveFrom: new Date().toISOString() });
   const b = await activeHorse('T-kiểm-tra-bất-thường'); const pb = await program(b, 'thực hiện');
   const c = await activeHorse('T-báo-vấn-đề'); const pc = await program(c, 'thực hiện');
   // Completed history on horse A, finished before A's demo session starts (no overlap).
@@ -210,7 +213,7 @@ async function setT() {
   await call(r1, 'POST', `/api/training-sessions/${hist.id}/complete`, {});
   await call(r1, 'POST', `/api/training-sessions/${hist.id}/rider-feedback`, { responses: { horseResponse: 'Bình tĩnh, hợp tác', balance: 'Ổn định', breathing: 'Đều', notes: 'Buổi làm quen cho demo.' } });
   const at = (d) => new Date(d.getTime() + VN).toISOString().slice(11, 16);
-  note('T', `T-tập-đủ ${at(start)}–${at(end)} (chưa kiểm tra; workrider1)`, `${a.name} · ${sa.sessionCode}`);
+  note('T', `T-tập-đủ ${at(start)}–${at(end)} (chưa kiểm tra; workrider1; ngưỡng nhịp tim 180 do Vet đặt)`, `${a.name} · ${sa.sessionCode}`);
   note('T', `T-kiểm-tra-bất-thường ${at(start)}–${at(end)} (chưa kiểm tra; workrider3)`, `${b.name} · ${sb.sessionCode}`);
   note('T', `T-báo-vấn-đề ${at(start)}–${at(end)} (đã kiểm tra đạt; workrider2)`, `${c.name} · ${sc.sessionCode}`);
   note('T', 'T-đã-hoàn-thành (chờ trainer1 đánh giá)', `${a.name} · ${hist.sessionCode}`);
