@@ -271,6 +271,11 @@ public class HorseRepository {
         List<Object> args=new ArrayList<>();args.add(id);
         return jdbc.query(SELECT+" WHERE h.id=?"+scope(trainer,args),ROW,args.toArray()).stream().findFirst();
     }
+    /** Same row scope as detail, without pedigree, ownership, weight or training projections. */
+    public boolean canRead(long id,Long trainer) {
+        List<Object> args=new ArrayList<>();args.add(id);
+        return !jdbc.queryForList("SELECT h.id FROM dbo.horse h WHERE h.id=?"+scope(trainer,args),Long.class,args.toArray()).isEmpty();
+    }
     public record Page(List<Map<String,Object>> items,int page,int size,long totalItems,long totalPages) {}
     public Page list(String q,String lifecycle,String health,String availability,int page,int size,Long trainer) {
         List<Object> args=new ArrayList<>();StringBuilder where=new StringBuilder(" WHERE 1=1");

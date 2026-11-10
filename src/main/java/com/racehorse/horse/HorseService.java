@@ -119,6 +119,14 @@ public class HorseService {
         horse.put("latestWeight",repository.latestWeight(id));return horse;
     }
     @Transactional(readOnly=true)
+    public void assertCanRead(long id) {
+        Long trainer=trainerScope();
+        if(repository.canRead(id,trainer))return;
+        boolean forbidden=trainer!=null&&repository.exists(id);
+        throw new BusinessException(forbidden?ErrorCode.FORBIDDEN:ErrorCode.NOT_FOUND,
+                forbidden?"This horse is outside your assigned programs.":"Horse not found.");
+    }
+    @Transactional(readOnly=true)
     public HorseRepository.Page list(String q,String lifecycle,String health,String availability,int page,int size) {
         return repository.list(q,lifecycle,health,availability,page,size,trainerScope());
     }
