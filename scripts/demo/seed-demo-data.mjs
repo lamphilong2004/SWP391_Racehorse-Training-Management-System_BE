@@ -7,7 +7,8 @@
 //
 // Env: RH_API (default http://127.0.0.1:8080), RH_DEMO_CM_EMAIL (default clubmanager@gmail.com),
 //      RH_DEMO_CM_PASSWORD (required), RH_DEMO_PASSWORD (required, password of the demo accounts),
-//      RH_DEMO_HOURS (default 4, how long the training sessions stay startable), RH_DEMO_SETS (default D,H,T,Y,L).
+//      RH_DEMO_HOURS (default 4, how long the training sessions stay startable), RH_DEMO_SETS (default D,H,T,Y,L),
+//      RH_DEMO_START (optional ISO start of the review window), RH_DEMO_PHOTO_DIR (optional folder of distinct horse photos).
 
 const API = process.env.RH_API ?? 'http://127.0.0.1:8080';
 const CM_EMAIL = process.env.RH_DEMO_CM_EMAIL ?? 'clubmanager@gmail.com';
@@ -15,12 +16,20 @@ const CM_PASSWORD = process.env.RH_DEMO_CM_PASSWORD;
 const DEMO_PASSWORD = process.env.RH_DEMO_PASSWORD;
 const HOURS = Number(process.env.RH_DEMO_HOURS ?? 4);
 const SETS = new Set((process.env.RH_DEMO_SETS ?? 'D,H,T,Y,L').split(',').map((s) => s.trim().toUpperCase()));
+// RH_DEMO_START (ISO with offset, e.g. 2026-11-11T09:30:00+07:00): schedule the review sessions and care slots for a
+// later review window instead of "now". Pre-checks done by this script must still fall within 12 h before that start.
+const START = process.env.RH_DEMO_START ? new Date(process.env.RH_DEMO_START) : null;
+if (START && !Number.isFinite(START.getTime())) { console.error('RH_DEMO_START must be an ISO date-time.'); process.exit(2); }
+// RH_DEMO_PHOTO_DIR: folder of JPEG/PNG/WebP files; every created horse gets the next unused photo (distinct images).
+const PHOTO_DIR = process.env.RH_DEMO_PHOTO_DIR ?? null;
 if (!CM_PASSWORD || !DEMO_PASSWORD) { console.error('Set RH_DEMO_CM_PASSWORD and RH_DEMO_PASSWORD.'); process.exit(2); }
 
 const VN = 7 * 3600_000;
 const vnNow = () => new Date(Date.now() + VN);
 const today = () => vnNow().toISOString().slice(0, 10);
 const plusDays = (n) => new Date(Date.parse(`${today()}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const demoDay = () => (START ? new Date(START.getTime() + VN).toISOString().slice(0, 10) : today());
+const hhmm = (d) => new Date(d.getTime() + VN).toISOString().slice(11, 16);
 const TAG = vnNow().toISOString().slice(5, 16).replace(/[-T:]/g, '').replace(/^(\d{4})(\d{4})$/, '$1-$2'); // MMDD-HHMM
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const summary = [];
@@ -114,6 +123,22 @@ async function ensureReference() {
   template = { versionId: detail.version.id, phaseId: detail.version.phases[0].id };
 }
 
+// ---------- photos ----------
+let photoQueue = null;
+async function uploadPhoto(horse) {
+  if (!PHOTO_DIR) return;
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join, extname } = await import('node:path');
+  const types = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+  photoQueue ??= readdirSync(PHOTO_DIR).filter((f) => types[extname(f).toLowerCase()]).sort();
+  const file = photoQueue.shift();
+  if (!file) { console.log(`  (no photo left for ${horse.name})`); return; }
+  const form = new FormData();
+  form.append('file', new Blob([readFileSync(join(PHOTO_DIR, file))], { type: types[extname(file).toLowerCase()] }), file);
+  const res = await fetch(`${API}/api/horses/${horse.id}/photos`, { method: 'POST', headers: { Authorization: `Bearer ${as('cm')}` }, body: form });
+  if (res.status !== 201 && res.status !== 200) throw new Error(`photo upload ${file} -> ${res.status}`);
+}
+
 // ---------- building blocks ----------
 async function freeBoxes() { return items((await call(as('cm'), 'GET', '/api/stable-boxes?status=FREE&size=200')).data); }
 async function draftHorse(label, owner) {
@@ -124,6 +149,7 @@ async function draftHorse(label, owner) {
   const box = (await freeBoxes())[0];
   if (!box) throw new Error('No free stable box left; run scripts/demo/add-demo-stable-boxes.sql');
   await call(cm, 'POST', `/api/horses/${horse.id}/stable-assignments`, { stableBoxId: box.id, effectiveFrom: today(), reason: 'Chuẩn bị dữ liệu demo' });
+  await uploadPhoto(horse);
   return { ...horse, box: box.boxCode };
 }
 async function activeHorse(label, owner = 'horseowner1@gmail.com', weightKg = 480) {
@@ -159,7 +185,7 @@ async function openCase(horse, reason, health) {
 }
 const plan = (c, instruction) => call(as('veterinarian@gmail.com'), 'PUT', `/api/medical/cases/${c.id}/treatment-plan`, {
   treatmentMedicationInstructions: 'Chườm lạnh 15 phút, ngày 2 lần', restInstructions: 'Nghỉ tập 3 ngày', careInstructions: 'Theo dõi dáng đi',
-  groomTasks: [{ instruction, taskDate: today(), scheduledSlot: '07:00', assignedGroomUserId: ids['groom@gmail.com'] }], reexaminationDate: plusDays(3) });
+  groomTasks: [{ instruction, taskDate: demoDay(), scheduledSlot: '07:00', assignedGroomUserId: ids['groom@gmail.com'] }], reexaminationDate: plusDays(3) });
 
 // ---------- sets ----------
 async function setD() {
@@ -201,7 +227,7 @@ async function setT() {
   const histStart = new Date(Date.now() + 25_000);
   const hist = await session(pa, 'workrider1@gmail.com', histStart, new Date(histStart.getTime() + 4 * 60_000), 'Buổi đã hoàn thành chờ đánh giá');
   await precheck(hist);
-  const start = new Date(Date.now() + 6 * 60_000), end = new Date(start.getTime() + HOURS * 3600_000);
+  const start = START ?? new Date(Date.now() + 6 * 60_000), end = new Date(start.getTime() + HOURS * 3600_000);
   const sa = await session(pa, 'workrider1@gmail.com', start, end, 'Groom kiểm tra, Work Rider tập đủ, giám sát realtime');
   const sb = await session(pb, 'workrider3@gmail.com', start, end, 'Groom kiểm tra phát hiện bất thường');
   const sc = await session(pc, 'workrider2@gmail.com', start, end, 'Work Rider báo vấn đề khi đang cưỡi');
@@ -239,13 +265,34 @@ async function setY() {
   for (const t of tasks) await call(groom, 'POST', `/api/groom/treatment-tasks/${t.id}/complete`, {});
   await restrict(y4, 'LOCKED', 'Viêm gân, nghỉ tập đến khi tái khám', c4.id);
   note('Y', `Y-ca-sẵn-sàng-đóng (ca #${c4.id}, việc Groom đã xong, đang Khóa)`, `${y4.name} · ${y4.horseCode}`);
+  // Two incidents the Vet triages that come from Flow 2, created through the real gates (pre-check, in-ride report).
+  const y5 = await activeHorse('Y-groom-báo-kiểm-tra'); const p5 = await program(y5, 'theo dõi');
+  const y6 = await activeHorse('Y-rider-báo-khi-cưỡi'); const p6 = await program(y6, 'theo dõi');
+  const rideStart = new Date(Date.now() + 25_000);
+  const ride = await session(p6, 'workrider3@gmail.com', rideStart, new Date(rideStart.getTime() + 4 * 60_000), 'Buổi tập ngắn, Work Rider báo vấn đề');
+  await precheck(ride);
+  const checkStart = new Date(Date.now() + 10 * 60_000);
+  const checked = await session(p5, 'workrider3@gmail.com', checkStart, new Date(checkStart.getTime() + 30 * 60_000), 'Groom kiểm tra trước buổi tập');
+  const abnormal = (await call(as('groom@gmail.com'), 'POST', `/api/training-sessions/${checked.id}/pre-session-check`, { checks: Object.fromEntries(CHECKS.map((k) => [k,
+    k === 'LEGS_HOOVES' ? { result: 'ABNORMAL', observation: 'Móng trước phải nóng, ngựa né khi chạm.' } : { result: 'NORMAL' }])) })).data;
+  await call(as('groom@gmail.com'), 'POST', '/api/incidents', { horseId: y5.id, preSessionCheckId: abnormal.id,
+    incidentType: 'HOOF_OR_LEG_PROBLEM', observedSeverity: 'MEDIUM', description: 'Kiểm tra trước buổi tập: móng trước phải nóng, ngựa né khi chạm.', observedAt: new Date().toISOString() });
+  note('Y', `Y-groom-báo-kiểm-tra (sự cố từ kiểm tra trước buổi tập, buổi ${checked.sessionCode} bị chặn)`, `${y5.name} · ${y5.horseCode}`);
+  console.log('  waiting for the in-ride session to start…');
+  await sleep(Math.max(0, rideStart.getTime() - Date.now()) + 2_000);
+  const r3 = as('workrider3@gmail.com');
+  await call(r3, 'POST', `/api/training-sessions/${ride.id}/start`, {});
+  await call(r3, 'POST', `/api/training-sessions/${ride.id}/report-issue`, { description: 'Đang chạy nước kiệu thì ngựa hụt nhịp chân sau trái, đã dừng.', incidentType: 'LAMENESS', observedSeverity: 'HIGH', observedAt: new Date().toISOString() });
+  note('Y', `Y-rider-báo-khi-cưỡi (Work Rider báo Khập khiễng khi đang cưỡi, buổi ${ride.sessionCode} bị gián đoạn)`, `${y6.name} · ${y6.horseCode}`);
 }
 async function setL() {
   const l = await activeHorse('L-chăm-sóc');
   const cm = as('cm');
   // Slots are plain HH:mm (Vietnam time). Overdue = still open more than 60 minutes after its slot.
   const at = (minutes) => new Date(Date.now() + VN + minutes * 60_000).toISOString().slice(11, 16);
-  const late = at(-90), due = at(-10);
+  // With RH_DEMO_START the slots sit around the review window: one overdue before it, one due late in it (Flow 4 is last).
+  const late = START ? hhmm(new Date(START.getTime() - 90 * 60_000)) : at(-90);
+  const due = START ? hhmm(new Date(START.getTime() + 90 * 60_000)) : at(-10);
   await call(cm, 'POST', '/api/stable-care/care-plans', { horseId: l.id, groomUserId: ids['groom@gmail.com'], from: today(), to: plusDays(7), notes: 'Kế hoạch demo',
     items: [{ taskType: 'LEG_SOAKING', timeSlot: late, instructions: 'Ngâm chân nước mát 10 phút, lau khô kỹ.' },
       { taskType: 'CLEANING', timeSlot: due, instructions: 'Dọn chất độn, kiểm tra máng nước.' },
@@ -272,7 +319,7 @@ async function setL() {
   console.log(`Racehorse demo data · tag ${TAG} · API ${API}`);
   await ensureAccounts();
   await ensureReference();
-  const need = (SETS.has('D') ? 3 : 0) + (SETS.has('H') ? 4 : 0) + (SETS.has('T') ? 3 : 0) + (SETS.has('Y') ? 4 : 0) + (SETS.has('L') ? 1 : 0) + 1;
+  const need = (SETS.has('D') ? 3 : 0) + (SETS.has('H') ? 4 : 0) + (SETS.has('T') ? 3 : 0) + (SETS.has('Y') ? 6 : 0) + (SETS.has('L') ? 1 : 0) + 1;
   const free = (await freeBoxes()).length;
   if (free < need) throw new Error(`Need ${need} free stable boxes (one spare for Flow 1), found ${free}. Run scripts/demo/add-demo-stable-boxes.sql first.`);
   for (const [key, fn] of [['D', setD], ['H', setH], ['T', setT], ['Y', setY], ['L', setL]]) {

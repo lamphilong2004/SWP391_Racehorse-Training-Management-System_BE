@@ -35,6 +35,16 @@ Script không in mật khẩu.
 Kết quả cần thấy: `DEMO_DATA_PASS tag MMDD-HHMM` và bảng SUMMARY liệt kê ngựa, mã buổi tập, số ca cho từng phần.
 Chỉ tạo một phần: `$env:RH_DEMO_SETS = 'T,Y'`.
 
+**Chuẩn bị từ tối hôm trước cho một khung review cố định** (ví dụ 09:30–12:00):
+
+```powershell
+$env:RH_DEMO_START = '2026-11-11T09:30:00+07:00'   # buổi tập và khung giờ chăm sóc đặt quanh giờ này
+$env:RH_DEMO_HOURS = '2.5'
+$env:RH_DEMO_PHOTO_DIR = '<thư mục ảnh ngựa>'       # mỗi ngựa nhận 1 ảnh khác nhau theo thứ tự tên file
+```
+
+Phải chạy trong vòng 12 giờ trước `RH_DEMO_START`, vì kiểm tra trước buổi tập chỉ hợp lệ trong 12 giờ đó.
+
 ## Bộ dữ liệu
 
 | Bộ | Người | Nội dung |
@@ -42,7 +52,7 @@ Chỉ tạo một phần: `$env:RH_DEMO_SETS = 'T,Y'`.
 | D | Dũng | `D-chờ-khám` (nháp, đủ hồ sơ, chỉ chờ Vet khám ban đầu); `D-hoạt-động` (của horseowner1); `D-của-chủ-2` (của horseowner2) |
 | H | Hoàng | `H-chưa-có-chương-trình` (hạn chế đã gỡ); `H-có-chương-trình` (giao trainer1, 2 đề xuất điều chỉnh chờ duyệt); `H-khóa` (Khóa); `H-hạn-chế` (cấm "Breeze nước rút") |
 | T | Tiến | `T-tập-đủ` (chưa kiểm tra, workrider1); `T-kiểm-tra-bất-thường` (chưa kiểm tra, workrider3); `T-báo-vấn-đề` (đã kiểm tra đạt, workrider2); buổi đã hoàn thành chờ trainer1 đánh giá (trên ngựa T-tập-đủ) |
-| Y | Đức | `Y-nhẹ-và-tối-thiểu` (2 sự cố Mới báo); `Y-đầy-đủ` (sự cố Khập khiễng mức cao); `Y-ca-đang-mở` (ca mở có phác đồ, 1 việc Groom chưa làm, kèm 1 sự cố Mới báo để gắn ca); `Y-ca-sẵn-sàng-đóng` (ca có phác đồ, việc Groom đã xong, đang Khóa, sức khỏe Chấn thương) |
+| Y | Đức | `Y-groom-báo-kiểm-tra` (sự cố từ phiếu kiểm tra trước buổi tập, buổi bị chặn); `Y-rider-báo-khi-cưỡi` (Work Rider báo Khập khiễng khi đang cưỡi, buổi bị gián đoạn); `Y-nhẹ-và-tối-thiểu` (2 sự cố Mới báo); `Y-đầy-đủ` (sự cố Khập khiễng mức cao); `Y-ca-đang-mở` (ca mở có phác đồ, 1 việc Groom chưa làm, kèm 1 sự cố Mới báo để gắn ca); `Y-ca-sẵn-sàng-đóng` (ca có phác đồ, việc Groom đã xong, đang Khóa, sức khỏe Chấn thương) |
 | L | Long | `L-chăm-sóc` (kế hoạch chăm sóc: 1 việc **quá giờ**, 1 việc **cần làm**, 1 việc 23:30 **chưa đến giờ**; kế hoạch dinh dưỡng: Cỏ khô 4 kg + Thức ăn hạt 2 kg); vật tư `Cỏ khô demo` 200 kg; 2 yêu cầu đăng ký chờ duyệt |
 
 Mỗi bộ dùng ngựa riêng, nên thao tác ở bộ này không làm đổi dữ liệu của bộ khác.
