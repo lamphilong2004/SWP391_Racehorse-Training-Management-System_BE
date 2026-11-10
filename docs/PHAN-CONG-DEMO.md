@@ -1,5 +1,7 @@
 # Phân công demo — Racehorse Ops
 
+> Kịch bản chi tiết từng bước, kèm cách thuyết trình, nằm trong `docs/KICH-BAN-REVIEW-11-11.md` (cập nhật 10/11).
+
 **Bắt đầu thẳng vào Flow 1, không phần giới thiệu.** Ai làm phần nào thì demo phần đó
 (sheet 2_Project_Team + commit trên main: FE `0a315f6`, BE `8e45992`).
 
@@ -24,7 +26,7 @@
 ## 1. Dũng — Flow 1 · Quản lý ngựa (Bộ D)
 
 - [ ] `clubmanager` → `/horses`: tab vòng đời có số đếm, tìm kiếm, lọc khả năng tập luyện
-- [ ] **Thêm ngựa** `/horses/new` (ngựa mới tên **"Demo Flow 1"**): tên, giống, giới tính, ngày sinh, xuất xứ, số vi mạch / số đăng ký, thế mạnh khai báo → lưu Nháp; thử trùng mã để thấy bị từ chối (BR-01)
+- [ ] **Thêm ngựa** `/horses/new` (tên **"Demo Dũng"**): tên, giống, giới tính, ngày sinh, thế mạnh → lưu Nháp. **Mã ngựa do hệ thống cấp (ô chỉ đọc)**, nên BR-01 được giải thích bằng lời, không còn thao tác nhập trùng mã
 - [ ] Tải ảnh ngựa (JPEG/PNG/WebP ≤ 5 MB)
 - [ ] **Hoàn tất hồ sơ** `/horses/:id/edit`: phả hệ (cha/mẹ), chủ sở hữu + tỉ lệ, xếp ô chuồng trống (BR-03, BR-04)
 - [ ] **Chờ kích hoạt** `/horses/pending-activation`: danh sách điều kiện, bước tiếp theo giao Vet
