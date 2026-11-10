@@ -22,6 +22,30 @@ const START = process.env.RH_DEMO_START ? new Date(process.env.RH_DEMO_START) : 
 if (START && !Number.isFinite(START.getTime())) { console.error('RH_DEMO_START must be an ISO date-time.'); process.exit(2); }
 // RH_DEMO_PHOTO_DIR: folder of JPEG/PNG/WebP files; every created horse gets the next unused photo (distinct images).
 const PHOTO_DIR = process.env.RH_DEMO_PHOTO_DIR ?? null;
+// RH_DEMO_REALISTIC=1: real-looking horse names, pedigree and origin per scenario instead of "<scenario> <tag>".
+const REALISTIC = process.env.RH_DEMO_REALISTIC === '1';
+const HORSES = {
+  'D-chờ-khám': ['Phong Vân', 'Colt', '2023-02-14', 'Ireland', 'Dubawi', 'Princess Highway'],
+  'D-hoạt-động': ['Hoàng Kim', 'Gelding', '2021-03-15', 'Việt Nam', 'Frankel', 'Midday'],
+  'D-của-chủ-2': ['Ngọc Trai', 'Mare', '2020-04-02', 'Úc', 'Sea The Stars', 'Pearl Dance'],
+  'H-chưa-có-chương-trình': ['Thanh Long', 'Gelding', '2021-01-20', 'Việt Nam', 'Kingman', 'Zenda'],
+  'H-có-chương-trình': ['Kim Sư', 'Stallion', '2020-02-11', 'Anh', 'Galileo', 'Kind'],
+  'H-khóa': ['Mặc Vũ', 'Gelding', '2019-05-08', 'Pháp', 'Siyouni', 'Sea Of Clouds'],
+  'H-hạn-chế': ['Bão Cát', 'Mare', '2021-03-30', 'Ireland', 'Dark Angel', 'Desert Rose'],
+  'T-tập-đủ': ['Xích Thố', 'Stallion', '2020-01-25', 'Úc', 'Night of Thunder', 'Forest Storm'],
+  'T-kiểm-tra-bất-thường': ['Lôi Phong', 'Gelding', '2021-02-17', 'Việt Nam', 'Lope de Vega', 'Lady Wind'],
+  'T-báo-vấn-đề': ['Ánh Dương', 'Mare', '2021-04-12', 'Anh', 'Australia', 'Sun Kiss'],
+  'Y-nhẹ-và-tối-thiểu': ['Sương Mai', 'Mare', '2022-03-03', 'Việt Nam', 'Wootton Bassett', 'Morning Mist'],
+  'Y-đầy-đủ': ['Hắc Phong', 'Gelding', '2019-02-09', 'Úc', 'Invincible Spirit', 'Black Swan'],
+  'Y-ca-đang-mở': ['Tuyết Sơn', 'Mare', '2020-05-21', 'Ireland', 'Shamardal', 'Snow Queen'],
+  'Y-ca-sẵn-sàng-đóng': ['Thiên Mã', 'Stallion', '2019-03-14', 'Anh', 'Camelot', 'Sky Lantern'],
+  'Y-groom-báo-kiểm-tra': ['Liên Hoa', 'Mare', '2021-02-26', 'Việt Nam', 'No Nay Never', 'Lotus Garden'],
+  'Y-rider-báo-khi-cưỡi': ['Phi Vân', 'Gelding', '2020-04-18', 'Úc', 'Zoustar', 'Cloud Nine'],
+  'L-chăm-sóc': ['An Khang', 'Gelding', '2018-03-07', 'Việt Nam', 'Lord Kanaloa', 'Peace Lily'],
+};
+const horseInfo = (label) => { const h = REALISTIC && HORSES[label]; return h ? { name: h[0], sex: h[1], foaledDate: h[2], countryOfOrigin: h[3], sire: h[4], dam: h[5] }
+  : { name: `${label} ${TAG}`, sex: 'Gelding', foaledDate: '2021-03-15', countryOfOrigin: 'Việt Nam', sire: 'Demo Sire', dam: 'Demo Dam' }; };
+const HAY = REALISTIC ? 'Cỏ khô Timothy' : 'Cỏ khô demo';
 if (!CM_PASSWORD || !DEMO_PASSWORD) { console.error('Set RH_DEMO_CM_PASSWORD and RH_DEMO_PASSWORD.'); process.exit(2); }
 
 const VN = 7 * 3600_000;
@@ -143,8 +167,9 @@ async function uploadPhoto(horse) {
 async function freeBoxes() { return items((await call(as('cm'), 'GET', '/api/stable-boxes?status=FREE&size=200')).data); }
 async function draftHorse(label, owner) {
   const cm = as('cm');
-  const horse = (await call(cm, 'POST', '/api/horses', { name: `${label} ${TAG}`, breed: 'Thoroughbred', sex: 'Gelding', foaledDate: '2021-03-15', countryOfOrigin: 'Việt Nam' })).data;
-  await call(cm, 'PUT', `/api/horses/${horse.id}/pedigree`, { sire: { name: 'Demo Sire' }, dam: { name: 'Demo Dam' } });
+  const info = horseInfo(label);
+  const horse = (await call(cm, 'POST', '/api/horses', { name: info.name, breed: 'Thoroughbred', sex: info.sex, foaledDate: info.foaledDate, countryOfOrigin: info.countryOfOrigin })).data;
+  await call(cm, 'PUT', `/api/horses/${horse.id}/pedigree`, { sire: { name: info.sire }, dam: { name: info.dam } });
   await call(cm, 'POST', `/api/horses/${horse.id}/ownerships`, { ownerUserId: ids[owner], sharePercentage: 100, effectiveFrom: today(), isManagingOwner: true });
   const box = (await freeBoxes())[0];
   if (!box) throw new Error('No free stable box left; run scripts/demo/add-demo-stable-boxes.sql');
@@ -301,15 +326,16 @@ async function setL() {
     items: [{ meal: due, component: 'HAY', quantity: 4, unit: 'kg' }, { meal: due, component: 'GRAIN', quantity: 2, unit: 'kg' }] });
   note('L', `L-chăm-sóc (quá giờ ${late}, cần làm ${due}, chưa tới 23:30; khẩu phần ${due})`, `${l.name} · ${l.horseCode}`);
   const stock = items((await call(cm, 'GET', '/api/stable-care/inventory')).data);
-  let item = stock.find((s) => s.name === 'Cỏ khô demo');
+  let item = stock.find((s) => s.name === HAY);
   if (!item) {
-    item = (await call(cm, 'POST', '/api/stable-care/inventory', { name: 'Cỏ khô demo', category: 'FEED', unit: 'kg', threshold: 50, active: true })).data;
+    item = (await call(cm, 'POST', '/api/stable-care/inventory', { name: HAY, category: 'FEED', unit: 'kg', threshold: 50, active: true })).data;
     await call(cm, 'POST', `/api/stable-care/inventory/${item.id}/movements`, { changeQuantity: 200, expectedQuantity: 0, note: 'Nhập kho đầu kỳ cho demo' });
   }
-  note('L', 'Kho', 'Cỏ khô demo');
+  note('L', 'Kho', HAY);
   for (const n of [1, 2]) {
-    const email = `demo.dangky${n}.${TAG.replace('-', '')}@gmail.com`;
-    await call(null, 'POST', '/api/auth/register', { fullName: `Người đăng ký demo ${n}`, email, password: DEMO_PASSWORD, confirmPassword: DEMO_PASSWORD });
+    const who = REALISTIC ? [['Bùi Thị Lan', 'lan.bui'], ['Phan Quốc Việt', 'viet.phan']][n - 1] : [`Người đăng ký demo ${n}`, `demo.dangky${n}`];
+    const email = `${who[1]}.${TAG.replace('-', '')}@gmail.com`;
+    await call(null, 'POST', '/api/auth/register', { fullName: who[0], email, password: DEMO_PASSWORD, confirmPassword: DEMO_PASSWORD });
     note('L', `L-đăng-ký-${n} (chờ duyệt)`, email);
   }
 }
