@@ -74,6 +74,10 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
         JsonNode first = upload(horseId, managerId, "image/jpeg", jpeg);
         JsonNode second = upload(horseId, managerId, "image/png", png);
 
+        mvc.perform(get("/api/horses/{id}/photos/primary", horseId)
+                        .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
+                .andExpect(status().isForbidden());
+
         mvc.perform(get("/api/horses/{id}/photos", horseId)
                         .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
                 .andExpect(status().isForbidden())
@@ -127,6 +131,15 @@ class HorsePhotoApiTest extends HorseActivationTestSupport {
                         .with(authenticatedAs(RoleCode.CLUB_MANAGER, managerId)))
                 .andExpect(status().isOk())
                 .andExpect(result -> assertArrayEquals(png, result.getResponse().getContentAsByteArray()));
+        mvc.perform(get("/api/horses/{id}/photos/primary", horseId)
+                        .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertArrayEquals(png, result.getResponse().getContentAsByteArray()));
+        jdbc.update("UPDATE dbo.trainer_assignment SET effective_to=? WHERE horse_training_program_id=?", LocalDate.now(), programId);
+        mvc.perform(get("/api/horses/{id}/photos/primary", horseId)
+                        .with(authenticatedAs(RoleCode.TRAINER, trainerId)))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/horses/{id}/photos/primary", horseId)).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/owner/horses/{id}/photo", horseId)).andExpect(status().isUnauthorized());
         long noPhoto = createHorse("Owned Horse Without Photo");
         addOwnership(noPhoto, ownerId);

@@ -55,7 +55,7 @@ public class HorsePhotoService {
 
     @Transactional(readOnly = true)
     public List<HorsePhoto> list(long horseId) {
-        horses.detail(horseId);
+        horses.assertCanRead(horseId);
         return repository.findByHorseId(horseId).stream()
                 .map(row -> {
                     if (!storage.exists(row.fileReference())) {
@@ -68,7 +68,7 @@ public class HorsePhotoService {
 
     @Transactional(readOnly = true)
     public Optional<PhotoContent> primaryForStaff(long horseId) {
-        horses.detail(horseId);
+        horses.assertCanRead(horseId);
         return primary(horseId);
     }
 
@@ -97,7 +97,7 @@ public class HorsePhotoService {
     public void authorizeStoredPhoto(String fileReference) {
         long horseId = repository.findHorseIdByFileReference(fileReference)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Horse photo not found."));
-        horses.detail(horseId);
+        horses.assertCanRead(horseId);
     }
 
     @Transactional
