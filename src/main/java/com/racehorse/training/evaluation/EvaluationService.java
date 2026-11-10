@@ -98,8 +98,8 @@ public class EvaluationService {
             throw forbidden("Horse performance access denied.");
         StringBuilder where = new StringBuilder(" WHERE p.horse_id=?");
         List<Object> args = new ArrayList<>(); args.add(horseId);
-        if (from != null) { where.append(" AND CAST(s.scheduled_start AS DATE)>=?"); args.add(java.sql.Date.valueOf(from)); }
-        if (to != null) { where.append(" AND CAST(s.scheduled_start AS DATE)<=?"); args.add(java.sql.Date.valueOf(to)); }
+        if (from != null) { where.append(" AND CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE)>=?"); args.add(java.sql.Date.valueOf(from)); }
+        if (to != null) { where.append(" AND CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE)<=?"); args.add(java.sql.Date.valueOf(to)); }
         List<PerfSession> sessions = jdbc.query("""
                 SELECT s.id,s.session_code,s.status,s.actual_start,s.actual_end,s.scheduled_start
                 FROM dbo.training_session s
@@ -122,16 +122,16 @@ public class EvaluationService {
                        s.work_rider_user_id,p.id program_id,p.horse_id,p.status program_status,ph.name phase_name,
                        h.horse_code,h.name horse_name,r.user_code rider_code,r.full_name rider_name,
                        (SELECT TOP 1 ta.trainer_user_id FROM dbo.trainer_assignment ta
-                        WHERE ta.horse_training_program_id=p.id AND ta.effective_from<=CAST(s.scheduled_start AS DATE)
-                          AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(s.scheduled_start AS DATE))
+                        WHERE ta.horse_training_program_id=p.id AND ta.effective_from<=CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE)
+                          AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE))
                         ORDER BY ta.effective_from DESC,ta.id DESC) trainer_id,
                        (SELECT TOP 1 tu.user_code FROM dbo.trainer_assignment ta JOIN dbo.app_user tu ON tu.id=ta.trainer_user_id
-                        WHERE ta.horse_training_program_id=p.id AND ta.effective_from<=CAST(s.scheduled_start AS DATE)
-                          AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(s.scheduled_start AS DATE))
+                        WHERE ta.horse_training_program_id=p.id AND ta.effective_from<=CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE)
+                          AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE))
                         ORDER BY ta.effective_from DESC,ta.id DESC) trainer_code,
                        (SELECT TOP 1 tu.full_name FROM dbo.trainer_assignment ta JOIN dbo.app_user tu ON tu.id=ta.trainer_user_id
-                        WHERE ta.horse_training_program_id=p.id AND ta.effective_from<=CAST(s.scheduled_start AS DATE)
-                          AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(s.scheduled_start AS DATE))
+                        WHERE ta.horse_training_program_id=p.id AND ta.effective_from<=CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE)
+                          AND (ta.effective_to IS NULL OR ta.effective_to>=CAST(DATEADD(HOUR,7,s.scheduled_start) AS DATE))
                         ORDER BY ta.effective_from DESC,ta.id DESC) trainer_name,
                        (SELECT TOP 1 pc.overall_result FROM dbo.pre_session_check pc WHERE pc.training_session_id=s.id) precheck,
                        (SELECT TOP 1 pc.observations FROM dbo.pre_session_check pc WHERE pc.training_session_id=s.id) observations

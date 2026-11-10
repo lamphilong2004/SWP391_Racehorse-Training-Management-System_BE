@@ -104,6 +104,18 @@ class Core032ApiIntegrationTest {
         assertEquals("COMPLETED",jdbc.queryForObject("SELECT status FROM dbo.training_session WHERE id=1",String.class));
     }
 
+    /** A 00:10 Vietnam-time session is 17:10 UTC the day before; the assignment that starts that Vietnam day still covers it. */
+    @Test void earlyMorningVietnamSessionKeepsItsAssignedTrainer() throws Exception {
+        LocalDate vnDay=LocalDate.now().plusDays(5);
+        jdbc.update("UPDATE dbo.trainer_assignment SET effective_from=? WHERE id=1",java.sql.Date.valueOf(vnDay));
+        // Stored as the UTC wall clock, exactly like the production runtime (-Duser.timezone=UTC): 17:10 the previous day.
+        String utcStart=vnDay.minusDays(1)+" 17:10:00", utcEnd=vnDay.minusDays(1)+" 18:10:00";
+        jdbc.update("UPDATE dbo.training_session SET scheduled_start=CAST(? AS TIMESTAMP),scheduled_end=CAST(? AS TIMESTAMP) WHERE id=1",utcStart,utcEnd);
+        mvc.perform(post("/api/training-sessions/{id}/evaluation",sessionId).header("Authorization","Bearer "+login(trainerId))
+                        .contentType("application/json").content("{\"result\":\"PARTIALLY_MET\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.evaluatedBy.id").value(trainerId));
+    }
+
     @Test void evaluationRequiresTerminalSessionAndRejectsInvalidRequest() throws Exception {
         String trainerToken=login(trainerId);
         jdbc.update("INSERT INTO dbo.training_session(id,session_code,horse_program_phase_id,created_by_user_id,work_rider_user_id,scheduled_start,status) VALUES (2,'S-032-2',1,?,?,CURRENT_TIMESTAMP,'SCHEDULED')",trainerId,riderId);
