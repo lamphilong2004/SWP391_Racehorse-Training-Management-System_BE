@@ -7,7 +7,7 @@ Script chỉ gọi API của BE đang chạy, mỗi lần chạy tạo một b�
 ## Chuẩn bị (mỗi máy một lần)
 
 1. BE chạy ở `http://127.0.0.1:8080` với DB của mình (xem `docs/TEAM-DATABASE-SETUP.md`).
-2. Cần ít nhất 16 ô chuồng trống. API không tạo được ô chuồng, nên thêm tối đa 60 ô `C-01 … C-60` vào DB của mình (mỗi lần chạy script tạo dữ liệu dùng 15 ô; hết ô trống thì chạy lại file này hoặc tăng số trong file):
+2. Cần ít nhất 16 ô chuồng trống. API không tạo được ô chuồng, nên thêm tối đa 99 ô `C-01 … C-99` vào DB của mình (mỗi lần chạy script tạo dữ liệu dùng 15 ô; hết ô trống thì chạy lại file này hoặc tăng số trong file):
 
 ```powershell
 sqlcmd -S localhost -E -l 90 -d <tên DB của bạn> -i scripts/demo/add-demo-stable-boxes.sql

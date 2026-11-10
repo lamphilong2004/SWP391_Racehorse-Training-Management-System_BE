@@ -1,11 +1,11 @@
--- Demo stable boxes C-01 .. C-60 (reference data; the API has no endpoint to create boxes).
+-- Demo stable boxes C-01 .. C-99 (reference data; the API has no endpoint to create boxes).
 -- Inserts only missing codes and repairs only the yard name of demo boxes C-xx; never deletes. ASCII-only on purpose (NCHAR). Run on your own local database:
 --   sqlcmd -S localhost -E -d <your database> -i scripts/demo/add-demo-stable-boxes.sql
 SET XACT_ABORT ON; SET NOCOUNT ON;
 BEGIN TRANSACTION;
 DECLARE @boxes TABLE (box_code varchar(20) NOT NULL, yard nvarchar(100) NOT NULL);
 DECLARE @i int = 1;
-WHILE @i <= 60
+WHILE @i <= 99
 BEGIN
     INSERT @boxes (box_code, yard) VALUES (CONCAT('C-', RIGHT(CONCAT('0', @i), 2)), N'Khu chu' + NCHAR(7891) + N'ng C'); -- NCHAR keeps the name correct whatever code page sqlcmd reads the file with
     SET @i += 1;
