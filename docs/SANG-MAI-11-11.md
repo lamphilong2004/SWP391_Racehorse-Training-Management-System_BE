@@ -25,7 +25,7 @@ Dữ liệu demo **đã tạo sẵn đêm 11/11**, dùng tên thật cho ngườ
 | Trainer | trainer1@gmail.com (dùng cho demo) · trainer@ · trainer2@ · trainer3@ | Lê Minh Quân · Lê Thành Đạt · Đỗ Hà Linh · Vũ An Nhiên |
 | Veterinarian | veterinarian@gmail.com · veterinarian1@ | Phạm Thanh Tâm · Hoàng Mai Anh |
 | Groom | groom@gmail.com · groom1@ · groom2@ | Trần Văn Hậu · Lý Văn Tài · Mai Thị Hồng |
-| Work Rider | workrider1@ · workrider2@ · workrider3@ · workrider@ | Phạm Đức Anh · Võ Thanh Tùng · Dương Khánh Linh · Huỳnh Gia Bảo |
+| Work Rider | workrider1@ · workrider2@ · workrider3@ · workrider@ | Phạm Đức Anh · Võ Thanh Tùng · Đặng Khánh Linh · Huỳnh Gia Bảo |
 | Horse Owner | horseowner1@gmail.com · horseowner2@ · horseowner3@ · horseowner@ | Nguyễn Minh Khang · Trần Bảo Ngọc · Lê Gia Huy · Đặng Thu Hương |
 
 ## 3. Dữ liệu đã có (17 ngựa, mỗi con 1 ảnh khác nhau; chỉ 17 ô chuồng có ngựa, 112 ô trống)
