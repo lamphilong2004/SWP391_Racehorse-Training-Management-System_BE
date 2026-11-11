@@ -1,10 +1,11 @@
 # Luồng demo 11/11 — từ đầu đến cuối (09:30–12:00)
 
 **Nguyên tắc:**
+
 - 2 con ngựa Dũng tạo mới sẽ đi tiếp qua các phần sau:
   - **Ngựa mới 1** → Flow 2 (Hoàng lập chương trình).
   - **Ngựa mới 2** → Flow 3 (Đức xử lý sự cố) → Flow 4 (Long lập kế hoạch chăm sóc).
-- Những trường hợp cần giờ cố định hoặc trạng thái làm sẵn thì dùng **bộ dữ liệu `1111-0120`** đã tạo tối 10/11. Tên ngựa có đuôi `1111-0120`.
+- Những trường hợp cần giờ cố định hoặc trạng thái làm sẵn thì dùng **bộ dữ liệu `1111-0120`** đã tạo sẵn đêm 11/11. Ngựa trong bộ dữ liệu có tên thật (Xích Thố, Hắc Phong, An Khang…); bảng ngựa theo từng người ở `SANG-MAI-11-11.md`.
 - Mật khẩu chung của mọi tài khoản: Long gửi riêng. Email có dạng `<tài khoản>@gmail.com`.
 - Ảnh cho 2 con ngựa mới: thư mục `ANH-NGUA-CHO-MAI/` (`ngua-moi-1.jpg`, `ngua-moi-2.jpg`).
 
@@ -16,11 +17,11 @@ Ký hiệu cột **Kết quả**: ✅ = điều phải thấy trên màn hình; 
 
 | # | Tài khoản | Màn hình | Thao tác | Kết quả |
 |---|---|---|---|---|
-| 1.1 | clubmanager | **Ngựa** | Xem các tab Tất cả / Nháp / Hoạt động / Ngừng hoạt động; gõ tìm "Y-"; lọc theo Khả năng tập luyện | ✅ Các tab có số đếm; mỗi ngựa có ảnh riêng |
+| 1.1 | clubmanager | **Ngựa** | Xem các tab Tất cả / Nháp / Hoạt động / Ngừng hoạt động; gõ tìm "Sương"; lọc theo Khả năng tập luyện | ✅ Các tab có số đếm; mỗi ngựa có ảnh riêng |
 | 1.2 | clubmanager | **Thêm ngựa** | Tạo **Ngựa mới 1**: tên "Ngựa mới 1", ngày sinh, giới tính, giống, thế mạnh Nước rút; **Thêm ảnh** `ngua-moi-1.jpg` → **Lưu nháp & tiếp tục** | ✅ Ô **Mã ngựa chỉ đọc** ("Mã dự kiến") → nói **BR-01: mã do hệ thống cấp nên không thể trùng** |
 | 1.3 | clubmanager | Phả hệ & quyền sở hữu | Ngựa cha, ngựa mẹ; Chủ ngựa **horseowner1**; **Xếp ô chuồng** → chọn ô "Còn trống" → **Xác nhận xếp ô** → **Lưu & tiếp tục** | ✅ Tự chuyển sang **Chờ kích hoạt**; ⛔ ô đã có ngựa không chọn được (BR-03/04) |
 | 1.4 | clubmanager | Thêm ngựa | Tạo **Ngựa mới 2**, giống bước 1.2–1.3, ảnh `ngua-moi-2.jpg`, chủ **horseowner1** | ✅ Ngựa mới 2 cũng nằm trong **Chờ kích hoạt** |
-| 1.5 | clubmanager | **Chờ kích hoạt** | Xem danh sách điều kiện của 2 ngựa | ✅ Còn thiếu "Khám ban đầu của Veterinarian"; ô **Bước tiếp theo** giao Vet |
+| 1.5 | clubmanager | **Chờ kích hoạt** | Xem danh sách điều kiện của 2 ngựa | ✅ Còn thiếu "Khám ban đầu của Veterinarian" (việc tiếp theo thuộc Vet) |
 | 1.6 | veterinarian | **Tổng quan** → Ngựa mới đến | Bấm **Ghi khám ban đầu** cho **Ngựa mới 1**: cân nặng 470, thể trạng, chọn **Khỏe** → **Lưu kết quả khám** | ✅ Ngựa **tự chuyển Hoạt động** (BR-05/07); khung bên phải hiện "Bắt buộc / Khuyến nghị · không bắt buộc" |
 | 1.7 | veterinarian | Ghi khám ban đầu | Làm tương tự cho **Ngựa mới 2** (cân nặng 465, **Khỏe**) | ✅ Hoạt động |
 | 1.8 | veterinarian | Hồ sơ **Ngựa mới 2** → **Lịch sử cân nặng** | Ghi thêm 1 lần cân (472) | ✅ Biểu đồ cân nặng có 2 điểm (MF-02) |
@@ -40,12 +41,12 @@ Ký hiệu cột **Kết quả**: ✅ = điều phải thấy trên màn hình; 
 |---|---|---|---|---|
 | 2.1 | headtrainer | **Mẫu chương trình** | Xem 1 mẫu → **Lưu phiên bản mới** → **Nhân bản** → **Lưu trữ** bản nhân bản | ✅ DEC-005: sửa mẫu không làm đổi chương trình đã tạo |
 | 2.2 | headtrainer | **Thư viện bài tập** | Xem danh sách | ✅ |
-| 2.3 | headtrainer | **Tạo chương trình** | Wizard 7 bước cho **Ngựa mới 1** (vừa kích hoạt ở phần 1): chọn mẫu dạng thẻ → giai đoạn → chọn Trainer **trainer1** (nhãn **Phù hợp** kèm lý do) → Tạo | ✅ Chương trình tạo xong, ô **Bước tiếp theo** giao Trainer |
+| 2.3 | headtrainer | **Tạo chương trình** | Wizard 7 bước cho **Ngựa mới 1** (vừa kích hoạt ở phần 1): chọn mẫu dạng thẻ → giai đoạn → chọn Trainer **trainer1** (nhãn **Phù hợp** kèm lý do) → Tạo | ✅ Toast **tạo chương trình thành công** góc phải dưới; Trainer thấy chương trình được giao |
 | 2.4 | headtrainer | Tạo chương trình cho **Mặc Vũ** | — | ⛔ Bị từ chối kèm lý do (BR-13: ngựa đang Khóa) |
 | 2.5 | headtrainer | Tạo chương trình cho **Thanh Long** (vừa gỡ hạn chế) | Chỉ mở bước đầu để xem gợi ý | ✅ Nói BR-17/18: ngựa vừa hồi phục thì làm chương trình phục hồi cường độ thấp |
 | 2.6 | trainer1 | **Chương trình được giao** | Thấy chương trình của **Ngựa mới 1**; mở **Kim Sư** → **Tạo buổi tập** (bài tập, Work Rider, Groom) | ✅ Work Rider đã có lịch trùng giờ thì bị khóa lựa chọn; buổi hiện ở **Lịch tập** |
 | 2.7 | trainer1 | Tạo buổi tập cho **Bão Cát**, chọn bài **Breeze nước rút** | — | ⛔ Bị chặn, phải xóa hoặc thay bài (BR-15: hạn chế y tế) |
-| 2.8 | headtrainer | **Yêu cầu điều chỉnh** | **Kim Sư**: duyệt 1 đề xuất, từ chối 1 đề xuất (có lý do) | ✅ PENDING → APPROVED / REJECTED; bước tiếp theo giao Trainer |
+| 2.8 | headtrainer | **Yêu cầu điều chỉnh** | **Kim Sư**: duyệt 1 đề xuất, từ chối 1 đề xuất (có lý do) | ✅ PENDING → APPROVED / REJECTED; Trainer thấy kết quả |
 
 **Chưa làm:** MF-05 lượt chạy thử (NEEDS CLARIFICATION).
 
@@ -57,7 +58,7 @@ Các buổi dùng ở phần này mở **09:30–12:00**. Nên mở 2 cửa sổ
 
 | # | Tài khoản | Màn hình | Thao tác | Kết quả |
 |---|---|---|---|---|
-| 3.1 | groom | **Hôm nay** | Buổi **Xích Thố** → **Bắt đầu kiểm tra trước buổi tập** → 5 mục **Bình thường** → Hoàn tất | ✅ Tất cả bình thường; bước tiếp theo giao Work Rider (BR-21) |
+| 3.1 | groom | **Hôm nay** | Buổi **Xích Thố** → **Bắt đầu kiểm tra trước buổi tập** → 5 mục **Bình thường** → Hoàn tất | ✅ Tất cả bình thường; Work Rider được bắt đầu buổi (BR-21) |
 | 3.2 | groom | Hôm nay | Buổi **Lôi Phong** → mục Chân & móng chọn **Bất thường** (ghi quan sát) → **Báo cáo sự cố** (nội dung điền sẵn) → Gửi | ✅ Biên nhận mã INC-…; ⛔ buổi bị chặn (BR-22/23 · **sự cố A1**) |
 | 3.3 | workrider3 | **Lịch phân công** | Thử bắt đầu buổi **Lôi Phong** | ⛔ Không bắt đầu được vì kiểm tra bất thường |
 | 3.4 | workrider1 | Lịch phân công | Buổi **Xích Thố** → **Bắt đầu** → **Thêm số đo**: nhịp tim 150, tốc độ 35, quãng đường 500 | ✅ Đang tập |
