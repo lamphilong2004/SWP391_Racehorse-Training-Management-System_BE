@@ -102,10 +102,10 @@ Màn **Sự cố** lúc này có đủ các nguồn báo: Groom tại chuồng, 
 | # | Tài khoản | Màn hình | Thao tác | Kết quả |
 |---|---|---|---|---|
 | 5.1 | clubmanager | **Tổng quan** | Khối **Chăm sóc hôm nay** | ✅ Tổng / còn lại / **quá giờ** / đã xong; danh sách việc trễ; vật tư dưới ngưỡng (BR-36) |
-| 5.2 | clubmanager | **Chăm sóc & dinh dưỡng** | Chọn **Ngựa mới 2** → **Tạo kế hoạch chăm sóc**: Groom **groom**, việc Vệ sinh chuồng giờ gần nhất sắp tới, hướng dẫn → **Lưu kế hoạch & giao việc** | ✅ Ô **Bước tiếp theo**: việc đã sinh cho Groom (BR-33) |
+| 5.2 | clubmanager | **Chăm sóc & dinh dưỡng** | Chọn **Ngựa mới 2** → **Tạo kế hoạch chăm sóc**: Groom **Trần Văn Hậu**, việc Vệ sinh chuồng giờ gần nhất sắp tới, hướng dẫn → **Lưu kế hoạch & giao việc** | ✅ Toast **Đã lưu kế hoạch** góc phải dưới; việc mới hiện trong Chăm sóc hằng ngày của Groom (BR-33) |
 | 5.3 | clubmanager / headtrainer | Chọn **An Khang** → loại **Dinh dưỡng** | Xem khẩu phần Cỏ khô 4 kg, Thức ăn hạt 2 kg | ✅ MF-11 (Head Trainer chỉ xem kế hoạch chăm sóc, sửa được dinh dưỡng) |
 | 5.4 | clubmanager | **Chăm sóc hằng ngày** | Việc **Quá giờ** của An Khang nằm trên cùng kèm cảnh báo → lọc **Groom phụ trách** → **Thao tác** → **Đổi Groom** (có lý do) → **Lịch sử** | ✅ Lịch sử ghi người đổi, lý do, thời điểm |
-| 5.5 | groom | **Tổng quan** → **Mở chăm sóc hằng ngày** | Gõ "L-" → **Hoàn thành** việc **08:00 (Quá giờ)** và việc **11:00 (Cần làm)**; việc **23:30 Chưa đến giờ** không có nút Hoàn thành | ✅ Ghi giờ và người làm (BR-34); ⛔ việc chưa đến giờ bị chặn |
+| 5.5 | groom | **Tổng quan** → **Mở chăm sóc hằng ngày** | Gõ "An Khang" → **Hoàn thành** việc **08:00 (Quá giờ)** và việc **11:00 (Cần làm)**; việc **23:30 Chưa đến giờ** không có nút Hoàn thành | ✅ Ghi giờ và người làm (BR-34); ⛔ việc chưa đến giờ bị chặn |
 | 5.6 | groom | Dòng việc **An Khang** → **Báo bất thường** | Chọn loại, mức → **Gửi sự cố** | ✅ Sự cố sang Vet (BR-35 · **sự cố A4**) |
 | 5.7 | clubmanager | **Kho** | **Cỏ khô Timothy** → **Sổ kho / thao tác** → nhập +10 có lý do | ✅ Tồn kho tăng, có lịch sử |
 | 5.8 | groom | **Kho & yêu cầu bổ sung** | Gửi yêu cầu bổ sung 20 kg | ✅ Club Manager thấy yêu cầu. Nói: cho ăn không tự trừ kho |
