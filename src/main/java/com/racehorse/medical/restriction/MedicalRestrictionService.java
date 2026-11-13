@@ -38,6 +38,12 @@ public class MedicalRestrictionService {
         this.actorProvider = actorProvider;
     }
 
+    /**
+     * Creates a veterinarian-owned restriction for a horse.
+     * The active-restriction check gives an early business error; the database
+     * uniqueness constraint remains the concurrency backstop, and a duplicate
+     * insert is translated to the same conflict response.
+     */
     @Transactional
     public MedicalRestrictionResponse create(long horseId, MedicalRestrictionCreateRequest request) {
         ActorContext actor = requireRole(RoleCode.VETERINARIAN);
