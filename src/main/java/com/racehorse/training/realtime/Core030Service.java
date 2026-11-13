@@ -103,6 +103,12 @@ public class Core030Service {
 
     private void createIncident(Session s,String value,String type,String severity,String description,long user){String code="INC-"+UUID.randomUUID().toString().replace("-","").substring(0,16).toUpperCase(Locale.ROOT);jdbc.update("INSERT INTO dbo.incident(incident_code,horse_id,reported_by_user_id,training_session_id,observed_at,reported_at,incident_type,observed_severity,description,status) VALUES (?,?,?,?,SYSUTCDATETIME(),SYSUTCDATETIME(),?,?,?,'REPORTED')",code,s.horseId(),user,s.id(),type,severity,description);}
     private void publishState(Session s,String status,String reason,long actor){Map<String,Object> event=new LinkedHashMap<>();event.put("sessionId",s.id());event.put("status",status);event.put("previousStatus",s.status());event.put("changedAt",Instant.now());event.put("changedBy",Map.of("id",actor));event.put("interruptionReason",reason);event.put("blocked",false);event.put("blockedReasons",List.of());send("/topic/sessions/"+s.id()+"/state",event);}
+    /**
+     * Publishes realtime messages only after a successful transaction commit.
+     * This prevents clients from observing events for a database transaction
+     * that subsequently rolls back; callers outside a synchronization scope
+     * publish immediately.
+     */
     private void send(String destination,Object payload){
         if(org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
             org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
