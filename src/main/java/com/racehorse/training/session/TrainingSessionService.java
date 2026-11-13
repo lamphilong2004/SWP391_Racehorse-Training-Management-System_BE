@@ -47,6 +47,12 @@ public class TrainingSessionService {
         return repository.sessions(from,to,trainerId,horseId,programId,status,trainerScope,riderScope).stream().map(this::map).toList();
     }
 
+    /**
+     * Schedules a session using serializable isolation to protect the rider and
+     * horse overlap checks. The rider schedule is locked before checking for
+     * conflicts; medical suitability and exercise hard-block rules must also
+     * pass before the session and its exercises are persisted.
+     */
     @Transactional(isolation=Isolation.SERIALIZABLE)
     public SessionApi.Session create(SessionApi.CreateRequest r) {
         ActorContext a=require(RoleCode.TRAINER); validateSchedule(r.horseProgramPhaseId(),r.scheduledStart(),r.scheduledEnd(),r.intensity());
