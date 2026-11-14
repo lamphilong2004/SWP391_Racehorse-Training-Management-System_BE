@@ -55,6 +55,7 @@ public class HorseBaselineService {
 
         LocalDateTime recordedAt = examinationTime(horseId, request.examinedAt());
         try {
+            // The first exam supplies the horse's starting weight and health status. Save them together before reevaluating onboarding.
             long examinationId = repository.insertBaseline(
                     horseId, actor.userId(), recordedAt, request.healthStatus(), request.clinicalNotes());
             repository.insertBaselineWeight(horseId, actor.userId(), request.weightKg(), recordedAt);
