@@ -136,6 +136,7 @@ public class Core026Service {
             }
             case "LINK_CASE"->{
                 if(caseId==null||caseId<=0)throw validation("medicalCaseId is required for LINK_CASE.");requireReportedUnlinked(incident);
+                // Link a new report to the same horse's active treatment so its history stays on one case.
                 var linked=repository.medicalCase(caseId).orElseThrow(()->notFound("Medical case was not found."));
                 if(linked.horseId()!=incident.horseId()||!"OPEN".equals(linked.status()))throw conflict("The case must be OPEN and belong to this incident's horse.");next="UNDER_REVIEW";
             }
