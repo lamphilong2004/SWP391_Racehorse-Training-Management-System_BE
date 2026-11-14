@@ -168,6 +168,7 @@ public class MedicalService {
             throw error(ErrorCode.BUSINESS_RULE_VIOLATION, "A medical case requires at least one clinical examination before closure.");
         }
 
+        // If the case has an injury or treatment plan, use the latest follow-up to decide whether recovery is confirmed.
         boolean hasInjury = exists("select case when exists(select 1 from dbo.injury where medical_case_id=?) then 1 else 0 end", caseId);
         boolean hasPlan = exists("select case when exists(select 1 from dbo.treatment_plan where medical_case_id=?) then 1 else 0 end", caseId);
         if (hasInjury || hasPlan) {
@@ -180,6 +181,7 @@ public class MedicalService {
         if (hasPlan && exists("select case when exists(select 1 from dbo.care_task ct join dbo.treatment_plan tp on tp.id=ct.treatment_plan_id where tp.medical_case_id=? and (ct.completed_at is null or ct.completed_by_user_id is null)) then 1 else 0 end", caseId)) {
             throw error(ErrorCode.BUSINESS_RULE_VIOLATION, "All treatment tasks must be completed before case closure.");
         }
+        // Lifting a training restriction is a separate Vet decision. Case closure only checks that restrictions linked to this case have been lifted.
         if (exists("select case when exists(select 1 from dbo.medical_restriction where medical_case_id=? and lifted_at is null) then 1 else 0 end", caseId)) {
             throw error(ErrorCode.BUSINESS_RULE_VIOLATION, "All restrictions linked to the case must be lifted before closure.");
         }
