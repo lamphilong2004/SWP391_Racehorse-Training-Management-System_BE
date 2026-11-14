@@ -137,6 +137,7 @@ for(const [action,state,linkedCase,targetCase,expected]of [
  ['RESOLVE','RESOLVED',true,null,409],
 ])check(reviewOutcome(action,state,linkedCase,targetCase)===expected,`Incident transition ${action}/${state}/${linkedCase}/${targetCase?.status??'none'}`);
 
+// Incident Review owns the link so the incident status and case relationship are set together. Independent case creation accepts only the horse and reason.
 const caseCreateOperation=get('/api/medical/cases','post');
 const caseCreateSchema=s.MedicalCaseCreateRequest;
 check(caseCreateOperation.requestBody.content['application/json'].schema.$ref==='#/components/schemas/MedicalCaseCreateRequest','Independent case POST uses MedicalCaseCreateRequest');
