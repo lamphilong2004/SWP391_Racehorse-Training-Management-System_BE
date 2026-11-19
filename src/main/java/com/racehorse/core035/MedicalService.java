@@ -1,3 +1,14 @@
+// CORE-035 — nghiệp vụ Backend của ca y tế, được FE Vet gọi để lưu thật.
+// Đây là code phối hợp trong hệ thống; chú thích hướng dẫn đọc không thay thế lịch sử tác giả.
+// Controller nhận HTTP, service kiểm quyền/điều kiện, repository hoặc JdbcTemplate truy cập SQL.
+// Actor là người từ phiên đã xác thực; vet() yêu cầu VETERINARIAN, không tin role do form gửi.
+// @Transactional gom thao tác DB trong một giao dịch: lỗi chưa xử lý sẽ rollback theo quy tắc Spring.
+// @Transactional(readOnly=true) dành cho đường đọc. Nó không thay thế kiểm quyền.
+// CaseStatus OPEN/CLOSED là trạng thái hồ sơ; HealthStatus là sức khỏe; Availability là khả năng tập.
+// Ba khái niệm không được gộp thành một cờ: ghi RECOVERED chưa có nghĩa tự gỡ hạn chế tập.
+// Điểm bắt đầu demo: create/get → examine → injure → putPlan → reexamine → close.
+// Thời gian ghi UTC, ngày phân công Trainer tính theo lịch CLB Asia/Ho_Chi_Minh.
+
 package com.racehorse.core035;
 
 import com.racehorse.common.error.*;
@@ -70,6 +81,8 @@ public class MedicalService {
         positive(id);
         return cases.findById(id).orElseThrow(() -> error(ErrorCode.NOT_FOUND, "Medical case not found."));
     }
+    // Đọc và khóa ca trước khi ghi để giảm hai thao tác cạnh tranh trên cùng hồ sơ.
+    // Ca đã CLOSED thì từ chối sửa, không âm thầm mở lại cho form tiếp tục lưu.
     private MedicalCaseEntity open(long id) {
         positive(id);
         MedicalCaseEntity value = cases.locked(id).orElseThrow(() -> error(ErrorCode.NOT_FOUND, "Medical case not found."));
@@ -84,6 +97,9 @@ public class MedicalService {
         Integer count = sql.queryForObject("select count(*) from dbo.trainer_assignment a join dbo.horse_training_program p on p.id=a.horse_training_program_id where p.horse_id=? and a.trainer_user_id=? and a.effective_from<=? and (a.effective_to is null or a.effective_to>=?)", Integer.class, horseId, actor.id(), today, today);
         return count != null && count > 0;
     }
+    // Chọn mức dữ liệu được trả: Vet đọc chi tiết, Manager/HT đọc tóm tắt.
+    // Trainer phải đang được giao ngựa mới được đọc tóm tắt; vai trò khác bị từ chối.
+    // Tóm tắt không chứa chẩn đoán/thuốc để tránh rò dữ liệu trước cả bước vẽ giao diện.
     private boolean clinical(Actor actor, MedicalCaseEntity c) {
         if (actor.has(Role.VETERINARIAN)) return true;
         if (actor.has(Role.CLUB_MANAGER) || actor.has(Role.HEAD_TRAINER)) return false;
@@ -149,6 +165,10 @@ public class MedicalService {
     }
 
     @Transactional
+    // Đóng ca không chỉ đổi một chữ OPEN thành CLOSED.
+    // Đầu tiên kiểm mọi điều kiện bằng requireClosureConditions; sau đó ghi giờ đóng
+    // và cập nhật những Incident đang gắn thành RESOLVED trong cùng transaction.
+    // Nếu một bước lỗi, không để ca đã đóng nhưng sự cố liên quan còn dang dở do lưu nửa chừng.
     public CaseDetail close(long id) {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         requireClosureConditions(c.id);
@@ -163,6 +183,12 @@ public class MedicalService {
         return detail(c);
     }
 
+    // Đọc lần lượt các if như checklist bắt buộc:
+    // 1) Có ít nhất một EXAMINATION hoặc RE_EXAMINATION.
+    // 2) Có injury/plan thì lần tái khám mới nhất phải RECOVERED, không lấy một lần cũ để thay.
+    // 3) Có plan thì mọi task có cả người làm và thời gian hoàn thành.
+    // 4) Không còn hạn chế gắn ca chưa gỡ.
+    // Incident đang gắn được đóng cùng ca theo DEC-014, không phải một bước đóng thủ công trước đó.
     private void requireClosureConditions(long caseId) {
         if (!exists("select case when exists(select 1 from dbo.veterinary_examination where medical_case_id=? and exam_type in ('EXAMINATION','RE_EXAMINATION')) then 1 else 0 end", caseId)) {
             throw error(ErrorCode.BUSINESS_RULE_VIOLATION, "A medical case requires at least one clinical examination before closure.");
@@ -191,6 +217,9 @@ public class MedicalService {
     }
 
     @Transactional
+    // Ghi lần khám: kiểm Vet/ca mở, thời gian, triệu chứng → lưu bản ghi khám.
+    // Nếu Vet chọn healthStatus thì cập nhật sức khỏe ngựa trong cùng giao dịch.
+    // Không đặt Training Availability tại đây và không suy ra một chẩn đoán tự động.
     public ExamView examine(long id, ExamCreate request) {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.examinedAt() == null || request.symptoms() == null || request.symptoms().isBlank())
@@ -207,6 +236,9 @@ public class MedicalService {
     }
 
     @Transactional
+    // Tái khám là bản ghi mới, gồm findings và recoveryStatus, không xóa lần khám trước.
+    // Có cập nhật healthStatus nếu được cung cấp; việc gỡ restriction vẫn là thao tác riêng.
+    // Vì thế UI có thể đã hiện Hồi phục mà vẫn khóa tập nếu Vet chưa gỡ hạn chế.
     public ReexamView reexamine(long id, ReexamCreate request) {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.examinedAt() == null || request.findings() == null || request.findings().isBlank() || request.recoveryStatus() == null)
@@ -224,6 +256,9 @@ public class MedicalService {
     }
 
     @Transactional
+    // Ghi vùng chấn thương, mức độ, hồi phục. Nếu gửi mã lần khám thì lần khám đó
+    // phải thuộc chính ca và ngựa này, tránh nối chấn thương sang hồ sơ của ngựa khác.
+    // position3d là trường contract cũ được kiểm tra nếu có, không tự tạo một mô hình 3D cho demo.
     public InjuryView injure(long id, InjuryCreate request) {
         vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.bodyRegion() == null || request.bodyRegion().isBlank() || request.severity() == null || request.recoveryStatus() == null)
@@ -243,6 +278,10 @@ public class MedicalService {
     }
 
     @Transactional
+    // Luồng lưu phác đồ: kiểm nội dung → kiểm task Groom → lấy/tạo plan → lưu → reconcile task.
+    // Một task cần người nhận, hướng dẫn, ngày và giới hạn độ dài; bản trùng bị từ chối.
+    // Nếu có task cần giao mà tích hợp materializer chưa có, trả CONFLICT thay vì báo đã giao giả.
+    // Phác đồ không tự tạo sức khỏe/hạn chế và không tự chứng minh Trainer đã nhận thông báo.
     public PlanView putPlan(long id, PlanPut request) {
         Actor actor = vet(); MedicalCaseEntity c = open(id);
         if (request == null || request.treatmentMedicationInstructions() == null || request.treatmentMedicationInstructions().isBlank())
@@ -275,6 +314,9 @@ public class MedicalService {
         p.reExaminationDate = request.reexaminationDate(); p.updatedAt = now();
         try { p = plans.saveAndFlush(p); }
         catch (DataIntegrityViolationException ex) { throw error(ErrorCode.CONFLICT, "Treatment plan changed concurrently."); }
+        // Sau lưu plan, chuyển danh sách yêu cầu thành task thực qua cổng TreatmentTaskMaterializer.
+        // Reconcile do module công việc thực hiện; service không ghi trực tiếp bừa vào lịch sử task.
+        // Cả phần plan và việc phát sinh ở đây nằm trong giao dịch lưu phác đồ.
         if (groomTasks != null) {
             TreatmentTaskMaterializer materializer = taskMaterializers.getIfAvailable();
             if (materializer != null) {
