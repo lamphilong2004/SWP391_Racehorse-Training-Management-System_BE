@@ -334,7 +334,7 @@ async function setL() {
   note('L', 'Kho', HAY);
   for (const n of [1, 2]) {
     const who = REALISTIC ? [['Bùi Thị Lan', 'lan.bui'], ['Phan Quốc Việt', 'viet.phan']][n - 1] : [`Người đăng ký demo ${n}`, `demo.dangky${n}`];
-    const email = `${who[1]}.${TAG.replace('-', '')}@gmail.com`;
+    const email = REALISTIC ? `${who[1]}.g2@gmail.com` : `${who[1]}.${TAG.replace('-', '')}@gmail.com`;
     await call(null, 'POST', '/api/auth/register', { fullName: who[0], email, password: DEMO_PASSWORD, confirmPassword: DEMO_PASSWORD });
     note('L', `L-đăng-ký-${n} (chờ duyệt)`, email);
   }
