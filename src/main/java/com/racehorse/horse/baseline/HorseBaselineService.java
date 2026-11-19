@@ -1,3 +1,11 @@
+// CORE-014 — Backend khám ban đầu và lịch sử cân nặng.
+// Baseline là lần khám đầu khi tiếp nhận ngựa, không phải ca y tế điều trị ở CORE-035.
+// Chỉ Vet đang hoạt động được ghi baseline/cân nặng; quyền đọc có phạm vi riêng.
+// Mỗi ngựa chỉ có một baseline. Cân nặng có thể có nhiều lần ghi tiếp theo.
+// Khám ban đầu lưu lần khám + cân nặng + sức khỏe rồi yêu cầu hệ thống xét kích hoạt tự động.
+// Không có duyệt ACTIVE thủ công ở đây: reevaluate còn kiểm các điều kiện ngựa khác.
+// Thông tin đăng nhập lấy từ CurrentActorProvider; không dùng userId do form gửi thay người làm.
+
 package com.racehorse.horse.baseline;
 
 import com.racehorse.auth.ActorContext;
@@ -45,6 +53,10 @@ public class HorseBaselineService {
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
+    // SERIALIZABLE và kiểm baseline đã tồn tại giúp tránh hai người tạo lần khám đầu trùng.
+    // Các lệnh insertBaseline, insertBaselineWeight, updateHealthStatus nằm cùng transaction:
+    // nếu lỗi thì không được để chỉ có lần khám mà thiếu cân nặng/sức khỏe tương ứng.
+    // reevaluate được gọi sau khi có dữ liệu, không đảm bảo ngựa sẽ ACTIVE nếu còn thiếu điều kiện.
     public BaselineExamination recordBaseline(long horseId, BaselineExaminationRequest request) {
         ActorContext actor = requireActiveActor();
         requireVeterinarian(actor);
@@ -90,6 +102,9 @@ public class HorseBaselineService {
     }
 
     @Transactional(readOnly = true)
+    // Đọc cân nặng cũng cần quyền. Trainer chỉ có vai trò Trainer phải đang được giao ngựa;
+    // các vai trò có quyền đọc rộng được liệt kê rõ trong tập UNRESTRICTED_HORSE_READ_ROLES.
+    // Phân trang trả items cùng tổng; không tự tạo số cân đo cho những ngày chưa ghi.
     public WeightRecordsPage listWeights(long horseId, int page, int size) {
         ActorContext actor = requireActiveActor();
         if (actor.roles().stream().noneMatch(WEIGHT_READ_ROLES::contains)) {

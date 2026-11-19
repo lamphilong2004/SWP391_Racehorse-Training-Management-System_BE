@@ -1,3 +1,13 @@
+// CORE-006 — bộ kiểm tra tài liệu hợp đồng API, không phải server chạy nghiệp vụ.
+// Đầu vào là hai file JSON đã bundle: hợp đồng medical và hợp đồng dùng chung.
+// Hợp đồng mô tả URL, phương thức, role, cấu trúc dữ liệu và quyết định được tài liệu hóa.
+// check dùng assert để dừng khi một quy tắc tài liệu không khớp; checks đếm số điều đã kiểm.
+// Script chỉ đọc JSON, không login, không gọi API thật, không ghi SQL hay tạo tài khoản.
+// PASS ở đây chỉ xác nhận các kỳ vọng của script khớp tài liệu được đưa vào.
+// Không dùng PASS tài liệu để tuyên bố runtime BE/SQL hay quy trình demo đã thành công.
+// Nếu quyết định mới làm tài liệu/runtime lệch nhau, cần đối chiếu quyết định; không sửa luật
+// nghiệp vụ bằng cách thêm comment hoặc sửa dữ liệu mẫu cho vừa một assertion cũ.
+
 // Validate Redocly JSON bundles of the actual medical and shared contracts.
 // node docs/api/verify-core006.cjs <medical-bundle.json> <shared-bundle.json>
 const fs = require('node:fs');
@@ -9,6 +19,8 @@ const check=(condition,message)=>{checks++;assert.ok(condition,message);};
 const s=d.components.schemas;
 const get=(p,m)=>d.paths[p]?.[m];
 const decision=d['x-approved-flow3-decisions'];
+// Đây là bảng trách nhiệm downstream do tài liệu contract ghi nhận, không phải
+// tuyên bố tác giả của mọi file hiện tại. Giữ đúng lịch sử contributor khi bàn giao.
 const expectedOwners={
  'CORE-019':'Ngô Minh Tiến',
  'CORE-026':'Ngô Minh Tiến',
@@ -99,6 +111,9 @@ check(decision.abnormalPreSessionCheck.incidentCreation==='EXPLICIT_ONLY','No au
 check(/ABNORMAL.*persisted.*SCHEDULED.*blocks Start.*never automatically creates an Incident/i.test(get('/api/incidents','post').description),'Incident operation reflects pre-check decision');
 check(body.description.includes('does not automatically create an Incident'),'Incident request requires explicit creation');
 
+// Nhóm assertion bên dưới kiểm đường chuyển trạng thái sự cố và đường gắn ca.
+// Việc gắn phải đi qua API review được contract quy định; không thêm incidentId
+// vào request tạo ca để lách quy trình tiếp nhận.
 const reviewOperation=get('/api/incidents/{incidentId}/review','post');
 const reviewRule=decision.incidentReview;
 const transitions=reviewRule.transitions;

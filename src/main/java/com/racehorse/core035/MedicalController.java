@@ -1,3 +1,12 @@
+// ĐỌC API Y TẾ — lớp nhận request của các màn Vet.
+// Controller là cửa HTTP, không phải toàn bộ nghiệp vụ: nó giao việc cho MedicalService.
+// @GetMapping đọc; @PostMapping tạo/thực hiện hành động; @PutMapping cập nhật phác đồ.
+// @PathVariable lấy caseId từ URL; @RequestBody lấy JSON form; @Valid chạy validation DTO.
+// ApiResponse bọc dữ liệu theo định dạng chung. CREATED/201 dùng cho tài nguyên vừa tạo.
+// Đừng hiểu có endpoint là ai cũng gọi được: service/auth tiếp tục kiểm vai trò và phạm vi.
+// Cách đọc xuyên luồng: FE service.ts → method ở đây → MedicalService → repository/JdbcTemplate → SQL.
+// Các chú thích chỉ hướng dẫn đọc phần liên quan demo; không thay đổi tác giả code có sẵn.
+
 package com.racehorse.core035;
 
 import com.racehorse.common.api.ApiResponse;
