@@ -7,9 +7,9 @@ Chỉ có ngày giờ khác nhau. Không tự đổi tên, số liệu hay câu 
 
 | Khi nào | Làm gì |
 |---|---|
-| Trước mỗi lần tập | Bật SQL Server → chạy `START-RACEHORSE-LOCAL.cmd` → chạy **`TAP-DOT-DU-LIEU.cmd`** (khoảng 3–8 phút). Dữ liệu về y nguyên, buổi tập mở từ khoảng 5 phút sau đó trong 4 giờ. |
-| Giữa 2 lần tập | Chạy lại `TAP-DOT-DU-LIEU.cmd`. Hai lần chạy nên cách nhau ít nhất 15 phút (giới hạn đăng ký 5 lần/15 phút). |
-| **Sáng 20/11, 07:30–09:00** | Bật SQL Server → `START-RACEHORSE-LOCAL.cmd` → **`CHUAN-BI-REVIEW-20-11.cmd`**. Dữ liệu y hệt lúc tập, buổi tập 09:20–13:00. **Sau đó không chạy lại nữa.** |
+| Trước mỗi lần tập | Bật SQL Server → `START-BAN-DA-TEST.cmd` (nếu FE/BE chưa chạy) → **`CHUAN-BI-TAP-AN-TOAN.cmd`**. Chỉ dùng khi thấy **SAFE_DEMO_READY** và log có **DEMO_DATA_PASS**. Dữ liệu về y nguyên, buổi tập mở 4 giờ. **Không chạy khi người khác đang tập.** |
+| Giữa 2 lần tập | Chạy lại `CHUAN-BI-TAP-AN-TOAN.cmd` (cách nhau ít nhất 15 phút vì giới hạn đăng ký 5 lần/15 phút). Sau khi chạy: tải lại trang, đăng nhập lại. |
+| **Sáng 20/11, 07:30–09:00** | Bật SQL Server → `START-BAN-DA-TEST.cmd` → **`CHUAN-BI-REVIEW-20-11-AN-TOAN.cmd`** (script tự chặn nếu chạy ngoài 21:50 ngày 19/11 – 09:00 ngày 20/11). Chờ **SAFE_DEMO_READY**. Buổi tập 09:20–13:00. **Sau đó không chạy lại nữa.** |
 
 - Mở http://localhost:5173 bằng **Microsoft Edge**. Mật khẩu mọi tài khoản: `123456789a`.
 - Mỗi người dùng **1 cửa sổ InPrivate riêng** (Ctrl+Shift+N) để đổi tài khoản không bị dính phiên đăng nhập.
@@ -116,7 +116,7 @@ Tổng quan → Ngựa mới đến → **Ghi khám ban đầu**:
 Hồ sơ **Hồng Ngọc** → Lịch sử cân nặng → ghi thêm **458 kg** → biểu đồ có 2 điểm (MF-02).
 
 ### 1.4 Head Trainer đánh giá sẵn sàng — `headtrainer@gmail.com`
-Ngựa → **Hoàng Kim** → **Ghi đánh giá sẵn sàng**: mức **Sẵn sàng**, nhận xét "Thể lực tốt, có thể vào chương trình tốc độ". Nói: chỉ là khuyến nghị, không chặn kích hoạt.
+Ngựa → **Hoàng Kim** → tab Tổng quan hồ sơ → bấm **xác nhận đã xem hồ sơ** (không có form chọn mức hay nhận xét). Nói: đây chỉ là xác nhận xem xét, không chặn kích hoạt.
 
 ### 1.5 Horse Owner — `horseowner1@gmail.com`
 **Ngựa của tôi**: thấy Hoàng Kim, Lam Kiếm, Hồng Ngọc → mở **Hồng Ngọc** → Sức khỏe & mức sẵn sàng (biểu đồ cân nặng 455 → 458).
@@ -128,8 +128,9 @@ Gõ thẳng URL hồ sơ **Ngọc Trai** (`/horses/3`) → ⛔ "Không có quy�
 
 ### 2.1 Thư viện mẫu — `headtrainer@gmail.com`
 Mẫu chương trình → mở **"Tốc độ · Tăng tốc có kiểm soát"**:
-- **Lưu phiên bản mới**: sửa "Thời lượng khuyến nghị" thành **6 tuần** → lưu → thành phiên bản 2. Chọn lại phiên bản 1 để cho thấy bản cũ chỉ xem.
-- **Sao chép** → tên "Tốc độ · Tăng tốc có kiểm soát copy" → mở bản sao → **Lưu trữ**.
+- **Sao chép** trước → tên "Tốc độ · Tăng tốc có kiểm soát copy" (làm trên bản sao để không ảnh hưởng thư viện).
+- Trên bản sao: **Lưu phiên bản mới**, sửa "Thời lượng khuyến nghị" thành **6 tuần**. Đọc số phiên bản đang hiện trên web, phiên bản mới là số kế tiếp (không mặc định là v2). Chọn lại phiên bản cũ để cho thấy bản cũ chỉ xem.
+- **Lưu trữ** bản sao.
 - Nói (DEC-005): sửa mẫu không làm đổi chương trình đã tạo từ mẫu.
 
 ### 2.2 Tạo chương trình cho Lam Kiếm
@@ -140,7 +141,7 @@ Mẫu chương trình → mở **"Tốc độ · Tăng tốc có kiểm soát"**
 | 1. Ngựa | Gõ tìm **Lam Kiếm** → chọn |
 | 2. Hồ sơ | Xem cân nặng 468, khả năng tập Sẵn sàng |
 | 3. Mẫu | Chọn **"Nước rút · Chuẩn bị cự ly ngắn (dưới 1.400 m)"** (nhãn Phù hợp, có lý do vì ngựa có thế mạnh Nước rút) |
-| 4. Tùy chỉnh | Tên chương trình: **Lam Kiếm · Nước rút 1.200 m**; Mục tiêu huấn luyện: **Chuẩn bị cự ly 1.200 m**; giữ các giai đoạn của mẫu |
+| 4. Tùy chỉnh | Tên chương trình: **Lam Kiếm · Nước rút 1.200 m**; Mục tiêu huấn luyện: **Chuẩn bị cự ly 1.200 m**. Ngày **không tự điền**, nhập: chương trình **20/11/2026 → 31/12/2026**; 3 giai đoạn **20/11–03/12**, **04/12–17/12**, **18/12–31/12** (khi tập tối nay: thay 20/11 bằng ngày hôm nay) |
 | 5. Khối lượng | Giữ mặc định của mẫu |
 | 6. Trainer | **Lê Minh Quân**; Lý do phân công: **Chuyên tốc độ, đang trống lịch** |
 | 7. Xem lại | **Tạo chương trình** → toast thành công góc phải dưới |
@@ -155,13 +156,13 @@ Chương trình được giao → **Kim Sư** → **Tạo buổi tập**:
 | Trường | Giá trị |
 |---|---|
 | Ngày | hôm nay (tự điền) |
-| Giờ bắt đầu | **12:00** (khi tập: giờ chẵn gần nhất **sau** giờ hiện tại) |
+| Giờ bắt đầu | **12:00** khi review. Khi tập: giờ **sau 23:40** hôm nay hoặc ngày mai, vì các buổi mẫu bận tới 23:39 |
 | Thời lượng dự kiến | 60 (tự điền) |
 | Trọng tâm / cường độ | giữ theo giai đoạn (tự điền) |
 | Bài tập | **Khởi động đi bộ**, **Nước kiệu nhẹ** |
 | Work Rider | **Huỳnh Gia Bảo** (thử chọn Phạm Đức Anh trước để thấy bị khóa vì trùng lịch) |
 
-→ **Lưu & thông báo**.
+→ **Lưu & thông báo** → mở **chi tiết buổi vừa tạo** → chọn Groom **Trần Văn Hậu** → **Lưu phân công** (chọn Rider không tự giao Groom).
 
 Thử tạo buổi cho **Bão Cát** và thêm bài **Breeze nước rút** → ⛔ bị chặn, phải xóa hoặc thay bài (BR-15).
 
@@ -169,6 +170,7 @@ Thử tạo buổi cho **Bão Cát** và thêm bài **Breeze nước rút** → 
 Yêu cầu điều chỉnh → 2 đề xuất của **Kim Sư**:
 - Đề xuất "đổi mục tiêu giai đoạn" → **Duyệt**.
 - Đề xuất "kéo dài thời gian" → **Từ chối**, lý do: **Giữ nguyên lịch giai đoạn hiện tại**.
+- Nói rõ: **Duyệt chỉ ghi nhận quyết định**, chưa đổi lịch. Muốn đổi giai đoạn phải bấm **Áp dụng vào giai đoạn** → nhập giá trị → **Áp dụng vào chương trình** (không bắt buộc trong demo).
 
 ---
 
@@ -186,7 +188,7 @@ Mở 2 cửa sổ InPrivate: cửa sổ A cho Groom/Work Rider, cửa sổ B cho
 | 3.6 | workrider1 | Thêm số đo: nhịp tim **205**, tốc độ **38**, quãng đường **900** | ✅ Cảnh báo **CRITICAL** (ngưỡng 180, Q-07) |
 | 3.7 | trainer1 | **Xác nhận** → **Tạm dừng** → **Tiếp tục** → **Dừng vì lý do sức khỏe**: loại **Kiệt sức**, mức **Cao**, mô tả **Nhịp tim vượt 200** | ✅ Buổi Bị gián đoạn + sự cố cho Vet (BR-25) |
 | 3.8 | workrider2 | **Ánh Dương** → Bắt đầu → **Báo cáo vấn đề**: **Khập khiễng**, mức **Cao**, mô tả **Hụt nhịp chân sau trái ở vòng 2** | ✅ Bị gián đoạn, có sự cố (DEC-013) |
-| 3.9 | trainer1 | **Đánh giá** buổi **Xích Thố (đã hoàn thành)**: **Đạt một phần**; tóm tắt **Đạt tốc độ mục tiêu, sức bền chưa đủ**; khuyến nghị **Giữ cường độ, thêm 1 buổi canter** → Lưu | ✅ Hiện ở Thành tích |
+| 3.9 | trainer1 | Mở buổi **Xích Thố (đã hoàn thành)** → tab **Đánh giá & khuyến nghị** → chọn **Đạt một phần mục tiêu**; tóm tắt **Đạt tốc độ mục tiêu, sức bền chưa đủ**; khuyến nghị **Giữ cường độ, thêm 1 buổi canter** → Lưu | ✅ Hiện ở Thành tích |
 | 3.10 | workrider1 | **Lịch sử cưỡi** | ✅ Có buổi đã hoàn thành |
 
 ---
@@ -215,7 +217,7 @@ Mở 2 cửa sổ InPrivate: cửa sổ A cho Groom/Work Rider, cửa sổ B cho
 | # | Tài khoản | Thao tác (giá trị cố định) | Kết quả |
 |---|---|---|---|
 | 5.1 | clubmanager | **Tổng quan** → khối Chăm sóc hôm nay | ✅ Có việc quá giờ |
-| 5.2 | clubmanager | **Chăm sóc & dinh dưỡng** → ngựa **Hồng Ngọc** → Tạo kế hoạch chăm sóc: Groom **Trần Văn Hậu**; Việc 1 **Vệ sinh chuồng**, khung giờ **17:00**, hướng dẫn **Dọn và thay rơm ô chuồng** → **Lưu kế hoạch & giao việc** | ✅ Toast; việc mới trong Chăm sóc hằng ngày (BR-33) |
+| 5.2 | clubmanager | **Chăm sóc & dinh dưỡng** → ngựa **Hồng Ngọc** → Tạo kế hoạch chăm sóc (từ hôm nay): Groom **Trần Văn Hậu**; Việc 1 **Vệ sinh chuồng**, khung giờ **17:00**, hướng dẫn **Dọn và thay rơm ô chuồng** → **Lưu kế hoạch & giao việc** | ✅ Toast; việc mới trong Chăm sóc hằng ngày (BR-33). Việc 17:00 chưa đến giờ nên **chưa hoàn thành được**; dùng việc của An Khang để minh họa hoàn thành |
 | 5.3 | clubmanager | Ngựa **An Khang** → loại **Dinh dưỡng** | ✅ Cỏ khô 4 kg, Thức ăn hạt 2 kg (MF-11) |
 | 5.4 | clubmanager | **Chăm sóc hằng ngày** → việc **quá giờ** của An Khang trên cùng → Thao tác → **Đổi Groom**: **Lý Văn Tài**, lý do **Đổi ca trực** → **Lịch sử** | ✅ Ghi người đổi, lý do, thời điểm |
 | 5.5 | groom | Chăm sóc hằng ngày → gõ **An Khang** → **Hoàn thành** việc quá giờ còn của Trần Văn Hậu và việc **cần làm**; việc **23:30** không có nút Hoàn thành | ✅ BR-34 |
@@ -231,4 +233,6 @@ Mở 2 cửa sổ InPrivate: cửa sổ A cho Groom/Work Rider, cửa sổ B cho
 ---
 
 ## Sau mỗi lần tập
-Chạy lại `TAP-DOT-DU-LIEU.cmd` để dữ liệu về y nguyên. Sáng 20/11 chạy `CHUAN-BI-REVIEW-20-11.cmd` một lần duy nhất.
+Chạy lại `CHUAN-BI-TAP-AN-TOAN.cmd` để dữ liệu về y nguyên. Sáng 20/11 chạy `CHUAN-BI-REVIEW-20-11-AN-TOAN.cmd` một lần duy nhất.
+
+**Lưu ý chung:** dữ liệu y tế và hoạt động là **mô phỏng** để demo, không phải bệnh án thật. Buổi tập bị gián đoạn không tự bắt đầu lại; đóng sự cố không xóa kết quả kiểm tra Bất thường.
