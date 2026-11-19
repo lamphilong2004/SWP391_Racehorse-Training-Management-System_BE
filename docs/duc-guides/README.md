@@ -50,3 +50,5 @@ Controller định tuyến không đồng nghĩa ai cũng gọi được endpoin
 - FE → BE → SQL thật: cần phiên bản FE/BE, tên DB được phép, thời gian, role, request/status và dữ liệu đọc lại. Không đăng JWT/mật khẩu khi chia sẻ evidence.
 
 Khi chỉ bổ sung mục lục hoặc comment, kiểm liên kết và diff là phù hợp; không ghi/xóa dữ liệu để chứng minh một chỉnh sửa tài liệu. Luật runtime vẫn ở source/contract được nhóm duyệt.
+
+Đối chiếu dữ liệu sau thao tác: [hướng dẫn và mẫu SQL chỉ đọc](READ-ONLY-EVIDENCE.md).
