@@ -1,3 +1,12 @@
+// CORE-026 — Backend nhận checklist Groom và quản lý báo cáo sự cố.
+// Phần service dùng chung với thành viên khác; chú thích giải thích luồng demo, không nhận lại tác giả.
+// PreSessionCheck là 5 quan sát trước buổi tập; Incident là báo cáo sự cố riêng do người dùng gửi.
+// ABNORMAL chặn điều kiện bắt đầu và phát thông báo, nhưng không tự tạo Incident.
+// Actor lấy từ phiên xác thực, không lấy người báo/role từ form để tránh giả danh.
+// Repository thực hiện truy vấn; service quy định ai được làm, lúc nào và chuyển trạng thái gì.
+// Groom hoàn tất kiểm tra không tự bắt đầu buổi tập: Work Rider phải đáp ứng điều kiện start riêng.
+// Vet review báo cáo để OPEN_CASE, LINK_CASE hoặc RESOLVE; FE không tự sửa status trong SQL.
+
 package com.racehorse.medical.incident;
 
 import com.racehorse.auth.ActorContext;
@@ -42,6 +51,10 @@ public class Core026Service {
         this.repository=repository;this.actors=actors;this.json=json;this.notifications=notifications;this.calendar=calendar;}
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
+    // Kiểm theo thứ tự: đúng Groom → khóa buổi → SCHEDULED → đã được phân công
+    // → chưa có phiếu → nằm trong cửa sổ từ 12 giờ trước bắt đầu đến hết khung tập.
+    // Sau đó kiểm đúng 5 key, lưu JSON quan sát và tổng hợp ALL_NORMAL/ABNORMAL.
+    // SERIALIZABLE cùng ràng buộc DB giúp hai lần gửi cạnh tranh không tạo hai phiếu.
     public PreSessionCheck submitPrecheck(long sessionId,PreSessionCheckRequest request){
         ActorContext actor=requireRole(RoleCode.GROOM);
         repository.lockSession(sessionId);
@@ -68,6 +81,10 @@ public class Core026Service {
     }
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
+    // Chỉ nhận tối đa một nguồn: preSessionCheckId hoặc trainingSessionId hoặc careTaskId.
+    // Kiểm nguồn thuộc đúng horseId, đúng phân công người báo và chưa có incident cùng nguồn.
+    // Không có nguồn buổi/việc thì xét quyền quan sát tại chuồng theo nhánh authorizeReport.
+    // Lưu xong mới tạo thông báo cho người nhận y tế do repository xác định.
     public Incident create(CreateRequest request){
         ActorContext actor=requireActor();
         if(request==null||request.horseId()==null||request.horseId()<=0||request.observedAt()==null
@@ -124,6 +141,10 @@ public class Core026Service {
     }
 
     @Transactional(isolation=Isolation.SERIALIZABLE)
+    // OPEN_CASE: tạo ca mới và gắn sự cố vào ca đó.
+    // LINK_CASE: thêm báo cáo vào hồ sơ đang mở của đúng con ngựa, không lấy cách chữa của ca cũ.
+    // RESOLVE: đóng sự cố theo trạng thái được phép. Chỉ Vet được chọn các hành động này.
+    // expected giữ trạng thái lúc đọc để transitionIncident phát hiện người khác vừa xử lý.
     public Incident review(long id,ReviewRequest request){
         ActorContext actor=requireRole(RoleCode.VETERINARIAN);
         if(id<=0)throw validation("incidentId must be positive.");if(request==null||request.action()==null)throw validation("action is required.");
@@ -147,6 +168,9 @@ public class Core026Service {
         return repository.incident(id).orElseThrow();
     }
 
+    // Phạm vi báo khác nhau theo vai trò: Trainer theo chương trình/ngựa được giao;
+    // Work Rider theo buổi mình cưỡi; Groom theo việc/buổi được giao hoặc ngựa ACTIVE ở chuồng.
+    // Đừng bỏ các kiểm tra này chỉ để demo nhanh: đăng nhập đúng role chưa đủ để sở hữu mọi buổi.
     private void authorizeReport(ActorContext actor,long horseId,Core026Repository.Session session,
                                  Core026Repository.CheckContext check,boolean careTask,Long programId){
         if(actor.roles().contains(RoleCode.HEAD_TRAINER))return;
