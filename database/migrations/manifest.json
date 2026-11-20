@@ -1,5 +1,5 @@
 {
-  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01+STRENGTH-V20261027_01-candidate +CARE-HISTORY-V20261029_01-candidate +INCIDENT-IN-RIDE-V20261109_01-candidate +DEC016-V20261120_01-candidate",
+  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01+STRENGTH-V20261027_01-candidate +CARE-HISTORY-V20261029_01-candidate +INCIDENT-IN-RIDE-V20261109_01-candidate +DEC016-V20261120_01-candidate +DEC016-RETURN-V20261120_02-candidate",
   "approvedAt": "2026-10-18",
   "approvedBy": "Lam Phi Long",
   "sourceHead": "6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04",
@@ -40,6 +40,11 @@
       "version": "V20261120_01",
       "order": 7,
       "path": "database/migrations/V20261120_01__stable_layout_and_service_billing.sql"
+    },
+    {
+      "version": "V20261120_02",
+      "order": 8,
+      "path": "database/migrations/V20261120_02__payment_confirmed_via_return.sql"
     }
   ],
   "files": [
@@ -109,15 +114,19 @@
     },
     {
       "path": "database/verification/expected-schema-v20261120.json",
-      "sha256": "1d2529faaf18e5149e8c35425f3891b3b93485cac13bdc312cdf86ba389f12e2"
+      "sha256": "91c7512ab33d65fc81ae6d109df94b1db751de1b440476c41a3cc4936c558887"
+    },
+    {
+      "path": "database/migrations/V20261120_02__payment_confirmed_via_return.sql",
+      "sha256": "7506d008637b93263499cae1dd2718c4820e2cf64e66cae301baa2a783bad795"
     }
   ],
   "history": "External local receipt only; not permission to upgrade any existing database",
   "verification": {
     "path": "database/verification/expected-schema-v20261120.json",
-    "sha256": "1d2529faaf18e5149e8c35425f3891b3b93485cac13bdc312cdf86ba389f12e2",
+    "sha256": "91c7512ab33d65fc81ae6d109df94b1db751de1b440476c41a3cc4936c558887",
     "tables": 61,
     "columns": 591,
-    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required + Leader-approved horse strengths and template strength focus (2026-10-27); reviewed additive task change history; legacy metadata verified unchanged on isolated review DB; Leader-approved in-ride incident types widen ck_incident__incident_type (DEC-013, 2026-11-09); Leader-approved stable layout (yards, box positions, maintenance) and owner service billing with VNPay sandbox (DEC-016, 2026-11-20)"
+    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required + Leader-approved horse strengths and template strength focus (2026-10-27); reviewed additive task change history; legacy metadata verified unchanged on isolated review DB; Leader-approved in-ride incident types widen ck_incident__incident_type (DEC-013, 2026-11-09); Leader-approved stable layout (yards, box positions, maintenance) and owner service billing with VNPay sandbox (DEC-016, 2026-11-20); VNPay confirmation from the signed return URL when IPN and querydr are unavailable (DEC-016 follow-up)"
   }
 }

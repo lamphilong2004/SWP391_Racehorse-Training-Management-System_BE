@@ -290,7 +290,35 @@ public class BillingService {
             throw invoiceNotFound();
         }
         String outcome = confirm(payment);
+        if (outcome.equals("UNAVAILABLE")) {
+            outcome = confirmFromSignedReturn(payment, fields);
+        }
         return result(payment.invoiceId(), fields.get("vnp_ResponseCode"), outcome);
+    }
+
+    /**
+     * Fallback when neither the IPN nor querydr can confirm (local machine without a public URL; the sandbox querydr
+     * answered 99). The return parameters are signed by VNPay with the merchant secret (already verified by the caller);
+     * the terminal, the amount and both status codes must match before anything is recorded.
+     */
+    private String confirmFromSignedReturn(PaymentRow payment, Map<String, String> fields) {
+        if (!gateway.properties().tmnCode().equals(fields.get("vnp_TmnCode"))
+                || !String.valueOf(payment.amount() * 100).equals(fields.get("vnp_Amount"))
+                || !payment.txnRef().equals(fields.get("vnp_TxnRef"))) {
+            return "PENDING";
+        }
+        String responseCode = fields.get("vnp_ResponseCode");
+        String transactionStatus = fields.get("vnp_TransactionStatus");
+        if ("00".equals(responseCode) && "00".equals(transactionStatus)) {
+            applySuccess(payment, "RETURN", fields.get("vnp_TransactionNo"), fields.get("vnp_BankCode"),
+                    fields.get("vnp_CardType"), responseCode, transactionStatus, fields.get("vnp_PayDate"));
+            return repository.paymentByTxnRef(payment.txnRef()).map(PaymentRow::status).orElse("PENDING");
+        }
+        if (responseCode != null && !responseCode.isBlank() && !"00".equals(responseCode)) {
+            repository.markPaymentFailed(payment.id(), responseCode, transactionStatus);
+            return "FAILED";
+        }
+        return "PENDING";
     }
 
     /** "Kiểm tra lại": re-queries every PENDING payment of the invoice (owner of the invoice or Club Manager). */
@@ -303,6 +331,9 @@ public class BillingService {
         String outcome = "NO_PENDING_PAYMENT";
         for (PaymentRow payment : repository.pendingPayments(invoice.summary().id())) {
             outcome = confirm(payment);
+            if (outcome.equals("UNAVAILABLE")) {
+                outcome = "PENDING";
+            }
             if (outcome.equals("SUCCESS")) {
                 break;
             }
@@ -349,7 +380,10 @@ public class BillingService {
 
     /* ======================= internals ======================= */
 
-    /** querydr confirmation. SUCCESS / FAILED are written; anything unconfirmed stays PENDING. */
+    /**
+     * querydr confirmation. SUCCESS / FAILED are written; anything unconfirmed stays PENDING. UNAVAILABLE means VNPay
+     * could not be asked (network error, error answer or unverifiable signature): nothing was written.
+     */
     private String confirm(PaymentRow payment) {
         if (!"PENDING".equals(payment.status())) {
             return payment.status();
@@ -357,7 +391,7 @@ public class BillingService {
         boolean expired = payment.expiresAt() != null && Instant.now().isAfter(payment.expiresAt().plusSeconds(300));
         Optional<QueryResult> queried = gateway.query(payment.txnRef(), payment.providerCreateDate());
         if (queried.isEmpty()) {
-            return "PENDING";
+            return "UNAVAILABLE";
         }
         QueryResult result = queried.get();
         if ("00".equals(result.responseCode())) {
@@ -426,6 +460,7 @@ public class BillingService {
             case "SUCCESS" -> "VNPay đã xác nhận thanh toán. Hóa đơn đã được ghi nhận là đã thanh toán.";
             case "FAILED" -> "Giao dịch không thành công hoặc đã bị hủy. Hóa đơn vẫn chưa thanh toán.";
             case "NO_PENDING_PAYMENT" -> "Không có giao dịch nào đang chờ xác nhận.";
+            case "REFUND_REQUIRED" -> "VNPay đã thu tiền nhưng hóa đơn đã được thanh toán hoặc đã hủy. Club Manager sẽ hoàn tiền giao dịch này.";
             default -> "Chưa nhận được xác nhận từ VNPay. Hóa đơn chưa được ghi nhận thanh toán; hãy bấm Kiểm tra lại sau ít phút.";
         };
         return new PaymentResult(invoiceId, invoice.summary().invoiceCode(), invoice.summary().status(), outcome,

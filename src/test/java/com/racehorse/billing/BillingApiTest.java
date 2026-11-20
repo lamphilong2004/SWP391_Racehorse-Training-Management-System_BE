@@ -55,6 +55,8 @@ class BillingApiTest {
         TestJwtProperties.register(registry);
         registry.add("app.payment.vnpay.tmn-code", () -> "TESTTMN1");
         registry.add("app.payment.vnpay.hash-secret", () -> SECRET);
+        // querydr is unreachable in tests (closed local port), like a local machine whose query VNPay cannot answer.
+        registry.add("app.payment.vnpay.api-url", () -> "http://127.0.0.1:9/merchant_webapi/api/transaction");
     }
 
     @org.junit.jupiter.api.AfterEach
@@ -211,6 +213,68 @@ class BillingApiTest {
                         .content("{\"params\":{\"vnp_TxnRef\":\"HD1T1\",\"vnp_ResponseCode\":\"00\",\"vnp_SecureHash\":\"abc\"}}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void whenQuerydrIsUnavailableOnlyAGenuineSignedReturnWithMatchingAmountPays() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7761, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7762, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7762);
+        JsonNode link = json.readTree(mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).path("data");
+        String txnRef = link.path("txnRef").stringValue();
+        long amount = link.path("amount").longValue();
+
+        Map<String, String> tampered = new LinkedHashMap<>(signedIpn(txnRef, amount, "555"));
+        tampered.remove("vnp_SecureHash");
+        tampered.put("vnp_Amount", "100");
+        tampered.put("vnp_SecureHash", VnpaySigner.sign(SECRET, tampered));
+        mvc.perform(post("/api/payments/vnpay/return").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("params", tampered))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("ISSUED"));
+
+        mvc.perform(post("/api/payments/vnpay/return").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("params", signedIpn(txnRef, amount, "777")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        mvc.perform(get("/api/owner/invoices/" + invoiceId).header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.payments[0].confirmedVia").value("RETURN"))
+                .andExpect(jsonPath("$.data.payments[0].providerTransactionNo").value("777"));
+    }
+
+    @Test
+    void aSignedReturnOfACancelledPaymentMarksItFailedAndAllowsANewOne() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7771, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7772, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7772);
+        JsonNode link = json.readTree(mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).path("data");
+        Map<String, String> cancelled = new LinkedHashMap<>(signedIpn(link.path("txnRef").stringValue(), link.path("amount").longValue(), "0"));
+        cancelled.remove("vnp_SecureHash");
+        cancelled.put("vnp_ResponseCode", "24");
+        cancelled.put("vnp_TransactionStatus", "02");
+        cancelled.put("vnp_SecureHash", VnpaySigner.sign(SECRET, cancelled));
+        mvc.perform(post("/api/payments/vnpay/return").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("params", cancelled))))
+                .andExpect(jsonPath("$.data.paymentStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("ISSUED"));
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated());
     }
 
     @Test
