@@ -423,5 +423,5 @@ CREATE TABLE IF NOT EXISTS dbo.payment_transaction (
     confirmed_at TIMESTAMP(3),
     created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP(3),
-    CONSTRAINT ck_test_payment_status CHECK (status IN ('PENDING','SUCCESS','FAILED'))
+    CONSTRAINT ck_test_payment_status CHECK (status IN ('PENDING','SUCCESS','FAILED','REFUND_REQUIRED'))
 );

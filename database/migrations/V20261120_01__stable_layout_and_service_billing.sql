@@ -151,7 +151,9 @@ BEGIN TRY
             CONSTRAINT ck_service_invoice__cancelled CHECK (status <> 'CANCELLED'
                 OR (cancelled_at IS NOT NULL AND cancelled_by_user_id IS NOT NULL AND cancellation_reason IS NOT NULL))
         );
-        EXEC(N'CREATE UNIQUE INDEX ux_service_invoice__horse_month ON dbo.service_invoice (horse_id, billing_month)
+        -- A month may be billed in parts (the current month up to today, the rest later); parts never overlap.
+        -- The service checks overlap under SERIALIZABLE; this index forbids two live invoices starting the same day.
+        EXEC(N'CREATE UNIQUE INDEX ux_service_invoice__horse_period_start ON dbo.service_invoice (horse_id, period_start)
             WHERE status <> ''CANCELLED''');
         CREATE INDEX ix_service_invoice__owner_month ON dbo.service_invoice (owner_user_id, billing_month DESC);
     END;
@@ -204,7 +206,9 @@ BEGIN TRY
             CONSTRAINT fk_payment_transaction__invoice FOREIGN KEY (invoice_id) REFERENCES dbo.service_invoice(id),
             CONSTRAINT fk_payment_transaction__requested_by FOREIGN KEY (requested_by_user_id) REFERENCES dbo.app_user(id),
             CONSTRAINT ck_payment_transaction__provider CHECK (provider IN ('VNPAY')),
-            CONSTRAINT ck_payment_transaction__status CHECK (status IN ('PENDING','SUCCESS','FAILED')),
+            -- REFUND_REQUIRED: VNPay confirmed money for an invoice that was already paid or cancelled; the Club Manager
+            -- must refund it from the VNPay merchant portal. It is never counted as a payment of the invoice.
+            CONSTRAINT ck_payment_transaction__status CHECK (status IN ('PENDING','SUCCESS','FAILED','REFUND_REQUIRED')),
             CONSTRAINT ck_payment_transaction__amount CHECK (amount > 0),
             CONSTRAINT ck_payment_transaction__confirmed_via CHECK (confirmed_via IS NULL OR confirmed_via IN ('IPN','QUERYDR')),
             CONSTRAINT ck_payment_transaction__success CHECK (status <> 'SUCCESS'

@@ -139,11 +139,13 @@ public class BillingRepository {
 
     /* ---------- invoices ---------- */
 
-    public boolean activeInvoiceExists(long horseId, LocalDate billingMonth) {
-        return Boolean.TRUE.equals(jdbc.queryForObject("""
-                SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.service_invoice
-                    WHERE horse_id = ? AND billing_month = ? AND status <> 'CANCELLED') THEN 1 ELSE 0 END
-                """, Boolean.class, horseId, billingMonth));
+    /** Last day of the month already covered by a live (not cancelled) invoice of the horse, if any. */
+    public Optional<LocalDate> billedUntil(long horseId, LocalDate billingMonth) {
+        LocalDate value = jdbc.queryForObject("""
+                SELECT MAX(period_end) FROM dbo.service_invoice
+                WHERE horse_id = ? AND billing_month = ? AND status <> 'CANCELLED'
+                """, LocalDate.class, horseId, billingMonth);
+        return Optional.ofNullable(value);
     }
 
     public int invoiceCountForMonth(LocalDate billingMonth) {
@@ -240,12 +242,41 @@ public class BillingRepository {
     public List<Payment> payments(long invoiceId) {
         return jdbc.query("""
                 SELECT id, provider, txn_ref, amount, status, bank_code, card_type, provider_transaction_no, response_code,
-                       confirmed_via, created_at, confirmed_at
+                       confirmed_via, created_at, confirmed_at, expires_at
                 FROM dbo.payment_transaction WHERE invoice_id = ? ORDER BY created_at DESC, id DESC
                 """, (r, n) -> new Payment(r.getLong("id"), r.getString("provider"), r.getString("txn_ref"),
                 r.getBigDecimal("amount").longValueExact(), r.getString("status"), r.getString("bank_code"),
                 r.getString("card_type"), r.getString("provider_transaction_no"), r.getString("response_code"),
-                r.getString("confirmed_via"), instant(r, "created_at"), instant(r, "confirmed_at")), invoiceId);
+                r.getString("confirmed_via"), instant(r, "created_at"), instant(r, "confirmed_at"),
+                instant(r, "expires_at")), invoiceId);
+    }
+
+    public List<PaymentRow> openPendingPayments(long invoiceId) {
+        return jdbc.query("""
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
+                FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'PENDING' AND expires_at > ?
+                ORDER BY created_at DESC, id DESC
+                """, PAYMENT_ROW, invoiceId, now());
+    }
+
+    public boolean invoiceHasSuccess(long invoiceId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.payment_transaction
+                    WHERE invoice_id = ? AND status = 'SUCCESS') THEN 1 ELSE 0 END
+                """, Boolean.class, invoiceId));
+    }
+
+    /** VNPay took the money but the invoice was already paid or cancelled: keep the facts, flag it for a refund. */
+    public int markPaymentRefundRequired(long paymentId, String via, String transactionNo, String bankCode, String cardType,
+                                         String responseCode, String transactionStatus, String payDate) {
+        LocalDateTime now = now();
+        return jdbc.update("""
+                UPDATE dbo.payment_transaction
+                SET status = 'REFUND_REQUIRED', confirmed_via = ?, confirmed_at = ?, provider_transaction_no = ?,
+                    bank_code = ?, card_type = ?, response_code = ?, transaction_status = ?, provider_pay_date = ?, updated_at = ?
+                WHERE id = ? AND status = 'PENDING'
+                """, via, now, transactionNo, nullIfBlank(bankCode), nullIfBlank(cardType), responseCode,
+                transactionStatus, nullIfBlank(payDate), now, paymentId);
     }
 
     public boolean hasOpenPending(long invoiceId) {

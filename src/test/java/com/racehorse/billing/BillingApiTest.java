@@ -237,6 +237,87 @@ class BillingApiTest {
                 .andExpect(jsonPath("$.data.created[?(@.horse.id == 7750)].status").value("ISSUED"));
     }
 
+    @Test
+    void theRestOfAMonthBilledUpToADayIsBilledLaterWithoutCountingADayTwice() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7741, RoleCode.CLUB_MANAGER).token();
+        TestAccounts.create(mvc, jdbc, encoder, json, 7742, RoleCode.HORSE_OWNER);
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        String month = YearMonth.now(VN).toString();
+        long first = seedHorseAndGenerate(cm, month, 7742);
+        LocalDate today = LocalDate.now(VN);
+        if (today.getDayOfMonth() == 1) {
+            return; // the first part already covers the only billable day
+        }
+        // Simulate that the first invoice was issued yesterday: it covers the month up to yesterday only.
+        jdbc.update("UPDATE dbo.service_invoice_line SET quantity = quantity - 1, amount = (quantity - 1) * unit_price"
+                + " WHERE invoice_id = ? AND service_code = 'BOARDING_CARE_DAILY'", first);
+        jdbc.update("UPDATE dbo.service_invoice SET period_end = ?, total_amount = total_amount - 100000 WHERE id = ?",
+                today.minusDays(1), first);
+        jdbc.update("UPDATE dbo.training_session SET actual_end = ?, actual_start = ? WHERE id = 7751",
+                today.minusDays(1).atTime(2, 0), today.minusDays(1).atTime(1, 0));
+
+        String body = mvc.perform(post("/api/billing/invoices/generate").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"billingMonth\":\"" + month + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        JsonNode second = null;
+        for (JsonNode invoice : json.readTree(body).path("data").path("created")) {
+            if (invoice.path("horse").path("id").longValue() == 7750) second = invoice;
+        }
+        org.junit.jupiter.api.Assertions.assertNotNull(second, body);
+        assertEquals(today.toString(), second.path("periodStart").stringValue());
+        // Only today: 1 boarding day; the session completed today is billed here, the one of yesterday stayed in the first part.
+        assertEquals(100_000L + 300_000L, second.path("totalAmount").longValue());
+    }
+
+    @Test
+    void aSecondPaymentConfirmedForAPaidInvoiceIsFlaggedForRefundNotCountedTwice() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7751, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7752, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7752);
+        String created = mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        JsonNode link = json.readTree(created).path("data");
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict());
+
+        long amount = link.path("amount").longValue();
+        jdbc.update("""
+                INSERT INTO dbo.payment_transaction (invoice_id, provider, txn_ref, amount, status, requested_by_user_id,
+                    provider_create_date, expires_at) VALUES (?, 'VNPAY', 'HDOLDLINK1', ?, 'PENDING', 7752, '20261120090000', ?)
+                """, invoiceId, amount, LocalDateTime.now(ZoneOffset.UTC).plusMinutes(10));
+        mvc.perform(ipnRequest(signedIpn(link.path("txnRef").stringValue(), amount, "111"))).andExpect(jsonPath("$.RspCode").value("00"));
+        mvc.perform(ipnRequest(signedIpn("HDOLDLINK1", amount, "222"))).andExpect(jsonPath("$.RspCode").value("00"));
+
+        mvc.perform(get("/api/billing/invoices/" + invoiceId).header("Authorization", "Bearer " + cm))
+                .andExpect(jsonPath("$.data.invoice.status").value("PAID"))
+                .andExpect(jsonPath("$.data.payments[?(@.txnRef == 'HDOLDLINK1')].status").value("REFUND_REQUIRED"));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id = 7751"
+                + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
+    }
+
+    private static Map<String, String> signedIpn(String txnRef, long amount, String transactionNo) {
+        Map<String, String> ipn = new LinkedHashMap<>();
+        ipn.put("vnp_TmnCode", "TESTTMN1");
+        ipn.put("vnp_Amount", String.valueOf(amount * 100));
+        ipn.put("vnp_BankCode", "NCB");
+        ipn.put("vnp_ResponseCode", "00");
+        ipn.put("vnp_TransactionNo", transactionNo);
+        ipn.put("vnp_TransactionStatus", "00");
+        ipn.put("vnp_TxnRef", txnRef);
+        ipn.put("vnp_SecureHash", VnpaySigner.sign(SECRET, ipn));
+        return ipn;
+    }
+
     /** Horse 7750 stabled since the 1st of the month with 2 COMPLETED sessions (+1 SCHEDULED, not billed). */
     private long seedHorseAndGenerate(String cm, String month, long ownerId) throws Exception {
         LocalDate start = YearMonth.parse(month).atDay(1);

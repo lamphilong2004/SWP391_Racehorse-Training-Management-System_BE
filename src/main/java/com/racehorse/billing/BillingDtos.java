@@ -67,7 +67,7 @@ public final class BillingDtos {
     @Schema(name = "PaymentTransaction")
     public record Payment(long id, String provider, String txnRef, long amount, String status, String bankCode,
                           String cardType, String providerTransactionNo, String responseCode, String confirmedVia,
-                          Instant createdAt, Instant confirmedAt) {
+                          Instant createdAt, Instant confirmedAt, Instant expiresAt) {
     }
 
     @Schema(name = "CreateVnpayPaymentRequest", description = "bankCode optional: VNPAYQR, VNBANK or INTCARD.")

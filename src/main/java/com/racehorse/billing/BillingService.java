@@ -60,8 +60,10 @@ import static com.racehorse.billing.VnpayGateway.VNP_TIME;
 @Service
 public class BillingService {
 
-    public static final long MIN_PRICE = 1_000L;
-    public static final long MAX_PRICE = 100_000_000L;
+    public static final long MIN_PRICE = 5_000L;
+    public static final long MAX_PRICE = 10_000_000L;
+    /** Upper bound of one online payment; a larger invoice is settled with the club directly. */
+    public static final long MAX_ONLINE_PAYMENT = 999_999_999L;
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final BillingRepository repository;
@@ -133,7 +135,10 @@ public class BillingService {
         List<Skipped> skipped = new ArrayList<>();
         int sequence = repository.invoiceCountForMonth(start);
         for (HorseRow horse : repository.horsesStabledBetween(start, end)) {
-            if (repository.activeInvoiceExists(horse.id(), start)) {
+            // A month can be billed in parts: the current month up to today, then the rest after it has passed.
+            // A new part starts the day after the last live invoice of the month, so no day or session is billed twice.
+            LocalDate from = repository.billedUntil(horse.id(), start).map(day -> day.plusDays(1)).orElse(start);
+            if (from.isAfter(end)) {
                 skipped.add(new Skipped(horse.id(), horse.horseCode(), horse.name(), "ALREADY_INVOICED"));
                 continue;
             }
@@ -142,8 +147,10 @@ public class BillingService {
                 skipped.add(new Skipped(horse.id(), horse.horseCode(), horse.name(), "NO_MANAGING_OWNER"));
                 continue;
             }
-            int days = boardingDays(repository.stays(horse.id(), start, end), start, end);
-            int sessions = repository.completedSessions(horse.id(), fromUtc, toUtc);
+            LocalDateTime partFromUtc = from.equals(start) ? fromUtc
+                    : from.atStartOfDay(VN).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+            int days = boardingDays(repository.stays(horse.id(), from, end), from, end);
+            int sessions = repository.completedSessions(horse.id(), partFromUtc, toUtc);
             if (days == 0 && sessions == 0) {
                 skipped.add(new Skipped(horse.id(), horse.horseCode(), horse.name(), "NO_BILLABLE_SERVICE"));
                 continue;
@@ -152,12 +159,12 @@ public class BillingService {
                     Math.multiplyExact((long) sessions, trainingPrice));
             sequence++;
             String code = "HD-" + month.toString().replace("-", "") + "-" + String.format("%04d", sequence);
-            long invoiceId = repository.insertInvoice(code, horse.id(), owner.get(), start, start, end, total,
+            long invoiceId = repository.insertInvoice(code, horse.id(), owner.get(), start, from, end, total,
                     today.plusDays(7), actor.userId());
             int lineNo = 0;
             if (days > 0) {
                 repository.insertLine(invoiceId, ++lineNo, BOARDING, "Lưu chuồng & chăm sóc: " + days + " ngày ("
-                        + DAY.format(start) + " – " + DAY.format(end) + ")", days, boardingPrice);
+                        + DAY.format(from) + " – " + DAY.format(end) + ")", days, boardingPrice);
             }
             if (sessions > 0) {
                 repository.insertLine(invoiceId, ++lineNo, TRAINING, "Huấn luyện: " + sessions + " buổi đã hoàn thành",
@@ -238,6 +245,19 @@ public class BillingService {
         String bankCode = request == null || request.bankCode() == null ? "" : request.bankCode().trim().toUpperCase();
         if (!bankCode.isEmpty() && !List.of("VNPAYQR", "VNBANK", "INTCARD").contains(bankCode)) {
             throw validation("bankCode", "bankCode must be VNPAYQR, VNBANK or INTCARD.");
+        }
+        if (invoice.summary().totalAmount() > MAX_ONLINE_PAYMENT) {
+            throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
+                    "This invoice is above the online payment limit. Settle it with the club.");
+        }
+        // One payment at a time: a still-valid VNPay link could be paid after a second one, charging the owner twice.
+        for (PaymentRow open : repository.openPendingPayments(invoiceId)) {
+            if ("SUCCESS".equals(confirm(open))) {
+                throw conflict("status", "This invoice is not awaiting payment.");
+            }
+        }
+        if (!repository.openPendingPayments(invoiceId).isEmpty()) {
+            throw conflict("status", "A VNPay payment for this invoice is still open. Finish it, or wait until it expires.");
         }
         LocalDateTime createdVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
         LocalDateTime expiresVn = createdVn.plusMinutes(gateway.properties().expireMinutes());
@@ -364,11 +384,27 @@ public class BillingService {
 
     private void applySuccess(PaymentRow payment, String via, String transactionNo, String bankCode, String cardType,
                               String responseCode, String transactionStatus, String payDate) {
-        if (repository.markPaymentSuccess(payment.id(), via, transactionNo == null || transactionNo.isBlank()
-                ? payment.txnRef() : transactionNo, bankCode, cardType, responseCode, transactionStatus, payDate) != 1) {
+        String providerNo = transactionNo == null || transactionNo.isBlank() ? payment.txnRef() : transactionNo;
+        InvoiceRow invoice = repository.invoice(payment.invoiceId()).orElseThrow(BillingService::invoiceNotFound);
+        // Money VNPay took for an invoice that is already paid or was cancelled is never counted twice: it is flagged
+        // for a refund from the VNPay merchant portal and the Club Manager who issued the invoice is told.
+        if (!"ISSUED".equals(invoice.summary().status()) || repository.invoiceHasSuccess(payment.invoiceId())) {
+            if (repository.markPaymentRefundRequired(payment.id(), via, providerNo, bankCode, cardType, responseCode,
+                    transactionStatus, payDate) == 1) {
+                notifications.persistAndPublish(invoice.issuedBy().id(), NotificationApi.Category.ALERTS,
+                        "SERVICE_PAYMENT_REFUND_REQUIRED", "Cần hoàn tiền VNPay",
+                        "VNPay xác nhận thêm " + vnd(payment.amount()) + " cho hóa đơn " + invoice.summary().invoiceCode()
+                                + " đã thanh toán hoặc đã hủy. Hãy hoàn tiền giao dịch " + providerNo + " trên cổng VNPay.",
+                        "SERVICE_INVOICE", payment.invoiceId(), false);
+                repository.auditSystem("SERVICE_PAYMENT_REFUND_REQUIRED", payment.invoiceId(),
+                        "VNPay " + via + " confirmed " + payment.txnRef() + " for an invoice that is not awaiting payment.");
+            }
             return;
         }
-        InvoiceRow invoice = repository.invoice(payment.invoiceId()).orElseThrow(BillingService::invoiceNotFound);
+        if (repository.markPaymentSuccess(payment.id(), via, providerNo, bankCode, cardType, responseCode,
+                transactionStatus, payDate) != 1) {
+            return;
+        }
         if (repository.markInvoicePaid(payment.invoiceId()) == 1) {
             String code = invoice.summary().invoiceCode();
             notifications.persistAndPublish(invoice.ownerUserId(), NotificationApi.Category.ALERTS,
@@ -470,7 +506,7 @@ public class BillingService {
 
     private static void checkPrice(List<ErrorDetail> errors, String field, Long value) {
         if (value != null && (value < MIN_PRICE || value > MAX_PRICE)) {
-            errors.add(new ErrorDetail(field, "Price must be between 1,000 and 100,000,000 VND."));
+            errors.add(new ErrorDetail(field, "Price must be between 5,000 and 10,000,000 VND."));
         }
     }
 
