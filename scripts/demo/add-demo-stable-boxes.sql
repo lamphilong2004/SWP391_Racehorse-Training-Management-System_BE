@@ -1,22 +1,19 @@
--- Demo stable boxes C-01 .. C-99 (reference data; the API has no endpoint to create boxes).
--- Inserts only missing codes and repairs only the yard name of demo boxes C-xx; never deletes. ASCII-only on purpose (NCHAR). Run on your own local database:
+-- DEC-016: stable boxes are no longer added freely. Every box is a cell of a yard (stable_yard rows x columns), created by
+-- migration V20261120_01 (yards A, B, C: 2 x 10 = 60 boxes) or by the Club Manager on "Sơ đồ chuồng" (POST /api/stable-yards,
+-- at most 6 yards of 4 x 10). This script only reports the layout; it never inserts, updates or deletes a row.
 --   sqlcmd -S localhost -E -d <your database> -i scripts/demo/add-demo-stable-boxes.sql
-SET XACT_ABORT ON; SET NOCOUNT ON;
-BEGIN TRANSACTION;
-DECLARE @boxes TABLE (box_code varchar(20) NOT NULL, yard nvarchar(100) NOT NULL);
-DECLARE @i int = 1;
-WHILE @i <= 99
+SET NOCOUNT ON;
+IF OBJECT_ID(N'dbo.stable_yard', N'U') IS NULL
 BEGIN
-    INSERT @boxes (box_code, yard) VALUES (CONCAT('C-', RIGHT(CONCAT('0', @i), 2)), N'Khu chu' + NCHAR(7891) + N'ng C'); -- NCHAR keeps the name correct whatever code page sqlcmd reads the file with
-    SET @i += 1;
+    PRINT 'Apply database/migrations/V20261120_01__stable_layout_and_service_billing.sql first.';
+    RETURN;
 END;
-INSERT dbo.stable_box (box_code, yard)
-SELECT b.box_code, b.yard FROM @boxes b
-WHERE NOT EXISTS (SELECT 1 FROM dbo.stable_box s WITH (UPDLOCK, HOLDLOCK) WHERE s.box_code = b.box_code);
-SELECT @@ROWCOUNT AS inserted;
--- Repair demo boxes inserted by older copies of this file through a non-UTF-8 code page (garbled yard name).
-UPDATE dbo.stable_box SET yard = N'Khu chu' + NCHAR(7891) + N'ng C'
-WHERE box_code LIKE 'C-[0-9][0-9]' AND yard <> N'Khu chu' + NCHAR(7891) + N'ng C';
-SELECT @@ROWCOUNT AS yard_name_repaired;
-COMMIT TRANSACTION;
-SELECT COUNT(*) AS total_boxes FROM dbo.stable_box;
+SELECT y.yard_code, y.name, y.row_count, y.column_count, y.row_count * y.column_count AS capacity,
+       SUM(CASE WHEN b.box_status = 'ACTIVE' AND a.id IS NULL THEN 1 ELSE 0 END) AS free_boxes,
+       SUM(CASE WHEN a.id IS NOT NULL THEN 1 ELSE 0 END) AS occupied_boxes,
+       SUM(CASE WHEN b.box_status = 'MAINTENANCE' THEN 1 ELSE 0 END) AS maintenance_boxes
+FROM dbo.stable_yard y
+LEFT JOIN dbo.stable_box b ON b.stable_yard_id = y.id
+LEFT JOIN dbo.horse_stable_assignment a ON a.stable_box_id = b.id AND a.effective_to IS NULL
+GROUP BY y.yard_code, y.name, y.row_count, y.column_count
+ORDER BY y.yard_code;

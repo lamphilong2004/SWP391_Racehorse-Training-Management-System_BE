@@ -166,10 +166,14 @@ public class HorseRepository {
             SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box WHERE id=?) THEN 1 ELSE 0 END
             """, Boolean.class, stableBoxId));
     }
-    /** DEC-016: a box is assignable only while ACTIVE (not under maintenance, not retired). */
+    /**
+     * DEC-016: a box is assignable only while ACTIVE (not under maintenance, not retired) and, once a stable layout
+     * exists, only when it is a cell of a yard. Capacity therefore never exceeds the yard grids.
+     */
     public boolean stableBoxAssignable(long stableBoxId) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
-            SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box WHERE id=? AND box_status='ACTIVE') THEN 1 ELSE 0 END
+            SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box b WHERE b.id=? AND b.box_status='ACTIVE'
+                AND (b.stable_yard_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM dbo.stable_yard))) THEN 1 ELSE 0 END
             """, Boolean.class, stableBoxId));
     }
     /** DEC-016: a legacy box outside every yard is retired once its horse moves out, so it is never reused. */

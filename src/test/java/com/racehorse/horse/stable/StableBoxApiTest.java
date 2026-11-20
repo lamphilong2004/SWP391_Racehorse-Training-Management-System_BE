@@ -99,6 +99,14 @@ class StableBoxApiTest {
         nextUserId.set(500);
     }
 
+    /** DEC-016: leave no yard behind; other tests assign boxes in a database without a stable layout. */
+    @org.junit.jupiter.api.AfterEach
+    void removeLayout() {
+        jdbcTemplate.update("DELETE FROM dbo.horse_stable_assignment WHERE stable_box_id IN (1, 2, 3)");
+        jdbcTemplate.update("DELETE FROM dbo.stable_box WHERE stable_yard_id IN (901, 902)");
+        jdbcTemplate.update("DELETE FROM dbo.stable_yard WHERE id IN (901, 902)");
+    }
+
     @Test
     void headTrainerReadsOccupancyFromOpenAssignmentsAndCanFilter() throws Exception {
         seedStableBoxes();
