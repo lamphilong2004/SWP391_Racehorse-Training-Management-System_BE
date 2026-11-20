@@ -163,8 +163,8 @@ public class BillingService {
                     today.plusDays(7), actor.userId());
             int lineNo = 0;
             if (days > 0) {
-                repository.insertLine(invoiceId, ++lineNo, BOARDING, "Lưu chuồng & chăm sóc: " + days + " ngày ("
-                        + DAY.format(from) + " – " + DAY.format(end) + ")", days, boardingPrice);
+                repository.insertLine(invoiceId, ++lineNo, BOARDING, "Lưu chuồng & chăm sóc: " + days
+                        + " ngày ngựa ở chuồng trong kỳ " + DAY.format(from) + " – " + DAY.format(end), days, boardingPrice);
             }
             if (sessions > 0) {
                 repository.insertLine(invoiceId, ++lineNo, TRAINING, "Huấn luyện: " + sessions + " buổi đã hoàn thành",

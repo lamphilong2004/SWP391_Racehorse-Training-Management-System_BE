@@ -47,14 +47,21 @@ BEGIN TRY
             WHERE stable_yard_id IS NOT NULL');
     END;
 
-    IF OBJECT_ID(N'dbo.trg_stable_box__within_yard', N'TR') IS NULL
-        EXEC(N'CREATE TRIGGER dbo.trg_stable_box__within_yard ON dbo.stable_box AFTER INSERT, UPDATE AS
+    -- A box position must lie inside its yard grid. A CHECK constraint (not a trigger) keeps INSERT ... OUTPUT usable.
+    -- Yard dimensions never change after creation (no API updates them), so checking the box row is sufficient.
+    IF OBJECT_ID(N'dbo.fn_stable_box_position_in_yard', N'FN') IS NULL
+        EXEC(N'CREATE FUNCTION dbo.fn_stable_box_position_in_yard (@yard_id BIGINT, @row_no INT, @column_no INT)
+        RETURNS BIT WITH SCHEMABINDING AS
         BEGIN
-            SET NOCOUNT ON;
-            IF EXISTS (SELECT 1 FROM inserted i JOIN dbo.stable_yard y ON y.id = i.stable_yard_id
-                       WHERE i.row_no > y.row_count OR i.column_no > y.column_count)
-                THROW 51100, ''Stable box position is outside the yard layout.'', 1;
+            RETURN CASE
+                WHEN @yard_id IS NULL THEN 1
+                WHEN EXISTS (SELECT 1 FROM dbo.stable_yard y WHERE y.id = @yard_id
+                             AND @row_no BETWEEN 1 AND y.row_count AND @column_no BETWEEN 1 AND y.column_count) THEN 1
+                ELSE 0 END;
         END');
+    IF OBJECT_ID(N'dbo.ck_stable_box__position_in_yard', N'C') IS NULL
+        EXEC(N'ALTER TABLE dbo.stable_box ADD CONSTRAINT ck_stable_box__position_in_yard
+            CHECK (dbo.fn_stable_box_position_in_yard(stable_yard_id, row_no, column_no) = 1)');
 
     INSERT dbo.stable_yard (yard_code, name, row_count, column_count)
     SELECT v.yard_code, v.name, 2, 10
