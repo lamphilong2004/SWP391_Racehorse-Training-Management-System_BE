@@ -165,6 +165,45 @@ class StableLayoutApiTest {
     }
 
     @Test
+    void releasingABoxFreesItTodayKeepsHistoryAndRequiresAReason() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7605, RoleCode.CLUB_MANAGER).token();
+        String groom = TestAccounts.create(mvc, jdbc, encoder, json, 7606, RoleCode.GROOM).token();
+        mvc.perform(post("/api/stable-yards").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"yardCode\":\"X\",\"name\":\"Khu X\",\"rowCount\":1,\"columnCount\":1}"))
+                .andExpect(status().isCreated());
+        long box = jdbc.queryForObject("SELECT id FROM dbo.stable_box WHERE box_code = 'X-01'", Long.class);
+        jdbc.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (7652, 'RH-7652', 'Leaving Horse', 'ACTIVE')");
+        jdbc.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (7653, 'RH-7653', 'Next Horse', 'DRAFT')");
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        jdbc.update("""
+                INSERT INTO dbo.horse_stable_assignment (horse_id, stable_box_id, assigned_by_user_id, effective_from)
+                VALUES (7652, ?, 7605, ?)
+                """, box, today.minusDays(10));
+
+        mvc.perform(post("/api/stable-boxes/" + box + "/release").header("Authorization", "Bearer " + groom)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Bán ngựa\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/stable-boxes/" + box + "/release").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/stable-boxes/" + box + "/release").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Bán ngựa\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.free").value(1))
+                .andExpect(jsonPath("$.data.yards[0].boxes[0].horse").doesNotExist());
+        org.junit.jupiter.api.Assertions.assertEquals(today.minusDays(1), jdbc.queryForObject(
+                "SELECT effective_to FROM dbo.horse_stable_assignment WHERE horse_id = 7652", LocalDate.class));
+        mvc.perform(post("/api/stable-boxes/" + box + "/release").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Lần nữa\"}"))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/horses/7653/stable-assignments").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stableBoxId\":" + box + ",\"effectiveFrom\":\"" + today + "\"}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void aLegacyBoxOutsideTheLayoutIsShownUntilItsHorseMovesAndIsThenRetired() throws Exception {
         String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7604, RoleCode.CLUB_MANAGER).token();
         mvc.perform(post("/api/stable-yards").header("Authorization", "Bearer " + cm)

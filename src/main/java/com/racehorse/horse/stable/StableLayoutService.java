@@ -163,6 +163,37 @@ public class StableLayoutService {
         return map();
     }
 
+    /**
+     * The horse leaves the stable (sold, retired, long trip) from today (Vietnam date): its stay ends yesterday, the box
+     * is free today and boarding days stop counting from today. History is kept; a legacy box outside the layout retires.
+     */
+    @Transactional(isolation = Isolation.SERIALIZABLE)
+    public StableMap releaseBox(long boxId, StableLayoutDtos.ReleaseBoxRequest request) {
+        ActorContext actor = actor();
+        String reason = request == null || request.reason() == null ? "" : request.reason().trim();
+        if (reason.isEmpty() || reason.length() > 300) {
+            throw validation("reason", "A reason is required to release a box (at most 300 characters).");
+        }
+        BoxState box = repository.box(boxId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Stable box not found."));
+        StableLayoutRepository.OpenAssignment assignment = repository.openAssignment(boxId)
+                .orElseThrow(() -> conflict("boxId", "This box has no horse to release."));
+        if (repository.horseInActiveSession(assignment.horseId())) {
+            throw conflict("boxId", "The horse is in a training session right now. Release the box after the session ends.");
+        }
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        // The horse is out of the box from today, so the stay ends yesterday and the box can be assigned again today.
+        // A stay that only started today (or later) keeps its first day, the earliest end its period check allows.
+        java.time.LocalDate effectiveTo = assignment.effectiveFrom().isBefore(today) ? today.minusDays(1) : assignment.effectiveFrom();
+        if (repository.closeAssignment(assignment.id(), effectiveTo) != 1) {
+            throw conflict("boxId", "The box changed while saving. Reload the stable map.");
+        }
+        repository.retireIfOutsideLayout(boxId);
+        repository.audit(actor.userId(), "CLUB_MANAGER", "STABLE_BOX_RELEASED", "STABLE_BOX", boxId,
+                "Horse " + assignment.horseCode() + " left box " + box.boxCode() + " from " + today + " (stay ended " + effectiveTo + "): " + reason);
+        return map();
+    }
+
     private static Occupant occupant(BoxRow box) {
         return box.horseId() == null ? null
                 : new Occupant(box.horseId(), box.horseCode(), box.horseName(), box.lifecycle());

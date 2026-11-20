@@ -129,6 +129,42 @@ public class StableLayoutRepository {
                 """, newStatus, now(), boxId, expectedStatus);
     }
 
+    public record OpenAssignment(long id, long horseId, String horseCode, String horseName, java.time.LocalDate effectiveFrom) {
+    }
+
+    public Optional<OpenAssignment> openAssignment(long boxId) {
+        return jdbc.query("""
+                SELECT a.id, h.id AS horse_id, h.horse_code, h.name, a.effective_from
+                FROM dbo.horse_stable_assignment a JOIN dbo.horse h ON h.id = a.horse_id
+                WHERE a.stable_box_id = ? AND a.effective_to IS NULL
+                """, (r, n) -> new OpenAssignment(r.getLong("id"), r.getLong("horse_id"), r.getString("horse_code"),
+                r.getString("name"), r.getObject("effective_from", java.time.LocalDate.class)), boxId).stream().findFirst();
+    }
+
+    /** A horse riding right now (IN_PROGRESS or PAUSED session) cannot leave its box. */
+    public boolean horseInActiveSession(long horseId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.training_session ts
+                    JOIN dbo.horse_program_phase p ON p.id = ts.horse_program_phase_id
+                    JOIN dbo.horse_training_program hp ON hp.id = p.horse_training_program_id
+                    WHERE hp.horse_id = ? AND ts.status IN ('IN_PROGRESS','PAUSED')) THEN 1 ELSE 0 END
+                """, Boolean.class, horseId));
+    }
+
+    public int closeAssignment(long assignmentId, java.time.LocalDate effectiveTo) {
+        return jdbc.update("""
+                UPDATE dbo.horse_stable_assignment SET effective_to = ?, updated_at = ?
+                WHERE id = ? AND effective_to IS NULL
+                """, effectiveTo, now(), assignmentId);
+    }
+
+    public void retireIfOutsideLayout(long boxId) {
+        jdbc.update("""
+                UPDATE dbo.stable_box SET box_status = 'RETIRED', updated_at = ?
+                WHERE id = ? AND stable_yard_id IS NULL AND box_status = 'ACTIVE'
+                """, now(), boxId);
+    }
+
     public void audit(long actorUserId, String actorRole, String action, String targetType, long targetId, String summary) {
         jdbc.update("""
                 INSERT INTO dbo.audit_log (actor_user_id, actor_role, action, target_type, target_id, safe_summary, source)

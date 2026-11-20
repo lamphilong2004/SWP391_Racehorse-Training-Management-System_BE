@@ -61,6 +61,10 @@ public final class StableLayoutDtos {
     public record CreateYardRequest(String yardCode, String name, Integer rowCount, Integer columnCount) {
     }
 
+    @Schema(name = "ReleaseStableBoxRequest")
+    public record ReleaseBoxRequest(String reason) {
+    }
+
     @Schema(name = "UpdateStableBoxStatusRequest")
     public record UpdateBoxStatusRequest(String status, String reason) {
     }

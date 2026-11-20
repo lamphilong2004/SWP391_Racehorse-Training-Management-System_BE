@@ -48,6 +48,17 @@ public class StableLayoutController {
         return ApiResponse.ok(service.createYard(request));
     }
 
+    @PostMapping("/api/stable-boxes/{boxId}/release")
+    @PreAuthorize("hasRole('CLUB_MANAGER')")
+    @Operation(operationId = "releaseStableBox", summary = "The horse leaves the stable: end its box assignment today",
+            description = "A reason is required. Refused while the horse is in a training session. The stay ends yesterday, so the box is free today;"
+                    + " boarding days stop counting from today; history is kept. Returns the updated map.",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<StableMap> releaseBox(@PathVariable long boxId,
+                                             @RequestBody StableLayoutDtos.ReleaseBoxRequest request) {
+        return ApiResponse.ok(service.releaseBox(boxId, request));
+    }
+
     @PatchMapping("/api/stable-boxes/{boxId}/status")
     @PreAuthorize("hasRole('CLUB_MANAGER')")
     @Operation(operationId = "updateStableBoxStatus", summary = "Put a free box under maintenance or reopen it",
