@@ -107,6 +107,43 @@ public class BillingService {
         return prices();
     }
 
+    /* ======================= Club Manager: receiving bank account (VietQR) ======================= */
+
+    private static final java.util.regex.Pattern BIN = java.util.regex.Pattern.compile("[0-9]{6,8}");
+    private static final java.util.regex.Pattern ACCOUNT_NO = java.util.regex.Pattern.compile("[0-9A-Za-z]{4,19}");
+
+    @Transactional(readOnly = true)
+    public BillingDtos.PaymentAccount paymentAccount() {
+        return repository.currentPaymentAccount().orElse(null);
+    }
+
+    @Transactional
+    public BillingDtos.PaymentAccount updatePaymentAccount(BillingDtos.PaymentAccountRequest request) {
+        ActorContext actor = actor();
+        String bin = request == null || request.bankBin() == null ? "" : request.bankBin().trim();
+        String bankName = request == null || request.bankName() == null ? "" : request.bankName().trim();
+        String accountNo = request == null || request.accountNo() == null ? "" : request.accountNo().replace(" ", "").trim();
+        String accountName = request == null || request.accountName() == null ? "" : request.accountName().trim();
+        List<ErrorDetail> errors = new ArrayList<>();
+        if (!BIN.matcher(bin).matches()) {
+            errors.add(new ErrorDetail("bankBin", "Choose a bank."));
+        }
+        if (bankName.isEmpty() || bankName.length() > 100) {
+            errors.add(new ErrorDetail("bankName", "Choose a bank."));
+        }
+        if (!ACCOUNT_NO.matcher(accountNo).matches()) {
+            errors.add(new ErrorDetail("accountNo", "Account number must be 4-19 letters or digits."));
+        }
+        if (accountName.isEmpty() || accountName.length() > 100) {
+            errors.add(new ErrorDetail("accountName", "Account holder name is required (at most 100 characters)."));
+        }
+        if (!errors.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, errors.getFirst().message(), errors);
+        }
+        repository.insertPaymentAccount(bin, bankName, accountNo, accountName, actor.userId());
+        return paymentAccount();
+    }
+
     /* ======================= Club Manager: invoices ======================= */
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
@@ -272,6 +309,63 @@ public class BillingService {
         return new PaymentLink(url, txnRef, amount, expiresVn.atZone(VN).toInstant());
     }
 
+    /** What the owner's VietQR code encodes: the club's receiving account, the invoice total, the invoice code. */
+    @Transactional(readOnly = true)
+    public BillingDtos.QrTransfer qrTransfer(long invoiceId) {
+        InvoiceRow invoice = ownInvoice(invoiceId, actor());
+        if (!"ISSUED".equals(invoice.summary().status())) {
+            throw conflict("status", "This invoice is not awaiting payment.");
+        }
+        BillingDtos.PaymentAccount account = requireAccount();
+        return new BillingDtos.QrTransfer(account.bankBin(), account.bankName(), account.accountNo(), account.accountName(),
+                invoice.summary().totalAmount(), transferContent(invoice.summary().invoiceCode()));
+    }
+
+    /**
+     * The owner pressed "Thanh toán" after scanning the VietQR code. Recorded at once as a successful payment declared by
+     * the owner (provider VIETQR, confirmed_via OWNER) and the invoice becomes PAID; the record never claims a bank check.
+     */
+    @Transactional(isolation = Isolation.SERIALIZABLE)
+    public PaymentResult confirmQrTransfer(long invoiceId) {
+        ActorContext actor = actor();
+        InvoiceRow invoice = ownInvoice(invoiceId, actor);
+        if (!"ISSUED".equals(invoice.summary().status()) || repository.invoiceHasSuccess(invoiceId)) {
+            throw conflict("status", "This invoice is not awaiting payment.");
+        }
+        BillingDtos.PaymentAccount account = requireAccount();
+        LocalDateTime nowVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
+        String txnRef = "QR" + invoiceId + "T" + VNP_TIME.format(nowVn).substring(2) + gateway.randomId(2);
+        long amount = invoice.summary().totalAmount();
+        repository.insertOwnerConfirmedTransfer(invoiceId, txnRef, amount, actor.userId(), account.bankBin(),
+                VNP_TIME.format(nowVn));
+        if (repository.markInvoicePaid(invoiceId) != 1) {
+            throw conflict("status", "This invoice is not awaiting payment.");
+        }
+        String code = invoice.summary().invoiceCode();
+        notifications.persistAndPublish(invoice.ownerUserId(), NotificationApi.Category.ALERTS, "SERVICE_INVOICE_PAID",
+                "Đã thanh toán hóa đơn", "Đã ghi nhận chuyển khoản QR " + vnd(amount) + " cho hóa đơn " + code + ".",
+                "SERVICE_INVOICE", invoiceId, false);
+        notifications.persistAndPublish(invoice.issuedBy().id(), NotificationApi.Category.ALERTS, "SERVICE_INVOICE_PAID",
+                "Chủ ngựa đã thanh toán", invoice.summary().owner().fullName() + " xác nhận chuyển khoản QR "
+                        + vnd(amount) + " cho hóa đơn " + code + " vào tài khoản " + account.bankName() + " "
+                        + account.accountNo() + ".", "SERVICE_INVOICE", invoiceId, false);
+        repository.audit(actor.userId(), RoleCode.HORSE_OWNER.name(), "SERVICE_INVOICE_PAID", invoiceId,
+                "Owner declared a VietQR transfer " + txnRef + " of " + amount + " VND to " + account.bankName() + " "
+                        + account.accountNo() + " (content " + transferContent(code) + ").");
+        return new PaymentResult(invoiceId, code, "PAID", "SUCCESS", null,
+                "Đã ghi nhận thanh toán chuyển khoản QR. Hóa đơn đã được thanh toán.");
+    }
+
+    private BillingDtos.PaymentAccount requireAccount() {
+        return repository.currentPaymentAccount().orElseThrow(() -> new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION,
+                "The club has not set a receiving bank account yet."));
+    }
+
+    /** Transfer content: the invoice code without separators (VietQR allows letters and digits, at most 50). */
+    static String transferContent(String invoiceCode) {
+        return invoiceCode.replaceAll("[^A-Za-z0-9]", "");
+    }
+
     /**
      * Browser return from VNPay. The signature is checked, then the result is confirmed with querydr before anything is
      * written; an unconfirmed result keeps the payment PENDING.
@@ -418,7 +512,8 @@ public class BillingService {
 
     private void applySuccess(PaymentRow payment, String via, String transactionNo, String bankCode, String cardType,
                               String responseCode, String transactionStatus, String payDate) {
-        String providerNo = transactionNo == null || transactionNo.isBlank() ? payment.txnRef() : transactionNo;
+        // provider_transaction_no holds at most 20 characters; VNPay's own number is used, never our longer reference.
+        String providerNo = transactionNo == null || transactionNo.isBlank() ? "UNKNOWN" : transactionNo;
         InvoiceRow invoice = repository.invoice(payment.invoiceId()).orElseThrow(BillingService::invoiceNotFound);
         // Money VNPay took for an invoice that is already paid or was cancelled is never counted twice: it is flagged
         // for a refund from the VNPay merchant portal and the Club Manager who issued the invoice is told.

@@ -71,6 +71,7 @@ class BillingApiTest {
         jdbc.update("DELETE FROM dbo.service_invoice_line");
         jdbc.update("DELETE FROM dbo.service_invoice");
         jdbc.update("DELETE FROM dbo.service_price");
+        jdbc.update("DELETE FROM dbo.club_payment_account");
         jdbc.update("DELETE FROM dbo.notification WHERE recipient_user_id BETWEEN 7700 AND 7799");
         jdbc.update("DELETE FROM dbo.training_session WHERE id BETWEEN 7700 AND 7799");
         jdbc.update("DELETE FROM dbo.horse_program_phase WHERE id BETWEEN 7700 AND 7799");
@@ -203,6 +204,62 @@ class BillingApiTest {
         mvc.perform(post("/api/billing/invoices/" + invoiceId + "/cancel").header("Authorization", "Bearer " + cm)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Sai số\"}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void ownerScansTheClubVietQrAndPressesPayToSettleTheInvoiceWithHistory() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7781, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7782, RoleCode.HORSE_OWNER).token();
+        String stranger = TestAccounts.create(mvc, jdbc, encoder, json, 7783, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7782);
+
+        mvc.perform(get("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isConflict());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankBin\":\"ABC\",\"bankName\":\"\",\"accountNo\":\"12\",\"accountName\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankBin\":\"970436\",\"bankName\":\"Vietcombank\",\"accountNo\":\"0123456789\",\"accountName\":\"X\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankBin\":\"970436\",\"bankName\":\"Vietcombank\",\"accountNo\":\"0123 456 789\",\"accountName\":\"CLB DUA NGUA G2\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountNo").value("0123456789"));
+
+        String code = json.readTree(mvc.perform(get("/api/owner/invoices/" + invoiceId).header("Authorization", "Bearer " + owner))
+                .andReturn().getResponse().getContentAsString()).path("data").path("invoice").path("invoiceCode").stringValue();
+        long total = jdbc.queryForObject("SELECT CAST(total_amount AS BIGINT) FROM dbo.service_invoice WHERE id = ?", Long.class, invoiceId);
+        mvc.perform(get("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.bankBin").value("970436"))
+                .andExpect(jsonPath("$.data.accountNo").value("0123456789"))
+                .andExpect(jsonPath("$.data.accountName").value("CLB DUA NGUA G2"))
+                .andExpect(jsonPath("$.data.amount").value(total))
+                .andExpect(jsonPath("$.data.content").value(code.replace("-", "")));
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + stranger))
+                .andExpect(status().isNotFound());
+
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"))
+                .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"));
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isConflict());
+        mvc.perform(get("/api/billing/invoices/" + invoiceId).header("Authorization", "Bearer " + cm))
+                .andExpect(jsonPath("$.data.invoice.status").value("PAID"))
+                .andExpect(jsonPath("$.data.payments[0].provider").value("VIETQR"))
+                .andExpect(jsonPath("$.data.payments[0].confirmedVia").value("OWNER"))
+                .andExpect(jsonPath("$.data.payments[0].amount").value(total))
+                .andExpect(jsonPath("$.data.payments[0].bankCode").value("970436"));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id = 7781"
+                + " AND notification_type = 'SERVICE_INVOICE_PAID'", Integer.class));
     }
 
     @Test

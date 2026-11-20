@@ -82,6 +82,19 @@ public final class BillingDtos {
     public record ReturnRequest(Map<String, String> params) {
     }
 
+    @Schema(name = "ClubPaymentAccount", description = "Receiving bank account shown in the VietQR code (BIN per NAPAS).")
+    public record PaymentAccount(String bankBin, String bankName, String accountNo, String accountName, Instant updatedAt,
+                                 String updatedBy) {
+    }
+
+    @Schema(name = "UpdateClubPaymentAccountRequest")
+    public record PaymentAccountRequest(String bankBin, String bankName, String accountNo, String accountName) {
+    }
+
+    @Schema(name = "VietQrTransfer", description = "What the VietQR code encodes: receiving account, invoice total, transfer content.")
+    public record QrTransfer(String bankBin, String bankName, String accountNo, String accountName, long amount, String content) {
+    }
+
     @Schema(name = "PaymentResult")
     public record PaymentResult(long invoiceId, String invoiceCode, String invoiceStatus, String paymentStatus,
                                 String responseCode, String message) {

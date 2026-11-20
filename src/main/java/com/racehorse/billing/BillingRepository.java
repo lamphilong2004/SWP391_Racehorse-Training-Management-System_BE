@@ -98,6 +98,52 @@ public class BillingRepository {
                 """, serviceCode, BigDecimal.valueOf(unitPrice), userId, now());
     }
 
+    /* ---------- receiving bank account (VietQR) ---------- */
+
+    public Optional<BillingDtos.PaymentAccount> currentPaymentAccount() {
+        return jdbc.query("""
+                SELECT TOP 1 a.bank_bin, a.bank_name, a.account_no, a.account_name, a.created_at, u.full_name
+                FROM dbo.club_payment_account a JOIN dbo.app_user u ON u.id = a.created_by_user_id
+                ORDER BY a.created_at DESC, a.id DESC
+                """, (r, n) -> new BillingDtos.PaymentAccount(r.getString("bank_bin"), r.getString("bank_name"),
+                r.getString("account_no"), r.getString("account_name"), instant(r, "created_at"), r.getString("full_name")))
+                .stream().findFirst();
+    }
+
+    public void insertPaymentAccount(String bankBin, String bankName, String accountNo, String accountName, long userId) {
+        jdbc.update("""
+                INSERT INTO dbo.club_payment_account (bank_bin, bank_name, account_no, account_name, created_by_user_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, bankBin, bankName, accountNo, accountName, userId, now());
+    }
+
+    /** A bank transfer the owner declared after scanning the VietQR code: recorded at once as SUCCESS via OWNER. */
+    public long insertOwnerConfirmedTransfer(long invoiceId, String txnRef, long amount, long userId, String bankBin,
+                                             String createDate) {
+        KeyHolder keys = new GeneratedKeyHolder();
+        LocalDateTime now = now();
+        jdbc.update(connection -> {
+            PreparedStatement s = connection.prepareStatement("""
+                    INSERT INTO dbo.payment_transaction (invoice_id, provider, txn_ref, amount, status, requested_by_user_id,
+                        provider_create_date, expires_at, provider_transaction_no, bank_code, card_type, confirmed_via,
+                        confirmed_at, created_at)
+                    VALUES (?, 'VIETQR', ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, 'QR', 'OWNER', ?, ?)
+                    """, Statement.RETURN_GENERATED_KEYS);
+            s.setLong(1, invoiceId);
+            s.setString(2, txnRef);
+            s.setBigDecimal(3, BigDecimal.valueOf(amount));
+            s.setLong(4, userId);
+            s.setString(5, createDate);
+            s.setObject(6, now);
+            s.setString(7, txnRef.length() > 20 ? txnRef.substring(txnRef.length() - 20) : txnRef);
+            s.setString(8, bankBin);
+            s.setObject(9, now);
+            s.setObject(10, now);
+            return s;
+        }, keys);
+        return GeneratedIdentity.requireId(keys);
+    }
+
     /* ---------- usage ---------- */
 
     public List<HorseRow> horsesStabledBetween(LocalDate start, LocalDate end) {

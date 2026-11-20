@@ -60,6 +60,22 @@ public class BillingController {
         return ApiResponse.ok(service.updatePrices(request));
     }
 
+    @GetMapping("/api/billing/payment-account")
+    @PreAuthorize("hasRole('CLUB_MANAGER')")
+    @Operation(operationId = "getClubPaymentAccount", summary = "Receiving bank account for VietQR (null when not set)",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<BillingDtos.PaymentAccount> paymentAccount() {
+        return ApiResponse.ok(service.paymentAccount());
+    }
+
+    @PutMapping("/api/billing/payment-account")
+    @PreAuthorize("hasRole('CLUB_MANAGER')")
+    @Operation(operationId = "updateClubPaymentAccount", summary = "Set the receiving bank account shown in owners' VietQR codes",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<BillingDtos.PaymentAccount> updatePaymentAccount(@RequestBody BillingDtos.PaymentAccountRequest request) {
+        return ApiResponse.ok(service.updatePaymentAccount(request));
+    }
+
     @PostMapping("/api/billing/invoices/generate")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('CLUB_MANAGER')")
@@ -121,6 +137,23 @@ public class BillingController {
             security = @SecurityRequirement(name = "bearerAuth"))
     public ApiResponse<InvoiceDetail> myInvoice(@PathVariable long invoiceId) {
         return ApiResponse.ok(service.myInvoice(invoiceId));
+    }
+
+    @GetMapping("/api/owner/invoices/{invoiceId}/qr-transfer")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "getQrTransfer", summary = "VietQR transfer data: club account, invoice total, transfer content",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<BillingDtos.QrTransfer> qrTransfer(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.qrTransfer(invoiceId));
+    }
+
+    @PostMapping("/api/owner/invoices/{invoiceId}/qr-transfer")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "confirmQrTransfer",
+            summary = "Owner pressed Thanh toán after the VietQR transfer: recorded as paid, declared by the owner",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<PaymentResult> confirmQrTransfer(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.confirmQrTransfer(invoiceId));
     }
 
     @PostMapping("/api/owner/invoices/{invoiceId}/vnpay-payment")
