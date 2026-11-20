@@ -65,6 +65,8 @@ public class SecurityConfiguration {
                     authorize.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register",
                             "/api/auth/forgot-password", "/api/auth/reset-password").permitAll();
                     authorize.requestMatchers(HttpMethod.GET, "/api/health").permitAll();
+                    // DEC-016: VNPay server-to-server IPN; trust comes from the HMAC-SHA512 signature, not a JWT.
+                    authorize.requestMatchers(HttpMethod.GET, "/api/payments/vnpay/ipn").permitAll();
                     authorize.requestMatchers("/ws", "/ws/**").permitAll();
                     authorize.requestMatchers(photoProperties.resourceHandlerPattern())
                             .hasAnyRole("CLUB_MANAGER", "HEAD_TRAINER", "TRAINER", "VETERINARIAN", "GROOM");

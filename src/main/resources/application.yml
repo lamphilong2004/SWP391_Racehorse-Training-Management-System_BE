@@ -35,6 +35,15 @@ app:
   jwt:
     signing-key: ${JWT_SIGNING_KEY:}
     access-token-ttl-seconds: ${JWT_ACCESS_TOKEN_TTL_SECONDS:}
+  # DEC-016 VNPay sandbox. Terminal code and secret only from the environment; never commit them.
+  payment:
+    vnpay:
+      tmn-code: ${VNPAY_TMN_CODE:}
+      hash-secret: ${VNPAY_HASH_SECRET:}
+      pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+      return-url: ${VNPAY_RETURN_URL:http://localhost:5173/thanh-toan/vnpay}
+      expire-minutes: ${VNPAY_EXPIRE_MINUTES:15}
 
 springdoc:
   api-docs:

@@ -166,6 +166,19 @@ public class HorseRepository {
             SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box WHERE id=?) THEN 1 ELSE 0 END
             """, Boolean.class, stableBoxId));
     }
+    /** DEC-016: a box is assignable only while ACTIVE (not under maintenance, not retired). */
+    public boolean stableBoxAssignable(long stableBoxId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.stable_box WHERE id=? AND box_status='ACTIVE') THEN 1 ELSE 0 END
+            """, Boolean.class, stableBoxId));
+    }
+    /** DEC-016: a legacy box outside every yard is retired once its horse moves out, so it is never reused. */
+    public void retireIfOutsideLayout(long stableBoxId) {
+        jdbc.update("""
+            UPDATE dbo.stable_box SET box_status='RETIRED',updated_at=?
+            WHERE id=? AND stable_yard_id IS NULL AND box_status='ACTIVE'
+            """, LocalDateTime.now(Clock.systemUTC()), stableBoxId);
+    }
     public Optional<OpenStableAssignment> openStableAssignment(long horseId) {
         List<OpenStableAssignment> assignments = jdbc.query("""
             SELECT id,effective_from,stable_box_id
