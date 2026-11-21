@@ -150,6 +150,33 @@ class MomoBillingApiTest {
         }
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction",Integer.class));
     }
+    @Test void concurrentVnpayAndMomoCannotOpenTwoPayableTransactions() throws Exception {
+        try (var pool=Executors.newVirtualThreadPerTaskExecutor()) {
+            CountDownLatch start=new CountDownLatch(1);
+            var momo=pool.submit(()->{start.await();return mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment")
+                .header("Authorization","Bearer "+owner)).andReturn().getResponse().getStatus();});
+            var vnpay=pool.submit(()->{start.await();return mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment")
+                .header("Authorization","Bearer "+owner)).andReturn().getResponse().getStatus();});
+            start.countDown();
+            var statuses=new ArrayList<>(List.of(momo.get(20,TimeUnit.SECONDS),vnpay.get(20,TimeUnit.SECONDS)));
+            Collections.sort(statuses);assertEquals(List.of(201,409),statuses);
+        }
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE status='PENDING'",Integer.class));
+    }
+    @Test void failedMomoHistoryDoesNotClaimConfirmationOfALaterVietQrPayment() throws Exception {
+        String order=create();Map<String,String> f=callback(order);f.put("resultCode","1006");sign(f);
+        mvc.perform(post("/api/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(f)))
+            .andExpect(status().isNoContent());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization","Bearer "+cm)
+            .contentType(MediaType.APPLICATION_JSON).content("{\"bankBin\":\"970436\",\"bankName\":\"Test Bank\",\"accountNo\":\"000000\",\"accountName\":\"TEST CLUB\"}"))
+            .andExpect(status().isOk());
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/qr-transfer").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/payment-check").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"))
+            .andExpect(jsonPath("$.data.paymentStatus").value("NO_PENDING_PAYMENT"))
+            .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("MoMo"))));
+    }
     @Test void verifiedCancellationAllowsRetryButPendingCodesNeverSettle() throws Exception {
         String order=create();Map<String,String> f=callback(order);
         for(String code:List.of("1000","7000","7002","9000")){

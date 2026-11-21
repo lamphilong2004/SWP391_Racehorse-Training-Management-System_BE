@@ -31,9 +31,9 @@ Run the installer only on a **new dedicated test DB** using `docs/TEAM-DATABASE-
 
 ## Verification and live acceptance
 
-Automated tests use explicit H2/HTTP fixtures, not the MoMo service. They cover signature vectors, tampering, merchant/order/request/amount binding, owner scoping, query confirmation, callbacks, cancellation, uncertain requests and concurrent submissions. SQL Server schema capture and clean install use isolated `racehorse_local_duc_momo_20261121_*` databases, not the user's demo DB.
+Automated tests use explicit H2/HTTP fixtures, not the MoMo service. They cover signature vectors, tampering, merchant/order/request/amount binding, owner scoping, query confirmation, callbacks, cancellation, uncertain requests and concurrent submissions. After integrating BE #62 at `ffa8f19`, all methods reuse its single invoice lock. Additional tests cover concurrent VNPay/MoMo requests and ensure a failed historical MoMo attempt never claims confirmation of a later VietQR payment. SQL Server schema capture and clean install use isolated `racehorse_local_duc_momo_20261121_*` databases, not the user's demo DB.
 
-**Live sandbox ATM payment and real-flow screenshots are PENDING: no merchant test keys have been supplied.** Do not mark Issue #63 complete until a real test payment, return/query confirmation and history have been checked with issued test credentials. The existing DEC-016 decision file named in the issue was not present in this checkout; this document records only this issue's MoMo addendum.
+**Live sandbox ATM payment and real-flow screenshots are PENDING: no issued merchant test keys have been supplied.** A separate probe using the official public ATM example received HTTP 403 before a MoMo API result; no live order/payment was verified. Do not mark Issue #63 complete until a real test payment, return/query confirmation and history have been checked with issued test credentials and an accessible sandbox. The existing DEC-016 decision file named in the issue was not present in this checkout; this document records only this issue's MoMo addendum.
 
 Official references (checked 2026-11-21):
 

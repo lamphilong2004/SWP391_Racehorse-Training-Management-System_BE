@@ -426,6 +426,74 @@ class BillingApiTest {
                 + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
     }
 
+    @Test
+    void theVietQrPayButtonIsRefusedWhileAVnpayLinkOfTheInvoiceCanStillBePaid() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7791, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7792, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankBin\":\"970436\",\"bankName\":\"Vietcombank\",\"accountNo\":\"0123456789\",\"accountName\":\"CLB\"}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7792);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated());
+
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.message", containsString("still open")));
+        assertEquals("ISSUED", jdbc.queryForObject("SELECT status FROM dbo.service_invoice WHERE id = ?", String.class, invoiceId));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ? AND provider = 'VIETQR'",
+                Integer.class, invoiceId));
+
+        // Once the VNPay link can no longer be paid (expired), the owner may settle by VietQR.
+        jdbc.update("UPDATE dbo.payment_transaction SET expires_at = ? WHERE invoice_id = ?",
+                LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1), invoiceId);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+    }
+
+    @Test
+    void twoPaymentStartsAtTheSameMomentOpenOnlyOneVnpayLink() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7795, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7796, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7796);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 8; round++) {
+                java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.Callable<Integer> start = () -> {
+                    go.await();
+                    return mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                                    .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                            .andReturn().getResponse().getStatus();
+                };
+                var first = pool.submit(start);
+                var second = pool.submit(start);
+                go.countDown();
+                java.util.List<Integer> statuses = new java.util.ArrayList<>(java.util.List.of(
+                        first.get(30, java.util.concurrent.TimeUnit.SECONDS), second.get(30, java.util.concurrent.TimeUnit.SECONDS)));
+                java.util.Collections.sort(statuses);
+                assertEquals(java.util.List.of(201, 409), statuses, "round " + round);
+                assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ?"
+                        + " AND status = 'PENDING'", Integer.class, invoiceId), "round " + round);
+                // The owner cancelled at VNPay: the next round starts with no open link.
+                jdbc.update("UPDATE dbo.payment_transaction SET status = 'FAILED' WHERE invoice_id = ? AND status = 'PENDING'", invoiceId);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     private static Map<String, String> signedIpn(String txnRef, long amount, String transactionNo) {
         Map<String, String> ipn = new LinkedHashMap<>();
         ipn.put("vnp_TmnCode", "TESTTMN1");

@@ -273,8 +273,9 @@ public class BillingService {
 
     @Transactional
     public PaymentLink createPayment(long invoiceId, CreatePaymentRequest request, String clientIp) {
-        repository.lockInvoice(invoiceId);
         ActorContext actor = actor();
+        // Lock before reading: the "no open payment" check and the insert below must not interleave with another request.
+        repository.lockInvoice(invoiceId);
         InvoiceRow invoice = ownInvoice(invoiceId, actor);
         if (!"ISSUED".equals(invoice.summary().status())) {
             throw conflict("status", "This invoice is not awaiting payment.");
@@ -295,7 +296,7 @@ public class BillingService {
         // Confirmation is an explicit check operation. Do not confirm then throw a conflict in this transaction:
         // throwing would roll back a genuine settlement discovered by that query.
         if (!repository.openPendingPayments(invoiceId).isEmpty()) {
-            throw conflict("status", "A VNPay payment for this invoice is still open. Finish it, or wait until it expires.");
+            throw conflict("status", "A payment for this invoice is still open. Check it before using another method.");
         }
         LocalDateTime createdVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
         LocalDateTime expiresVn = createdVn.plusMinutes(gateway.properties().expireMinutes());
@@ -416,11 +417,12 @@ public class BillingService {
     /**
      * The owner pressed "Thanh toán" after scanning the VietQR code. Recorded at once as a successful payment declared by
      * the owner (provider VIETQR, confirmed_via OWNER) and the invoice becomes PAID; the record never claims a bank check.
+     * Refused while a VNPay link of the invoice can still be paid: settling now would let that link charge the owner again.
      */
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional
     public PaymentResult confirmQrTransfer(long invoiceId) {
-        repository.lockInvoice(invoiceId);
         ActorContext actor = actor();
+        repository.lockInvoice(invoiceId);
         InvoiceRow invoice = ownInvoice(invoiceId, actor);
         if (!"ISSUED".equals(invoice.summary().status()) || repository.invoiceHasSuccess(invoiceId)) {
             throw conflict("status", "This invoice is not awaiting payment.");
@@ -522,7 +524,9 @@ public class BillingService {
                 ? repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound)
                 : ownInvoice(invoiceId, actor);
         String outcome = "NO_PENDING_PAYMENT";
+        String checkedProvider = null;
         for (PaymentRow payment : repository.pendingPayments(invoice.summary().id())) {
+            checkedProvider = payment.provider();
             outcome = confirm(payment);
             if (outcome.equals("UNAVAILABLE")) {
                 outcome = "PENDING";
@@ -531,9 +535,13 @@ public class BillingService {
                 break;
             }
         }
-        boolean hasMomo = repository.payments(invoiceId).stream().anyMatch(p -> "MOMO".equals(p.provider()));
-        if (hasMomo && "PAID".equals(repository.invoice(invoiceId).orElseThrow().summary().status())) outcome = "SUCCESS";
-        return hasMomo ? momoResult(invoiceId, outcome) : result(invoiceId, null, outcome);
+        // A failed historical MoMo attempt must not make a later VietQR/VNPay payment look confirmed by MoMo.
+        if ("NO_PENDING_PAYMENT".equals(outcome) && "PAID".equals(invoice.summary().status())) {
+            boolean momoSettled = repository.payments(invoiceId).stream()
+                    .anyMatch(p -> "MOMO".equals(p.provider()) && "SUCCESS".equals(p.status()));
+            if (momoSettled) { checkedProvider = "MOMO"; outcome = "SUCCESS"; }
+        }
+        return "MOMO".equals(checkedProvider) ? momoResult(invoiceId, outcome) : result(invoiceId, null, outcome);
     }
 
     /** VNPay IPN (server to server, public URL with SSL). Returns VNPay's RspCode / Message. */
