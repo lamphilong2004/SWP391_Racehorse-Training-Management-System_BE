@@ -484,4 +484,21 @@ class BillingApiTest {
         params.forEach(request::param);
         return request;
     }
+    @Test
+    void reviewQrMustNotSettleAnInvoiceWhileItsVnpayLinkIsStillPayable() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7781, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7782, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + cm)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bankBin\":\"970436\",\"bankName\":\"Vietcombank\",\"accountNo\":\"0123456789\",\"accountName\":\"TEST CLUB\"}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7782);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment").header("Authorization", "Bearer " + owner)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated());
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isConflict());
+    }
 }

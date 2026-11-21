@@ -1,5 +1,5 @@
 {
-  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01+STRENGTH-V20261027_01-candidate +CARE-HISTORY-V20261029_01-candidate +INCIDENT-IN-RIDE-V20261109_01-candidate +DEC016-V20261120_01-candidate +DEC016-RETURN-V20261120_02-candidate +DEC016-VIETQR-V20261120_03-candidate",
+  "version": "DB-01+CORE007-V20261016_01+CORE045-V20261020_01+GROOM-V20261021_01+STRENGTH-V20261027_01-candidate +CARE-HISTORY-V20261029_01-candidate +INCIDENT-IN-RIDE-V20261109_01-candidate +DEC016-V20261120_01-candidate +DEC016-RETURN-V20261120_02-candidate +DEC016-VIETQR-V20261120_03-candidate +MOMO-ATM-V20261121_01-candidate",
   "approvedAt": "2026-10-18",
   "approvedBy": "Lam Phi Long",
   "sourceHead": "6ad75a9d8b1cf5e65f86db2cb1a73de1a5c9ef04",
@@ -50,6 +50,11 @@
       "version": "V20261120_03",
       "order": 9,
       "path": "database/migrations/V20261120_03__club_bank_account_and_qr_transfer.sql"
+    },
+    {
+      "version": "V20261121_01",
+      "order": 10,
+      "path": "database/migrations/V20261121_01__momo_atm_payment.sql"
     }
   ],
   "files": [
@@ -128,14 +133,22 @@
     {
       "path": "database/migrations/V20261120_03__club_bank_account_and_qr_transfer.sql",
       "sha256": "3d2fb3eacce7cefb4b9df1753734ad0e3729a45755ae8deaaba6ce22846fdcbf"
+    },
+    {
+      "path": "database/migrations/V20261121_01__momo_atm_payment.sql",
+      "sha256": "e8422c5c53acc4a6f648fc664f9be344f69d2938cb5cefa563259bac199a9cb2"
+    },
+    {
+      "path": "database/verification/expected-schema-v20261121.json",
+      "sha256": "c8ffb6b0fcb4efcb17df61bcfe672e65b0155702c195a1a3fb19dfe9832906aa"
     }
   ],
   "history": "External local receipt only; not permission to upgrade any existing database",
   "verification": {
-    "path": "database/verification/expected-schema-v20261120.json",
-    "sha256": "75a286eb1bd42e01604abe9a2e30fb1c2ba7c43b5883a3b65438f56bd35b4909",
+    "path": "database/verification/expected-schema-v20261121.json",
+    "sha256": "c8ffb6b0fcb4efcb17df61bcfe672e65b0155702c195a1a3fb19dfe9832906aa",
     "tables": 62,
     "columns": 591,
-    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required + Leader-approved horse strengths and template strength focus (2026-10-27); reviewed additive task change history; legacy metadata verified unchanged on isolated review DB; Leader-approved in-ride incident types widen ck_incident__incident_type (DEC-013, 2026-11-09); Leader-approved stable layout (yards, box positions, maintenance) and owner service billing with VNPay sandbox (DEC-016, 2026-11-20); VNPay confirmation from the signed return URL when IPN and querydr are unavailable (DEC-016 follow-up); club receiving bank account and owner-declared VietQR transfer (DEC-016 follow-up)"
+    "basis": "DB-01 + approved registration/care assignment + Leader-authorized Groom technical assignment; clean install verification required + Leader-approved horse strengths and template strength focus (2026-10-27); reviewed additive task change history; legacy metadata verified unchanged on isolated review DB; Leader-approved in-ride incident types widen ck_incident__incident_type (DEC-013, 2026-11-09); Leader-approved stable layout (yards, box positions, maintenance) and owner service billing with VNPay sandbox (DEC-016, 2026-11-20); VNPay confirmation from the signed return URL when IPN and querydr are unavailable (DEC-016 follow-up); club receiving bank account and owner-declared VietQR transfer (DEC-016 follow-up); Issue #63 MoMo ATM sandbox (candidate)"
   }
 }

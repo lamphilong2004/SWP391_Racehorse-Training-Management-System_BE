@@ -19,9 +19,10 @@ class LocalDatabase {
         new Migration("V20261109_01", "database/migrations/V20261109_01__incident_in_ride_types.sql", "564085d17383e32bbc1bd9b30f7a3825b3bd191f48877df7f173af2e7df406c4"),
         new Migration("V20261120_01", "database/migrations/V20261120_01__stable_layout_and_service_billing.sql", "cef3c08efd8efb52d5c3da138b0172cdc0b73dfac2cd5ab8e9eece9c38192ba7"),
         new Migration("V20261120_02", "database/migrations/V20261120_02__payment_confirmed_via_return.sql", "7506d008637b93263499cae1dd2718c4820e2cf64e66cae301baa2a783bad795"),
-        new Migration("V20261120_03", "database/migrations/V20261120_03__club_bank_account_and_qr_transfer.sql", "3d2fb3eacce7cefb4b9df1753734ad0e3729a45755ae8deaaba6ce22846fdcbf"));
-    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261120.json";
-    static final String EXPECTED_SCHEMA_HASH = "75a286eb1bd42e01604abe9a2e30fb1c2ba7c43b5883a3b65438f56bd35b4909";
+        new Migration("V20261120_03", "database/migrations/V20261120_03__club_bank_account_and_qr_transfer.sql", "3d2fb3eacce7cefb4b9df1753734ad0e3729a45755ae8deaaba6ce22846fdcbf"),
+        new Migration("V20261121_01", "database/migrations/V20261121_01__momo_atm_payment.sql", "e8422c5c53acc4a6f648fc664f9be344f69d2938cb5cefa563259bac199a9cb2"));
+    static final String EXPECTED_SCHEMA = "database/verification/expected-schema-v20261121.json";
+    static final String EXPECTED_SCHEMA_HASH = "c8ffb6b0fcb4efcb17df61bcfe672e65b0155702c195a1a3fb19dfe9832906aa";
     static List<Map<String,Object>> migrationPlan() {
         List<Map<String,Object>> plan=new ArrayList<>();
         for(int i=0;i<MIGRATIONS.size();i++) {
