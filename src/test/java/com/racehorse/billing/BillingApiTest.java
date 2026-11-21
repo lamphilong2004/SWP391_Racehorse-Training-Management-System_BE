@@ -526,7 +526,10 @@ class BillingApiTest {
         jdbc.update("""
                 INSERT INTO dbo.horse_program_phase (id, horse_training_program_id, name, phase_order, start_date, end_date)
                 VALUES (7750, 7750, 'Phase', 1, ?, ?)""", start, start.plusMonths(2));
-        LocalDateTime doneAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(30);
+        // Keep completed sessions on today's Vietnam billing date, including runs just after midnight.
+        // Subtracting 30 minutes from the wall clock can otherwise put both sessions in yesterday's invoice.
+        LocalDateTime doneAt = LocalDate.now(VN).atStartOfDay(VN)
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
         for (int i = 1; i <= 3; i++) {
             jdbc.update("""
                     INSERT INTO dbo.training_session (id, session_code, horse_program_phase_id, created_by_user_id,
