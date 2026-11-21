@@ -318,7 +318,7 @@ public class BillingService {
         ActorContext actor = actor();
         InvoiceRow invoice = ownInvoice(invoiceId, actor);
         if (!"ISSUED".equals(invoice.summary().status())) throw conflict("status", "This invoice is not awaiting payment.");
-        if (!momo.properties().configured()) throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION, "MOMO_NOT_CONFIGURED");
+        if (!momo.configured()) throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION, "MOMO_NOT_CONFIGURED");
         long amount = invoice.summary().totalAmount();
         if (amount < 10_000 || amount > 50_000_000) throw validation("amount", "MOMO_ATM_AMOUNT_LIMIT");
         if (repository.hasOpenPending(invoiceId)) throw conflict("status", "MOMO_PAYMENT_STILL_OPEN");
@@ -679,7 +679,7 @@ public class BillingService {
     private InvoiceDetail detail(InvoiceRow row) {
         long id = row.summary().id();
         return new InvoiceDetail(row.summary(), repository.lines(id), repository.payments(id), row.issuedBy(),
-                row.cancelledAt(), row.cancellationReason(), gateway.properties().configured(), momo.properties().configured());
+                row.cancelledAt(), row.cancellationReason(), gateway.properties().configured(), momo.configured());
     }
 
     private InvoiceRow ownInvoice(long invoiceId, ActorContext actor) {

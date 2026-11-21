@@ -19,10 +19,13 @@ public record MomoProperties(String partnerCode, String accessKey, String secret
     private boolean sandboxEndpoint() {
         try {
             URI uri = URI.create(endpoint);
-            return uri.getUserInfo() == null && uri.getQuery() == null && uri.getFragment() == null
+            return !uri.isOpaque() && uri.getHost() != null
+                && uri.getUserInfo() == null && uri.getQuery() == null && uri.getFragment() == null
                 && (uri.getPath().isEmpty() || uri.getPath().equals("/"))
-                && (("https".equals(uri.getScheme()) && "test-payment.momo.vn".equals(uri.getHost()))
-                    || ("http".equals(uri.getScheme()) && "127.0.0.1".equals(uri.getHost())));
+                && (("https".equals(uri.getScheme()) && "test-payment.momo.vn".equals(uri.getHost())
+                        && (uri.getPort() == -1 || uri.getPort() == 443))
+                    || ("http".equals(uri.getScheme()) && "127.0.0.1".equals(uri.getHost())
+                        && (uri.getPort() == -1 || uri.getPort() > 0 && uri.getPort() <= 65535)));
         } catch (IllegalArgumentException e) { return false; }
     }
     @Override public String toString() { return "MomoProperties[sandbox, credentials=REDACTED]"; }

@@ -7,7 +7,7 @@ DEC-016 addendum: support MoMo **test ATM** (`payWithATM`) alongside the existin
 Set only in the local environment / secret manager:
 
 - `MOMO_PARTNER_CODE`, `MOMO_ACCESS_KEY`, `MOMO_SECRET_KEY`: merchant **test** credentials issued by MoMo.
-- `MOMO_ENDPOINT`: defaults to `https://test-payment.momo.vn`. The live money host is rejected. HTTP loopback is supported for explicit automated test fixtures only.
+- `MOMO_ENDPOINT`: defaults to `https://test-payment.momo.vn` (standard HTTPS port only). The live money host is rejected. HTTP loopback is supported only when the sole active Spring profile is `test`; normal demo/runtime and mixed profiles reject it before creating an order or accepting a callback. Invalid URI settings remain unavailable instead of causing a render/API error.
 - `MOMO_RETURN_URL`: default `http://127.0.0.1:5173/thanh-toan/momo`.
 - `MOMO_IPN_URL`: default `http://127.0.0.1:8080/api/payments/momo/ipn`. A local machine cannot receive the provider's remote IPN; use payment-check/query. A public IPN must be HTTPS.
 

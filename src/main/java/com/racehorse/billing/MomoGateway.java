@@ -1,6 +1,7 @@
 package com.racehorse.billing;
 
 import org.springframework.stereotype.Component;
+import org.springframework.core.env.Environment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import java.net.URI;
@@ -12,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Arrays;
 
 /** MoMo ATM sandbox. Redirects disabled; responses are bound to the exact merchant/order/request/amount. */
 @Component
@@ -20,14 +22,23 @@ public class MomoGateway {
     public record Outcome(int resultCode, String transactionNo, String payType) {}
     private final MomoProperties properties;
     private final JsonMapper json;
+    private final Environment environment;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
-    public MomoGateway(MomoProperties properties, JsonMapper json) { this.properties = properties; this.json = json; }
+    public MomoGateway(MomoProperties properties, JsonMapper json, Environment environment) {
+        this.properties = properties; this.json = json; this.environment = environment;
+    }
     public MomoProperties properties() { return properties; }
+    /** An HTTP fixture can only be used by an isolated test context, never by a normal demo/production run. */
+    public boolean configured() {
+        if (!properties.configured()) return false;
+        return "https".equals(URI.create(properties.endpoint()).getScheme())
+                || Arrays.equals(environment.getActiveProfiles(), new String[]{"test"});
+    }
     public boolean verify(Map<String, String> fields) {
-        return properties.configured() && MomoSigner.verify(properties.accessKey(), properties.secretKey(), fields);
+        return configured() && MomoSigner.verify(properties.accessKey(), properties.secretKey(), fields);
     }
     public Optional<Created> create(String orderId, long amount, String orderInfo) {
-        if (!properties.configured()) return Optional.empty();
+        if (!configured()) return Optional.empty();
         Map<String, String> f = new LinkedHashMap<>();
         f.put("partnerCode", properties.partnerCode()); f.put("requestId", orderId); f.put("orderId", orderId);
         f.put("amount", String.valueOf(amount)); f.put("orderInfo", orderInfo);
@@ -47,7 +58,7 @@ public class MomoGateway {
         return Optional.of(new Created(url));
     }
     public Optional<Outcome> query(String orderId, long amount) {
-        if (!properties.configured()) return Optional.empty();
+        if (!configured()) return Optional.empty();
         String requestId = UUID.randomUUID().toString();
         Map<String, String> f = new LinkedHashMap<>();
         f.put("partnerCode", properties.partnerCode()); f.put("orderId", orderId); f.put("requestId", requestId); f.put("lang", "vi");
