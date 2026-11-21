@@ -275,6 +275,15 @@ public class BillingRepository {
                 """, userId, now, reason, now, invoiceId);
     }
 
+    /**
+     * Takes the invoice row's write lock until the transaction ends (a no-op update, so nothing changes). Starting or
+     * settling a payment locks first, so two requests for one invoice (two tabs, VNPay and VietQR) run one after the other
+     * and the second one sees what the first one wrote.
+     */
+    public void lockInvoice(long invoiceId) {
+        jdbc.update("UPDATE dbo.service_invoice SET updated_at = updated_at WHERE id = ?", invoiceId);
+    }
+
     public int markInvoicePaid(long invoiceId) {
         LocalDateTime now = now();
         return jdbc.update("""

@@ -271,6 +271,8 @@ public class BillingService {
     @Transactional
     public PaymentLink createPayment(long invoiceId, CreatePaymentRequest request, String clientIp) {
         ActorContext actor = actor();
+        // Lock before reading: the "no open payment" check and the insert below must not interleave with another request.
+        repository.lockInvoice(invoiceId);
         InvoiceRow invoice = ownInvoice(invoiceId, actor);
         if (!"ISSUED".equals(invoice.summary().status())) {
             throw conflict("status", "This invoice is not awaiting payment.");
@@ -324,13 +326,18 @@ public class BillingService {
     /**
      * The owner pressed "Thanh toán" after scanning the VietQR code. Recorded at once as a successful payment declared by
      * the owner (provider VIETQR, confirmed_via OWNER) and the invoice becomes PAID; the record never claims a bank check.
+     * Refused while a VNPay link of the invoice can still be paid: settling now would let that link charge the owner again.
      */
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional
     public PaymentResult confirmQrTransfer(long invoiceId) {
         ActorContext actor = actor();
+        repository.lockInvoice(invoiceId);
         InvoiceRow invoice = ownInvoice(invoiceId, actor);
         if (!"ISSUED".equals(invoice.summary().status()) || repository.invoiceHasSuccess(invoiceId)) {
             throw conflict("status", "This invoice is not awaiting payment.");
+        }
+        if (!repository.openPendingPayments(invoiceId).isEmpty()) {
+            throw conflict("status", "A VNPay payment for this invoice is still open. Finish it, or wait until it expires.");
         }
         BillingDtos.PaymentAccount account = requireAccount();
         LocalDateTime nowVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
