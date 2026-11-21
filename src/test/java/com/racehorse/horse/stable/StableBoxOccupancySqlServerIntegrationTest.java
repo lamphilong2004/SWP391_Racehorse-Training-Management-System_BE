@@ -31,7 +31,7 @@ class StableBoxOccupancySqlServerIntegrationTest extends StableBoxSqlServerTestS
                         .header("Authorization", "Bearer " + manager.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.length()").value(0));
+                .andExpect(jsonPath("$.data[?(@.yardCode == 'Z')]").isEmpty());
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         long horseId = insertHorse(suffix);
@@ -43,24 +43,23 @@ class StableBoxOccupancySqlServerIntegrationTest extends StableBoxSqlServerTestS
         mockMvc.perform(get("/api/stable-boxes")
                         .header("Authorization", "Bearer " + manager.token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].status").value("FREE"))
-                .andExpect(jsonPath("$.data[0].currentHorse").value(org.hamcrest.Matchers.nullValue()))
-                .andExpect(jsonPath("$.data[1].status").value("OCCUPIED"))
-                .andExpect(jsonPath("$.data[1].currentHorse.horseCode").value("C12-H-" + suffix));
+                .andExpect(jsonPath("$.data[?(@.yardCode == 'Z')]", org.hamcrest.Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.data[?(@.boxCode == 'C12-F-" + suffix + "')].status").value("FREE"))
+                .andExpect(jsonPath("$.data[?(@.boxCode == 'C12-O-" + suffix + "')].status").value("OCCUPIED"))
+                .andExpect(jsonPath("$.data[?(@.boxCode == 'C12-O-" + suffix + "')].currentHorse.horseCode").value("C12-H-" + suffix));
 
         mockMvc.perform(get("/api/stable-boxes")
                         .param("status", "FREE")
                         .header("Authorization", "Bearer " + manager.token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].status").value("FREE"));
+                .andExpect(jsonPath("$.data[?(@.yardCode == 'Z')]", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.data[?(@.boxCode == 'C12-F-" + suffix + "')].status").value("FREE"));
 
         mockMvc.perform(get("/api/stable-boxes")
                         .param("status", "OCCUPIED")
                         .header("Authorization", "Bearer " + manager.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].status").value("OCCUPIED"));
+                .andExpect(jsonPath("$.data[0].boxCode").value("C12-O-" + suffix));
     }
 }

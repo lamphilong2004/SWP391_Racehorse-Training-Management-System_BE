@@ -20,14 +20,31 @@ public class StableBoxReadRepository {
              AS box_status,
                    horse.id AS current_horse_id,
                    horse.horse_code AS current_horse_code,
-                   horse.name AS current_horse_name
+                   horse.name AS current_horse_name,
+                   yard.yard_code,
+                   stable_box.row_no,
+                   stable_box.column_no,
+                   stable_box.box_status AS operating_status
             FROM dbo.stable_box stable_box
+            LEFT JOIN dbo.stable_yard yard
+              ON yard.id = stable_box.stable_yard_id
             LEFT JOIN dbo.horse_stable_assignment assignment
               ON assignment.stable_box_id = stable_box.id
              AND assignment.effective_to IS NULL
             LEFT JOIN dbo.horse horse
               ON horse.id = assignment.horse_id
             """;
+
+    /** Retired boxes are history only; a box outside every yard is listed only while a horse still occupies it. */
+    private static final String VISIBLE = """
+             WHERE stable_box.box_status <> 'RETIRED'
+               AND (stable_box.stable_yard_id IS NOT NULL OR assignment.id IS NOT NULL)""";
+
+    /** DEC-016: a free box is one that can receive a horse: inside a yard, ACTIVE and unoccupied. */
+    private static final String ASSIGNABLE = """
+              AND stable_box.box_status = 'ACTIVE' AND stable_box.stable_yard_id IS NOT NULL""";
+
+    private static final String ORDER = " ORDER BY stable_box.box_code";
 
     private static final RowMapper<StableBoxResponse> ROW_MAPPER = (resultSet, rowNumber) -> {
         long horseId = resultSet.getLong("current_horse_id");
@@ -43,7 +60,11 @@ public class StableBoxReadRepository {
                 resultSet.getString("box_code"),
                 resultSet.getString("yard"),
                 BoxStatus.valueOf(resultSet.getString("box_status")),
-                currentHorse);
+                currentHorse,
+                resultSet.getString("yard_code"),
+                (Integer) resultSet.getObject("row_no", Integer.class),
+                (Integer) resultSet.getObject("column_no", Integer.class),
+                resultSet.getString("operating_status"));
     };
 
     private final JdbcTemplate jdbcTemplate;
@@ -54,13 +75,11 @@ public class StableBoxReadRepository {
 
     public List<StableBoxResponse> findAll(BoxStatus status) {
         if (status == null) {
-            return jdbcTemplate.query(
-                    SELECT_BOXES + " ORDER BY stable_box.box_code",
-                    ROW_MAPPER);
+            return jdbcTemplate.query(SELECT_BOXES + VISIBLE + ORDER, ROW_MAPPER);
         }
-
+        String extra = status == BoxStatus.FREE ? ASSIGNABLE : "";
         return jdbcTemplate.query(
-                SELECT_BOXES + " WHERE " + STATUS_EXPRESSION + " = ? ORDER BY stable_box.box_code",
+                SELECT_BOXES + VISIBLE + " AND " + STATUS_EXPRESSION + " = ?" + extra + ORDER,
                 ROW_MAPPER,
                 status.name());
     }

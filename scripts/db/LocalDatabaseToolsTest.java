@@ -9,10 +9,13 @@ class LocalDatabaseToolsTest {
         Map<String,Object> row=new LinkedHashMap<>();row.put("name","horse");row.put("nullable",false);row.put("ordinal",12);
         if(!LocalDatabase.json(List.of(row)).equals("[{\"name\":\"horse\",\"nullable\":false,\"ordinal\":12}]"))throw new AssertionError("Metadata types/order");
         var plan=LocalDatabase.migrationPlan();
-        if(plan.size()!=6||!plan.get(2).get("version").equals("V20261021_01")||!plan.get(2).get("order").equals(3))throw new AssertionError("Groom migration omitted or unordered");
+        if(plan.size()!=9||!plan.get(2).get("version").equals("V20261021_01")||!plan.get(2).get("order").equals(3))throw new AssertionError("Groom migration omitted or unordered");
         if(!plan.get(3).get("version").equals("V20261027_01")||!plan.get(3).get("order").equals(4))throw new AssertionError("Strength migration omitted or unordered");
         if(!plan.get(4).get("version").equals("V20261029_01")||!plan.get(4).get("order").equals(5))throw new AssertionError("Care history migration omitted or unordered");
         if(!plan.get(5).get("version").equals("V20261109_01")||!plan.get(5).get("order").equals(6))throw new AssertionError("In-ride incident migration omitted or unordered");
+        if(!plan.get(6).get("version").equals("V20261120_01")||!plan.get(6).get("order").equals(7))throw new AssertionError("DEC-016 stable layout and billing migration omitted or unordered");
+        if(!plan.get(7).get("version").equals("V20261120_02")||!plan.get(7).get("order").equals(8))throw new AssertionError("DEC-016 return-confirmation migration omitted or unordered");
+        if(!plan.get(8).get("version").equals("V20261120_03")||!plan.get(8).get("order").equals(9))throw new AssertionError("DEC-016 VietQR migration omitted or unordered");
         int guards=0;
         String[][] rejected={
             {"master","racehorse_local_member_new","master","PC","PC"},

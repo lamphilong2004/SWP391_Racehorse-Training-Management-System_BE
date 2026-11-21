@@ -51,6 +51,10 @@ abstract class StableBoxSqlServerTestSupport {
     private final List<Long> createdBoxes = new ArrayList<>();
     private final List<Long> createdUsers = new ArrayList<>();
     private final List<Long> createdRoles = new ArrayList<>();
+    /** DEC-016: test boxes are cells of a dedicated yard Z, created on first use and removed after each test. */
+    protected static final String TEST_YARD = "Z";
+    private Long createdYard;
+    private int nextColumn;
     private boolean targetVerified;
 
     @Autowired
@@ -90,10 +94,18 @@ abstract class StableBoxSqlServerTestSupport {
 
         verifyServerAndDatabaseIdentity();
         verifyCanonicalSchema();
-        long existingBoxes = jdbcTemplate.queryForObject(
-                "SELECT COUNT_BIG(*) FROM dbo.stable_box", Long.class);
-        assertEquals(0L, existingBoxes,
-                "The dedicated CORE-012 test database must start without stable-box data.");
+        // DEC-016: migration V20261120_01 seeds the default layout (yards A-C). The dedicated database must hold
+        // nothing else: no stable assignment, no test yard and no box outside a yard.
+        long existingAssignments = jdbcTemplate.queryForObject(
+                "SELECT COUNT_BIG(*) FROM dbo.horse_stable_assignment", Long.class);
+        long foreignBoxes = jdbcTemplate.queryForObject("""
+                SELECT COUNT_BIG(*) FROM dbo.stable_box b LEFT JOIN dbo.stable_yard y ON y.id = b.stable_yard_id
+                WHERE y.id IS NULL OR y.yard_code = ?
+                """, Long.class, TEST_YARD);
+        assertEquals(0L, existingAssignments + foreignBoxes,
+                "The dedicated CORE-012 test database must start with only the default stable layout and no assignment.");
+        createdYard = null;
+        nextColumn = 0;
 
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
@@ -116,6 +128,9 @@ abstract class StableBoxSqlServerTestSupport {
         }
         for (long id : createdBoxes) {
             jdbcTemplate.update("DELETE FROM dbo.stable_box WHERE id = ?", id);
+        }
+        if (createdYard != null) {
+            jdbcTemplate.update("DELETE FROM dbo.stable_yard WHERE id = ?", createdYard);
         }
         for (long id : createdUsers) {
             jdbcTemplate.update("DELETE FROM dbo.user_role WHERE user_id = ?", id);
@@ -176,11 +191,18 @@ abstract class StableBoxSqlServerTestSupport {
     }
 
     protected long insertStableBox(String prefix, String suffix) {
+        if (createdYard == null) {
+            createdYard = insertId("""
+                    INSERT INTO dbo.stable_yard (yard_code, name, row_count, column_count)
+                    OUTPUT INSERTED.id
+                    VALUES (?, N'CORE-012 Test Yard', 1, 10)
+                    """, TEST_YARD);
+        }
         long id = insertId("""
-                INSERT INTO dbo.stable_box (box_code, yard)
+                INSERT INTO dbo.stable_box (box_code, yard, stable_yard_id, row_no, column_no)
                 OUTPUT INSERTED.id
-                VALUES (?, ?)
-                """, "C12-" + prefix + "-" + suffix, "CORE-012 Test Yard");
+                VALUES (?, ?, ?, 1, ?)
+                """, "C12-" + prefix + "-" + suffix, "CORE-012 Test Yard", createdYard, ++nextColumn);
         createdBoxes.add(id);
         return id;
     }

@@ -92,10 +92,19 @@ class StableBoxApiTest {
         jdbcTemplate.update("DELETE FROM dbo.horse_stable_assignment");
         jdbcTemplate.update("DELETE FROM dbo.horse");
         jdbcTemplate.update("DELETE FROM dbo.stable_box");
+        jdbcTemplate.update("DELETE FROM dbo.stable_yard");
         jdbcTemplate.update("DELETE FROM dbo.user_role");
         jdbcTemplate.update("DELETE FROM dbo.app_user");
         jdbcTemplate.update("DELETE FROM dbo.role");
         nextUserId.set(500);
+    }
+
+    /** DEC-016: leave no yard behind; other tests assign boxes in a database without a stable layout. */
+    @org.junit.jupiter.api.AfterEach
+    void removeLayout() {
+        jdbcTemplate.update("DELETE FROM dbo.horse_stable_assignment WHERE stable_box_id IN (1, 2, 3)");
+        jdbcTemplate.update("DELETE FROM dbo.stable_box WHERE stable_yard_id IN (901, 902)");
+        jdbcTemplate.update("DELETE FROM dbo.stable_yard WHERE id IN (901, 902)");
     }
 
     @Test
@@ -192,12 +201,15 @@ class StableBoxApiTest {
     }
 
     private void seedStableBoxes() {
-        jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard) VALUES (?, ?, ?)",
-                1, "A-01", "North");
-        jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard) VALUES (?, ?, ?)",
-                2, "A-02", "North");
-        jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard) VALUES (?, ?, ?)",
-                3, "B-01", "South");
+        // DEC-016: boxes are cells of a yard.
+        jdbcTemplate.update("INSERT INTO dbo.stable_yard (id, yard_code, name, row_count, column_count) VALUES (901, 'A', 'North', 1, 2)");
+        jdbcTemplate.update("INSERT INTO dbo.stable_yard (id, yard_code, name, row_count, column_count) VALUES (902, 'B', 'South', 1, 1)");
+        jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard, stable_yard_id, row_no, column_no) VALUES (?, ?, ?, ?, ?, ?)",
+                1, "A-01", "North", 901, 1, 1);
+        jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard, stable_yard_id, row_no, column_no) VALUES (?, ?, ?, ?, ?, ?)",
+                2, "A-02", "North", 901, 1, 2);
+        jdbcTemplate.update("INSERT INTO dbo.stable_box (id, box_code, yard, stable_yard_id, row_no, column_no) VALUES (?, ?, ?, ?, ?, ?)",
+                3, "B-01", "South", 902, 1, 1);
         jdbcTemplate.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (?, ?, ?, ?)",
                 101, "RH-101", "Silver Comet", "DRAFT");
         jdbcTemplate.update("""

@@ -180,6 +180,9 @@ public class HorseService {
         if (!repository.stableBoxExists(request.stableBoxId())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Stable box not found.");
         }
+        if (!repository.stableBoxAssignable(request.stableBoxId())) {
+            throw assignmentConflict("stableBoxId", "This stable box is under maintenance or no longer in use.");
+        }
         Optional<HorseRepository.OpenStableAssignment> current = repository.openStableAssignment(horseId);
         if (current.isPresent() && !effectiveFrom.isAfter(current.get().effectiveFrom())) {
             throw validation("effectiveFrom", "A move must start after the current assignment begins.");
@@ -199,6 +202,7 @@ public class HorseService {
                 if (repository.closeOpenStableAssignment(current.get().id(), effectiveFrom.minusDays(1)) != 1) {
                     throw assignmentConflict("effectiveFrom", "The current assignment changed during the move.");
                 }
+                repository.retireIfOutsideLayout(current.get().stableBoxId());
             }
             long assignmentId = repository.insertStableAssignment(
                     horseId, request, actor.userId());

@@ -164,6 +164,13 @@ async function uploadPhoto(horse) {
 }
 
 // ---------- building blocks ----------
+// DEC-016: demo prices for service billing (kept when the Club Manager already set them).
+async function ensurePrices() {
+  const prices = (await call(as('cm'), 'GET', '/api/billing/prices')).data;
+  if (prices.every((price) => price.unitPrice != null)) return;
+  await call(as('cm'), 'PUT', '/api/billing/prices', { boardingCareDaily: 250000, trainingSession: 500000 });
+  note('L', 'L-bảng giá', 'Lưu chuồng & chăm sóc 250.000 ₫/ngày · Huấn luyện 500.000 ₫/buổi');
+}
 async function freeBoxes() { return items((await call(as('cm'), 'GET', '/api/stable-boxes?status=FREE&size=200')).data); }
 async function draftHorse(label, owner) {
   const cm = as('cm');
@@ -172,7 +179,7 @@ async function draftHorse(label, owner) {
   await call(cm, 'PUT', `/api/horses/${horse.id}/pedigree`, { sire: { name: info.sire }, dam: { name: info.dam } });
   await call(cm, 'POST', `/api/horses/${horse.id}/ownerships`, { ownerUserId: ids[owner], sharePercentage: 100, effectiveFrom: today(), isManagingOwner: true });
   const box = (await freeBoxes())[0];
-  if (!box) throw new Error('No free stable box left; run scripts/demo/add-demo-stable-boxes.sql');
+  if (!box) throw new Error('No free stable box left in the stable layout (DEC-016); free a box or add a yard on Sơ đồ chuồng.');
   await call(cm, 'POST', `/api/horses/${horse.id}/stable-assignments`, { stableBoxId: box.id, effectiveFrom: today(), reason: 'Chuẩn bị dữ liệu demo' });
   await uploadPhoto(horse);
   return { ...horse, box: box.boxCode };
@@ -347,7 +354,8 @@ async function setL() {
   await ensureReference();
   const need = (SETS.has('D') ? 3 : 0) + (SETS.has('H') ? 4 : 0) + (SETS.has('T') ? 3 : 0) + (SETS.has('Y') ? 6 : 0) + (SETS.has('L') ? 1 : 0) + 1;
   const free = (await freeBoxes()).length;
-  if (free < need) throw new Error(`Need ${need} free stable boxes (one spare for Flow 1), found ${free}. Run scripts/demo/add-demo-stable-boxes.sql first.`);
+  if (free < need) throw new Error(`Need ${need} free stable boxes (one spare for Flow 1), found ${free} in the stable layout (DEC-016). Apply migration V20261120_01 or add a yard on Sơ đồ chuồng.`);
+  await ensurePrices();
   for (const [key, fn] of [['D', setD], ['H', setH], ['T', setT], ['Y', setY], ['L', setL]]) {
     if (!SETS.has(key)) continue;
     console.log(`Set ${key}`);
