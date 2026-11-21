@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class MomoBillingApiTest {
     static final String KEY="test-only-access", SECRET="test-only-secret", PARTNER="MOMO_TEST";
     static volatile String mode="pending", createMode="ok";
+    static final AtomicInteger createCalls = new AtomicInteger();
     static final HttpServer server = startFixture();
     @Autowired WebApplicationContext context;
     @Autowired JdbcTemplate jdbc;
@@ -52,7 +54,7 @@ class MomoBillingApiTest {
     }
     @BeforeEach void setup() throws Exception {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build(); clean();
-        mode="pending"; createMode="ok";
+        mode="pending"; createMode="ok"; createCalls.set(0);
         cm=TestAccounts.create(mvc,jdbc,encoder,json,7801,RoleCode.CLUB_MANAGER).token();
         owner=TestAccounts.create(mvc,jdbc,encoder,json,7802,RoleCode.HORSE_OWNER).token();
         stranger=TestAccounts.create(mvc,jdbc,encoder,json,7803,RoleCode.HORSE_OWNER).token();
@@ -88,6 +90,11 @@ class MomoBillingApiTest {
     }
     void sign(Map<String,String> f){f.put("signature",MomoSigner.notification(KEY,SECRET,f));}
     void invoiceStillUnpaid(){assertEquals("ISSUED",jdbc.queryForObject("SELECT status FROM dbo.service_invoice WHERE id=?",String.class,invoice));}
+    void setReceivingAccount() throws Exception {
+        mvc.perform(put("/api/billing/payment-account").header("Authorization","Bearer "+cm)
+            .contentType(MediaType.APPLICATION_JSON).content("{\"bankBin\":\"970436\",\"bankName\":\"Test Bank\",\"accountNo\":\"000000\",\"accountName\":\"TEST CLUB\"}"))
+            .andExpect(status().isOk());
+    }
     @Test void signedReturnNeedsIndependentQueryAndQueryBindsAllEchoedIdentifiers() throws Exception {
         String order=create(); Map<String,String> f=callback(order);
         for(String result:List.of("pending","amount","order","request","partner","missing-code","missing-trans")) {
@@ -163,6 +170,47 @@ class MomoBillingApiTest {
         }
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE status='PENDING'",Integer.class));
     }
+    @Test void openVnpayAndPaidVietQrRejectMomoWithoutCallingTheGateway() throws Exception {
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isCreated());
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+        invoiceStillUnpaid();assertEquals(0,createCalls.get());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE provider='MOMO'",Integer.class));
+        // Fixture-only expiry: the existing contract permits VietQR after the VNPay link expires.
+        jdbc.update("UPDATE dbo.payment_transaction SET expires_at=DATEADD('DAY',-1,CURRENT_TIMESTAMP)");
+        setReceivingAccount();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/qr-transfer").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+        assertEquals(0,createCalls.get());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE provider='MOMO'",Integer.class));
+    }
+    @Test void concurrentVietQrAndMomoSettleOrOpenOnlyOneTransaction() throws Exception {
+        setReceivingAccount();
+        try(var pool=Executors.newVirtualThreadPerTaskExecutor()) {
+            CountDownLatch start=new CountDownLatch(1);
+            var momo=pool.submit(()->{start.await();return mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment")
+                .header("Authorization","Bearer "+owner)).andReturn().getResponse().getStatus();});
+            var qr=pool.submit(()->{start.await();return mvc.perform(post("/api/owner/invoices/"+invoice+"/qr-transfer")
+                .header("Authorization","Bearer "+owner)).andReturn().getResponse().getStatus();});
+            start.countDown();
+            var codes=new ArrayList<>(List.of(momo.get(20,TimeUnit.SECONDS),qr.get(20,TimeUnit.SECONDS)));
+            Collections.sort(codes);
+            assertTrue(codes.equals(List.of(200,409)) || codes.equals(List.of(201,409)),codes.toString());
+            assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction",Integer.class));
+            if(codes.getFirst()==200) {
+                assertEquals("PAID",jdbc.queryForObject("SELECT status FROM dbo.service_invoice WHERE id=?",String.class,invoice));
+                assertEquals("VIETQR",jdbc.queryForObject("SELECT provider FROM dbo.payment_transaction",String.class));
+                assertEquals(0,createCalls.get());
+            } else {
+                invoiceStillUnpaid();
+                assertEquals("MOMO",jdbc.queryForObject("SELECT provider FROM dbo.payment_transaction",String.class));
+                assertEquals(1,createCalls.get());
+            }
+        }
+    }
     @Test void failedMomoHistoryDoesNotClaimConfirmationOfALaterVietQrPayment() throws Exception {
         String order=create();Map<String,String> f=callback(order);f.put("resultCode","1006");sign(f);
         mvc.perform(post("/api/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(f)))
@@ -197,6 +245,7 @@ class MomoBillingApiTest {
                 for(String k:List.of("partnerCode","orderId","requestId","amount"))body.put(k,n.path(k).asString());
                 boolean create=e.getRequestURI().getPath().endsWith("create");
                 if(create){
+                    createCalls.incrementAndGet();
                     body.put("resultCode",0);body.put("payUrl","https://test-payment.momo.vn/v2/gateway/pay?t=fixture");
                     if(createMode.equals("broken")){e.sendResponseHeaders(500,-1);e.close();return;}
                 } else {

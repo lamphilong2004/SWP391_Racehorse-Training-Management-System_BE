@@ -21,6 +21,7 @@ Do not commit keys, browser-return signatures, card details, access tokens or pr
 - Existing Owner/CM `payment-check` dispatches by provider. Official query response is correlated over direct HTTPS; its documented payload has no response signature field. Requests are HMAC-signed.
 - Only verified `resultCode=0` becomes SUCCESS/PAID. Pending/unknown responses remain PENDING. Known terminal cancellation/failure codes allow retry. Late verified money on an already settled/cancelled invoice is REFUND_REQUIRED.
 - Invoice write lock is acquired by all create/settle/cancel paths. VietQR cannot settle while an online order is open. An uncertain create response retains its reserved MoMo order; checking is safe, making another order is blocked.
+- VietQR currently has no separate PENDING/reserved-link state: GET only supplies QR data, and POST records the owner's declaration. Tests cover an existing payable VNPay link, simultaneous VietQR/MoMo submissions and a completed VietQR payment. Merely displaying the QR is not treated as a server reservation; adding that behavior requires a separate business decision.
 - MoMo's local `expiresAt` is a display hint, not proof of cancellation. A pending MoMo order stays blocked until a verified terminal result. Inconclusive queries require merchant investigation; no manual fake success fallback.
 
 ## Database
@@ -33,7 +34,7 @@ Run the installer only on a **new dedicated test DB** using `docs/TEAM-DATABASE-
 
 Automated tests use explicit H2/HTTP fixtures, not the MoMo service. They cover signature vectors, tampering, merchant/order/request/amount binding, owner scoping, query confirmation, callbacks, cancellation, uncertain requests and concurrent submissions. After integrating BE #62 at `ffa8f19`, all methods reuse its single invoice lock. Additional tests cover concurrent VNPay/MoMo requests and ensure a failed historical MoMo attempt never claims confirmation of a later VietQR payment. SQL Server schema capture and clean install use isolated `racehorse_local_duc_momo_20261121_*` databases, not the user's demo DB.
 
-**Live sandbox ATM payment and real-flow screenshots are PENDING: no issued merchant test keys have been supplied.** A separate probe using the official public ATM example received HTTP 403 before a MoMo API result; no live order/payment was verified. Do not mark Issue #63 complete until a real test payment, return/query confirmation and history have been checked with issued test credentials and an accessible sandbox. The existing DEC-016 decision file named in the issue was not present in this checkout; this document records only this issue's MoMo addendum.
+**Live sandbox ATM payment and real-flow screenshots are PENDING: no issued merchant test keys have been supplied.** A separate probe using the official public ATM example received HTTP 403 before a MoMo API result; the official MoMo Business integration page also returned HTTP 403 in the browser. No live order/payment was verified. Do not mark Issue #63 complete or move the paired PRs to Ready until a real test payment, return/query confirmation and history have been checked with issued test credentials and an accessible sandbox. The existing DEC-016 decision file named in the issue was not present in this checkout; this document records only this issue's MoMo addendum.
 
 Official references (checked 2026-11-21):
 
