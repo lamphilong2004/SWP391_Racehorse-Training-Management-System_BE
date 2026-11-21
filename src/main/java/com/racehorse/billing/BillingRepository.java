@@ -46,7 +46,7 @@ public class BillingRepository {
     }
 
     public record PaymentRow(long id, long invoiceId, String txnRef, long amount, String status,
-                             String providerCreateDate, Instant expiresAt) {
+                             String providerCreateDate, Instant expiresAt, String provider) {
     }
 
     private static final String INVOICE_SELECT = """
@@ -308,8 +308,8 @@ public class BillingRepository {
 
     public List<PaymentRow> openPendingPayments(long invoiceId) {
         return jdbc.query("""
-                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
-                FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'PENDING' AND expires_at > ?
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, provider
+                FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'PENDING' AND (provider = 'MOMO' OR expires_at > ?)
                 ORDER BY created_at DESC, id DESC
                 """, PAYMENT_ROW, invoiceId, now());
     }
@@ -337,8 +337,17 @@ public class BillingRepository {
     public boolean hasOpenPending(long invoiceId) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.payment_transaction
-                    WHERE invoice_id = ? AND status = 'PENDING' AND expires_at > ?) THEN 1 ELSE 0 END
+                    WHERE invoice_id = ? AND status = 'PENDING' AND (provider = 'MOMO' OR expires_at > ?)) THEN 1 ELSE 0 END
                 """, Boolean.class, invoiceId, now()));
+    }
+
+    public void insertMomoPayment(long invoiceId, String txnRef, long amount, long userId, String createDate,
+                                  LocalDateTime expiresUtc) {
+        jdbc.update("""
+                INSERT INTO dbo.payment_transaction (invoice_id, provider, txn_ref, amount, status, requested_by_user_id,
+                    provider_create_date, expires_at, created_at)
+                VALUES (?, 'MOMO', ?, ?, 'PENDING', ?, ?, ?, ?)
+                """, invoiceId, txnRef, BigDecimal.valueOf(amount), userId, createDate, expiresUtc, now());
     }
 
     public void insertPayment(long invoiceId, String txnRef, long amount, long userId, String providerCreateDate,
@@ -353,18 +362,18 @@ public class BillingRepository {
 
     private static final RowMapper<PaymentRow> PAYMENT_ROW = (r, n) -> new PaymentRow(r.getLong("id"),
             r.getLong("invoice_id"), r.getString("txn_ref"), r.getBigDecimal("amount").longValueExact(),
-            r.getString("status"), r.getString("provider_create_date"), instant(r, "expires_at"));
+            r.getString("status"), r.getString("provider_create_date"), instant(r, "expires_at"), r.getString("provider"));
 
     public Optional<PaymentRow> paymentByTxnRef(String txnRef) {
         return jdbc.query("""
-                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, provider
                 FROM dbo.payment_transaction WHERE txn_ref = ?
                 """, PAYMENT_ROW, txnRef).stream().findFirst();
     }
 
     public List<PaymentRow> pendingPayments(long invoiceId) {
         return jdbc.query("""
-                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, provider
                 FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'PENDING' ORDER BY created_at DESC, id DESC
                 """, PAYMENT_ROW, invoiceId);
     }

@@ -174,6 +174,23 @@ public class BillingController {
         return ApiResponse.ok(service.checkPayments(invoiceId));
     }
 
+    @PostMapping("/api/owner/invoices/{invoiceId}/momo-payment")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    public ApiResponse<BillingDtos.MomoPaymentLink> momoPay(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.createMomoPayment(invoiceId));
+    }
+
+    @PostMapping("/api/payments/momo/return")
+    @PreAuthorize("hasAnyRole('HORSE_OWNER','CLUB_MANAGER')")
+    public ApiResponse<PaymentResult> momoReturn(@RequestBody ReturnRequest request) {
+        return ApiResponse.ok(service.handleMomoReturn(request == null ? Map.of() : request.params()));
+    }
+
+    @PostMapping("/api/payments/momo/ipn")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void momoIpn(@RequestBody Map<String, String> params) { service.handleMomoIpn(params); }
+
     /* ---------- VNPay ---------- */
 
     @PostMapping("/api/payments/vnpay/return")

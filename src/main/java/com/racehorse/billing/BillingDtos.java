@@ -49,7 +49,7 @@ public final class BillingDtos {
 
     @Schema(name = "InvoiceDetail")
     public record InvoiceDetail(InvoiceSummary invoice, List<Line> lines, List<Payment> payments, Party issuedBy,
-                                Instant cancelledAt, String cancellationReason, boolean paymentConfigured) {
+                                Instant cancelledAt, String cancellationReason, boolean paymentConfigured, boolean momoConfigured) {
     }
 
     @Schema(name = "InvoiceHorse")
@@ -76,6 +76,10 @@ public final class BillingDtos {
 
     @Schema(name = "VnpayPaymentLink")
     public record PaymentLink(String paymentUrl, String txnRef, long amount, Instant expiresAt) {
+    }
+
+    @Schema(name = "MomoPaymentLink")
+    public record MomoPaymentLink(String payUrl, String txnRef, long amount, Instant expiresAt) {
     }
 
     @Schema(name = "VnpayReturnRequest", description = "All query parameters VNPay appended to the return URL.")
