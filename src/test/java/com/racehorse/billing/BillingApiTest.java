@@ -49,6 +49,8 @@ class BillingApiTest {
     @Autowired private PasswordEncoder encoder;
     @Autowired private JsonMapper json;
     private MockMvc mvc;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean private VnpayGateway gatewaySpy;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean private BillingRepository repositorySpy;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -569,6 +571,78 @@ class BillingApiTest {
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ?"
                 + " AND status = 'SUCCESS'", Integer.class, invoiceId));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id = 7744"
+                + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
+    }
+
+    @Test
+    void paymentCheckFindsACancelledLinkThatVnpayReportsPaid() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7764, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7765, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7765);
+        JsonNode link = startVnpay(owner, invoiceId);
+        String txnRef = link.path("txnRef").stringValue();
+        long amount = link.path("amount").longValue();
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+
+        // No IPN reaches a local machine and the VNPay tab was closed: only querydr can tell the link was paid.
+        org.mockito.Mockito.doReturn(java.util.Optional.of(new VnpayGateway.QueryResult("00", "00", amount * 100, "123456", "NCB",
+                        "20261122120000", "OK")))
+                .when(gatewaySpy).query(org.mockito.ArgumentMatchers.eq(txnRef), org.mockito.ArgumentMatchers.any());
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/payment-check").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        assertEquals("SUCCESS/QUERYDR", jdbc.queryForObject("SELECT status || '/' || confirmed_via FROM dbo.payment_transaction"
+                + " WHERE txn_ref = ?", String.class, txnRef));
+    }
+
+    @Test
+    void aCancelledLinkAndItsReplacementConfirmedAtOnceCountOnePaymentAndFlagTheOther() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7774, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7775, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7775);
+        JsonNode first = startVnpay(owner, invoiceId);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+        JsonNode second = startVnpay(owner, invoiceId);
+
+        // Line both callbacks up right after their "already paid?" read. Without a shared lock both see "not paid".
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        org.mockito.Mockito.doAnswer(call -> {
+            Object real = call.callRealMethod();
+            try {
+                barrier.await(300, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException | java.util.concurrent.BrokenBarrierException waited) {
+                // The other callback is waiting for the invoice lock: nothing to line up with.
+            }
+            return real;
+        }).when(repositorySpy).invoiceHasSuccess(invoiceId);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+            java.util.List<java.util.concurrent.Future<String>> results = new java.util.ArrayList<>();
+            for (JsonNode link : java.util.List.of(first, second)) {
+                results.add(pool.submit(() -> {
+                    go.await();
+                    String body = mvc.perform(ipnRequest(signedIpn(link.path("txnRef").stringValue(),
+                            link.path("amount").longValue(), "T" + link.path("txnRef").stringValue().hashCode())))
+                            .andReturn().getResponse().getContentAsString();
+                    return json.readTree(body).path("RspCode").stringValue();
+                }));
+            }
+            go.countDown();
+            for (var result : results) {
+                assertEquals("00", result.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'SUCCESS'",
+                Integer.class, invoiceId));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ?"
+                + " AND status = 'REFUND_REQUIRED'", Integer.class, invoiceId));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id = 7774"
                 + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
     }
 

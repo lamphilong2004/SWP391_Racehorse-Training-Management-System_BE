@@ -390,6 +390,8 @@ public class BillingService {
         if (invoice.ownerUserId() != actor.userId() && !actor.roles().contains(RoleCode.CLUB_MANAGER)) {
             throw invoiceNotFound();
         }
+        repository.lockInvoice(payment.invoiceId());
+        payment = repository.paymentByTxnRef(payment.txnRef()).orElseThrow();
         String outcome = confirm(payment);
         if (outcome.equals("UNAVAILABLE")) {
             outcome = confirmFromSignedReturn(payment, fields);
@@ -455,6 +457,7 @@ public class BillingService {
     @Transactional
     public PaymentResult checkPayments(long invoiceId) {
         ActorContext actor = actor();
+        repository.lockInvoice(invoiceId);
         InvoiceRow invoice = actor.roles().contains(RoleCode.CLUB_MANAGER)
                 ? repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound)
                 : ownInvoice(invoiceId, actor);
@@ -466,6 +469,16 @@ public class BillingService {
             }
             if (outcome.equals("SUCCESS")) {
                 break;
+            }
+        }
+        if (!outcome.equals("SUCCESS")) {
+            // A cancelled link may still have been paid in a VNPay tab. A local machine gets no IPN and the return tab
+            // may be closed, so this check is how that money is found (recorded, or flagged for a refund).
+            for (PaymentRow payment : repository.ownerCancelledPayments(invoice.summary().id())) {
+                if ("SUCCESS".equals(confirm(payment))) {
+                    outcome = "SUCCESS";
+                    break;
+                }
             }
         }
         return result(invoiceId, null, outcome);
@@ -485,7 +498,10 @@ public class BillingService {
         if (found.isEmpty()) {
             return rsp("01", "Order not Found");
         }
-        PaymentRow payment = found.get();
+        // Settle one payment of an invoice at a time, in the same lock order as create / cancel / VietQR, and only
+        // then read the payment and invoice state the decision depends on.
+        repository.lockInvoice(found.get().invoiceId());
+        PaymentRow payment = repository.paymentByTxnRef(found.get().txnRef()).orElseThrow();
         long amount;
         try {
             amount = Long.parseLong(fields.getOrDefault("vnp_Amount", ""));
@@ -559,6 +575,7 @@ public class BillingService {
                               String responseCode, String transactionStatus, String payDate) {
         // provider_transaction_no holds at most 20 characters; VNPay's own number is used, never our longer reference.
         String providerNo = transactionNo == null || transactionNo.isBlank() ? "UNKNOWN" : transactionNo;
+        repository.lockInvoice(payment.invoiceId());
         InvoiceRow invoice = repository.invoice(payment.invoiceId()).orElseThrow(BillingService::invoiceNotFound);
         // Money VNPay took for an invoice that is already paid or was cancelled is never counted twice: it is flagged
         // for a refund from the VNPay merchant portal and the Club Manager who issued the invoice is told.

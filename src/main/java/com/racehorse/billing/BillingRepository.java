@@ -374,6 +374,15 @@ public class BillingRepository {
                 """, PAYMENT_ROW, invoiceId);
     }
 
+    /** Links the owner cancelled: still reconciled, because VNPay may report one of them paid later. */
+    public List<PaymentRow> ownerCancelledPayments(long invoiceId) {
+        return jdbc.query("""
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, confirmed_via
+                FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'FAILED' AND confirmed_via = 'OWNER'
+                ORDER BY created_at DESC, id DESC
+                """, PAYMENT_ROW, invoiceId);
+    }
+
     public int markPaymentSuccess(long paymentId, String via, String transactionNo, String bankCode, String cardType,
                                   String responseCode, String transactionStatus, String payDate) {
         LocalDateTime now = now();
