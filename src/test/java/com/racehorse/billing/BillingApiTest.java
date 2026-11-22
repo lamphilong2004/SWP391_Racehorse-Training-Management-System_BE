@@ -49,6 +49,8 @@ class BillingApiTest {
     @Autowired private PasswordEncoder encoder;
     @Autowired private JsonMapper json;
     private MockMvc mvc;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean private VnpayGateway gatewaySpy;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean private BillingRepository repositorySpy;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -492,6 +494,175 @@ class BillingApiTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void ownerCancelsAnOpenVnpayLinkAndCanPayAgainAtOnce() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7724, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7725, RoleCode.HORSE_OWNER).token();
+        String stranger = TestAccounts.create(mvc, jdbc, encoder, json, 7726, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7725);
+        String cancel = "/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel";
+
+        mvc.perform(post(cancel).header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("NO_PENDING_PAYMENT"));
+        String first = startVnpay(owner, invoiceId).path("txnRef").stringValue();
+        mvc.perform(post(cancel).header("Authorization", "Bearer " + stranger)).andExpect(status().isNotFound());
+        mvc.perform(post(cancel).header("Authorization", "Bearer " + cm)).andExpect(status().isForbidden());
+
+        mvc.perform(post(cancel).header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("ISSUED"));
+        assertEquals("FAILED/24/OWNER", jdbc.queryForObject("SELECT status || '/' || response_code || '/' || confirmed_via"
+                + " FROM dbo.payment_transaction WHERE txn_ref = ?", String.class, first));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.audit_log WHERE action = 'SERVICE_INVOICE_PAYMENT_CANCELLED'"
+                + " AND target_id = ?", Integer.class, invoiceId));
+
+        // Paying again works at once: a new VNPay link, and after cancelling that one, VietQR.
+        startVnpay(owner, invoiceId);
+        mvc.perform(post(cancel).header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+    }
+
+    @Test
+    void aCancelledLinkThatVnpayStillReportsPaidIsRecordedNotLost() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7734, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7735, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7735);
+        JsonNode link = startVnpay(owner, invoiceId);
+        String txnRef = link.path("txnRef").stringValue();
+        long amount = link.path("amount").longValue();
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+
+        // The owner had already paid in the VNPay tab: the signed return still records it and the invoice is paid.
+        mvc.perform(post("/api/payments/vnpay/return").header("Authorization", "Bearer " + owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("params", signedIpn(txnRef, amount, "888")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        assertEquals("SUCCESS", jdbc.queryForObject("SELECT status FROM dbo.payment_transaction WHERE txn_ref = ?",
+                String.class, txnRef));
+        // A repeated IPN for the same payment is answered as already confirmed and changes nothing.
+        mvc.perform(ipnRequest(signedIpn(txnRef, amount, "888"))).andExpect(jsonPath("$.RspCode").value("02"));
+    }
+
+    @Test
+    void aCancelledLinkPaidAfterTheOwnerSettledByVietQrIsFlaggedForRefund() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7744, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7745, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7745);
+        JsonNode link = startVnpay(owner, invoiceId);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+
+        mvc.perform(ipnRequest(signedIpn(link.path("txnRef").stringValue(), link.path("amount").longValue(), "999")))
+                .andExpect(jsonPath("$.RspCode").value("00"));
+        assertEquals("REFUND_REQUIRED", jdbc.queryForObject("SELECT status FROM dbo.payment_transaction WHERE txn_ref = ?",
+                String.class, link.path("txnRef").stringValue()));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ?"
+                + " AND status = 'SUCCESS'", Integer.class, invoiceId));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id = 7744"
+                + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
+    }
+
+    @Test
+    void paymentCheckFindsACancelledLinkThatVnpayReportsPaid() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7764, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7765, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7765);
+        JsonNode link = startVnpay(owner, invoiceId);
+        String txnRef = link.path("txnRef").stringValue();
+        long amount = link.path("amount").longValue();
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+
+        // No IPN reaches a local machine and the VNPay tab was closed: only querydr can tell the link was paid.
+        org.mockito.Mockito.doReturn(java.util.Optional.of(new VnpayGateway.QueryResult("00", "00", amount * 100, "123456", "NCB",
+                        "20261122120000", "OK")))
+                .when(gatewaySpy).query(org.mockito.ArgumentMatchers.eq(txnRef), org.mockito.ArgumentMatchers.any());
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/payment-check").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        assertEquals("SUCCESS/QUERYDR", jdbc.queryForObject("SELECT status || '/' || confirmed_via FROM dbo.payment_transaction"
+                + " WHERE txn_ref = ?", String.class, txnRef));
+    }
+
+    @Test
+    void aCancelledLinkAndItsReplacementConfirmedAtOnceCountOnePaymentAndFlagTheOther() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7774, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7775, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7775);
+        JsonNode first = startVnpay(owner, invoiceId);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment/cancel").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("CANCELLED"));
+        JsonNode second = startVnpay(owner, invoiceId);
+
+        // Line both callbacks up right after their "already paid?" read. Without a shared lock both see "not paid".
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        org.mockito.Mockito.doAnswer(call -> {
+            Object real = call.callRealMethod();
+            try {
+                barrier.await(300, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException | java.util.concurrent.BrokenBarrierException waited) {
+                // The other callback is waiting for the invoice lock: nothing to line up with.
+            }
+            return real;
+        }).when(repositorySpy).invoiceHasSuccess(invoiceId);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+            java.util.List<java.util.concurrent.Future<String>> results = new java.util.ArrayList<>();
+            for (JsonNode link : java.util.List.of(first, second)) {
+                results.add(pool.submit(() -> {
+                    go.await();
+                    String body = mvc.perform(ipnRequest(signedIpn(link.path("txnRef").stringValue(),
+                            link.path("amount").longValue(), "T" + link.path("txnRef").stringValue().hashCode())))
+                            .andReturn().getResponse().getContentAsString();
+                    return json.readTree(body).path("RspCode").stringValue();
+                }));
+            }
+            go.countDown();
+            for (var result : results) {
+                assertEquals("00", result.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'SUCCESS'",
+                Integer.class, invoiceId));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id = ?"
+                + " AND status = 'REFUND_REQUIRED'", Integer.class, invoiceId));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id = 7774"
+                + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
+    }
+
+    private long invoiceWithPricesAndAccount(String cm, long ownerId) throws Exception {
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankBin\":\"970436\",\"bankName\":\"Vietcombank\",\"accountNo\":\"0123456789\",\"accountName\":\"CLB\"}"))
+                .andExpect(status().isOk());
+        return seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), ownerId);
+    }
+
+    private JsonNode startVnpay(String owner, long invoiceId) throws Exception {
+        return json.readTree(mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment")
+                        .header("Authorization", "Bearer " + owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankCode\":\"VNBANK\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).path("data");
     }
 
     private static Map<String, String> signedIpn(String txnRef, long amount, String transactionNo) {

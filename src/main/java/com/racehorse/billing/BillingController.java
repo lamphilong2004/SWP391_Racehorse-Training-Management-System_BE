@@ -166,6 +166,15 @@ public class BillingController {
         return ApiResponse.ok(service.createPayment(invoiceId, request, http.getRemoteAddr()));
     }
 
+    @PostMapping("/api/owner/invoices/{invoiceId}/vnpay-payment/cancel")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "cancelVnpayPayment",
+            summary = "Cancel the open VNPay link of the invoice so it can be paid again at once",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<PaymentResult> cancelVnpayPayment(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.cancelOpenPayment(invoiceId));
+    }
+
     @PostMapping("/api/owner/invoices/{invoiceId}/payment-check")
     @PreAuthorize("hasRole('HORSE_OWNER')")
     @Operation(operationId = "checkMyServiceInvoicePayment", summary = "Ask VNPay (querydr) for the result of pending payments",
