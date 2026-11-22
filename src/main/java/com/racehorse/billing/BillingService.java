@@ -422,6 +422,35 @@ public class BillingService {
         return "PENDING";
     }
 
+    /**
+     * The owner gives up the open VNPay link(s) of the invoice, so it can be paid again at once (VNPay or VietQR) instead
+     * of waiting for the link to expire. VNPay is asked first: a link already paid is recorded, not cancelled. A link
+     * that VNPay still reports paid after the cancel is recorded then, or flagged for a refund if the invoice was paid
+     * another way meanwhile (see {@link #applySuccess}).
+     */
+    @Transactional
+    public PaymentResult cancelOpenPayment(long invoiceId) {
+        ActorContext actor = actor();
+        repository.lockInvoice(invoiceId);
+        ownInvoice(invoiceId, actor);
+        List<PaymentRow> pending = repository.pendingPayments(invoiceId);
+        if (pending.isEmpty()) {
+            return result(invoiceId, null, "NO_PENDING_PAYMENT");
+        }
+        for (PaymentRow payment : pending) {
+            if ("SUCCESS".equals(confirm(payment))) {
+                return result(invoiceId, null, "SUCCESS");
+            }
+        }
+        for (PaymentRow payment : repository.pendingPayments(invoiceId)) {
+            if (repository.markPaymentCancelledByOwner(payment.id()) == 1) {
+                repository.audit(actor.userId(), RoleCode.HORSE_OWNER.name(), "SERVICE_INVOICE_PAYMENT_CANCELLED",
+                        invoiceId, "Owner cancelled VNPay payment " + payment.txnRef() + " before it was paid.");
+            }
+        }
+        return result(invoiceId, "24", "CANCELLED");
+    }
+
     /** "Kiểm tra lại": re-queries every PENDING payment of the invoice (owner of the invoice or Club Manager). */
     @Transactional
     public PaymentResult checkPayments(long invoiceId) {
@@ -466,7 +495,7 @@ public class BillingService {
         if (amount != payment.amount() * 100) {
             return rsp("04", "Invalid Amount");
         }
-        if (!"PENDING".equals(payment.status())) {
+        if (!"PENDING".equals(payment.status()) && !payment.cancelledByOwner()) {
             return rsp("02", "Order already confirmed");
         }
         if ("00".equals(fields.get("vnp_ResponseCode")) && "00".equals(fields.get("vnp_TransactionStatus"))) {
@@ -486,9 +515,18 @@ public class BillingService {
      * could not be asked (network error, error answer or unverifiable signature): nothing was written.
      */
     private String confirm(PaymentRow payment) {
+        if (payment.cancelledByOwner()) {
+            // Only a late success changes a cancelled link: the money is then recorded (or flagged for a refund).
+            String outcome = query(payment);
+            return "SUCCESS".equals(outcome) || "UNAVAILABLE".equals(outcome) ? outcome : "FAILED";
+        }
         if (!"PENDING".equals(payment.status())) {
             return payment.status();
         }
+        return query(payment);
+    }
+
+    private String query(PaymentRow payment) {
         boolean expired = payment.expiresAt() != null && Instant.now().isAfter(payment.expiresAt().plusSeconds(300));
         Optional<QueryResult> queried = gateway.query(payment.txnRef(), payment.providerCreateDate());
         if (queried.isEmpty()) {
@@ -562,6 +600,7 @@ public class BillingService {
             case "SUCCESS" -> "VNPay đã xác nhận thanh toán. Hóa đơn đã được ghi nhận là đã thanh toán.";
             case "FAILED" -> "Giao dịch không thành công hoặc đã bị hủy. Hóa đơn vẫn chưa thanh toán.";
             case "NO_PENDING_PAYMENT" -> "Không có giao dịch nào đang chờ xác nhận.";
+            case "CANCELLED" -> "Đã hủy giao dịch VNPay đang mở. Bạn có thể thanh toán lại bằng VNPay hoặc mã QR.";
             case "REFUND_REQUIRED" -> "VNPay đã thu tiền nhưng hóa đơn đã được thanh toán hoặc đã hủy. Club Manager sẽ hoàn tiền giao dịch này.";
             default -> "Chưa nhận được xác nhận từ VNPay. Hóa đơn chưa được ghi nhận thanh toán; hãy bấm Kiểm tra lại sau ít phút.";
         };

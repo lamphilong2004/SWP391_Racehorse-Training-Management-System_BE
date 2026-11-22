@@ -46,7 +46,11 @@ public class BillingRepository {
     }
 
     public record PaymentRow(long id, long invoiceId, String txnRef, long amount, String status,
-                             String providerCreateDate, Instant expiresAt) {
+                             String providerCreateDate, Instant expiresAt, String confirmedVia) {
+        /** The owner gave this link up; VNPay may still report it paid later, and that money must not be lost. */
+        public boolean cancelledByOwner() {
+            return "FAILED".equals(status) && "OWNER".equals(confirmedVia);
+        }
     }
 
     private static final String INVOICE_SELECT = """
@@ -308,7 +312,7 @@ public class BillingRepository {
 
     public List<PaymentRow> openPendingPayments(long invoiceId) {
         return jdbc.query("""
-                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, confirmed_via
                 FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'PENDING' AND expires_at > ?
                 ORDER BY created_at DESC, id DESC
                 """, PAYMENT_ROW, invoiceId, now());
@@ -329,7 +333,7 @@ public class BillingRepository {
                 UPDATE dbo.payment_transaction
                 SET status = 'REFUND_REQUIRED', confirmed_via = ?, confirmed_at = ?, provider_transaction_no = ?,
                     bank_code = ?, card_type = ?, response_code = ?, transaction_status = ?, provider_pay_date = ?, updated_at = ?
-                WHERE id = ? AND status = 'PENDING'
+                WHERE id = ? AND (status = 'PENDING' OR (status = 'FAILED' AND confirmed_via = 'OWNER'))
                 """, via, now, transactionNo, nullIfBlank(bankCode), nullIfBlank(cardType), responseCode,
                 transactionStatus, nullIfBlank(payDate), now, paymentId);
     }
@@ -353,18 +357,19 @@ public class BillingRepository {
 
     private static final RowMapper<PaymentRow> PAYMENT_ROW = (r, n) -> new PaymentRow(r.getLong("id"),
             r.getLong("invoice_id"), r.getString("txn_ref"), r.getBigDecimal("amount").longValueExact(),
-            r.getString("status"), r.getString("provider_create_date"), instant(r, "expires_at"));
+            r.getString("status"), r.getString("provider_create_date"), instant(r, "expires_at"),
+            r.getString("confirmed_via"));
 
     public Optional<PaymentRow> paymentByTxnRef(String txnRef) {
         return jdbc.query("""
-                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, confirmed_via
                 FROM dbo.payment_transaction WHERE txn_ref = ?
                 """, PAYMENT_ROW, txnRef).stream().findFirst();
     }
 
     public List<PaymentRow> pendingPayments(long invoiceId) {
         return jdbc.query("""
-                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at
+                SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, confirmed_via
                 FROM dbo.payment_transaction WHERE invoice_id = ? AND status = 'PENDING' ORDER BY created_at DESC, id DESC
                 """, PAYMENT_ROW, invoiceId);
     }
@@ -376,9 +381,19 @@ public class BillingRepository {
                 UPDATE dbo.payment_transaction
                 SET status = 'SUCCESS', confirmed_via = ?, confirmed_at = ?, provider_transaction_no = ?, bank_code = ?,
                     card_type = ?, response_code = ?, transaction_status = ?, provider_pay_date = ?, updated_at = ?
-                WHERE id = ? AND status = 'PENDING'
+                WHERE id = ? AND (status = 'PENDING' OR (status = 'FAILED' AND confirmed_via = 'OWNER'))
                 """, via, now, transactionNo, nullIfBlank(bankCode), nullIfBlank(cardType), responseCode,
                 transactionStatus, nullIfBlank(payDate), now, paymentId);
+    }
+
+    /** The owner cancelled an open VNPay link (VNPay's own code 24, customer cancelled). */
+    public int markPaymentCancelledByOwner(long paymentId) {
+        LocalDateTime now = now();
+        return jdbc.update("""
+                UPDATE dbo.payment_transaction
+                SET status = 'FAILED', response_code = '24', confirmed_via = 'OWNER', confirmed_at = ?, updated_at = ?
+                WHERE id = ? AND status = 'PENDING'
+                """, now, now, paymentId);
     }
 
     public int markPaymentFailed(long paymentId, String responseCode, String transactionStatus) {
