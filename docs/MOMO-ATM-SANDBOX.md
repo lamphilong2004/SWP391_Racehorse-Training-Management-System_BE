@@ -8,7 +8,7 @@ Set only in the local environment / secret manager:
 
 - `MOMO_PARTNER_CODE`, `MOMO_ACCESS_KEY`, `MOMO_SECRET_KEY`: merchant **test** credentials issued by MoMo.
 - `MOMO_ENDPOINT`: defaults to `https://test-payment.momo.vn` (standard HTTPS port only). The live money host is rejected. HTTP loopback is supported only when the sole active Spring profile is `test`; normal demo/runtime and mixed profiles reject it before creating an order or accepting a callback. Invalid URI settings remain unavailable instead of causing a render/API error.
-- `MOMO_RETURN_URL`: default `http://127.0.0.1:5173/thanh-toan/momo`.
+- `MOMO_RETURN_URL`: default `http://localhost:5173/thanh-toan/momo`. Open the FE on the same origin; switching between localhost and 127.0.0.1 loses an origin-scoped login session.
 - `MOMO_IPN_URL`: default `http://127.0.0.1:8080/api/payments/momo/ipn`. A local machine cannot receive the provider's remote IPN; use payment-check/query. A public IPN must be HTTPS.
 
 Do not commit keys, browser-return signatures, card details, access tokens or private runtime files. Defaults contain no merchant credentials. Property string output is redacted.
@@ -34,7 +34,7 @@ Run the installer only on a **new dedicated test DB** using `docs/TEAM-DATABASE-
 
 Automated tests use explicit H2/HTTP fixtures, not the MoMo service. They cover signature vectors, tampering, merchant/order/request/amount binding, owner scoping, query confirmation, callbacks, cancellation, uncertain requests and concurrent submissions. After integrating BE #62 at `ffa8f19`, all methods reuse its single invoice lock. Additional tests cover concurrent VNPay/MoMo requests and ensure a failed historical MoMo attempt never claims confirmation of a later VietQR payment. SQL Server schema capture and clean install use isolated `racehorse_local_duc_momo_20261121_*` databases, not the user's demo DB.
 
-**Live sandbox ATM payment and real-flow screenshots are PENDING: no issued merchant test keys have been supplied.** A separate probe using the official public ATM example received HTTP 403 before a MoMo API result; the official MoMo Business integration page also returned HTTP 403 in the browser. No live order/payment was verified. Do not mark Issue #63 complete or move the paired PRs to Ready until a real test payment, return/query confirmation and history have been checked with issued test credentials and an accessible sandbox. The existing DEC-016 decision file named in the issue was not present in this checkout; this document records only this issue's MoMo addendum.
+**Live sandbox ATM payment and real-flow screenshots are PENDING.** Long verified the official public merchant test settings from `momo-wallet/payment/nodejs/MoMo.js` on his machine. Those settings can be loaded into environment variables without a MoMo Business account; do not copy values into source, logs or GitHub. A new probe with that exact public JavaScript sample still received HTTP 403 from this workstation before a MoMo API result. The blocker is sandbox access from this environment, rather than absence of a test merchant. No live payment was verified here. Keep Issue #63 and both PRs pending until an actual ATM test payment, return/query confirmation and history are checked. The existing DEC-016 decision file named in the issue was not present in this checkout; this document records only this issue's MoMo addendum.
 
 Official references (checked 2026-11-21):
 

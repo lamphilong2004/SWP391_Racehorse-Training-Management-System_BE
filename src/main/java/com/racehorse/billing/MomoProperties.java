@@ -10,7 +10,7 @@ public record MomoProperties(String partnerCode, String accessKey, String secret
     public MomoProperties {
         partnerCode = clean(partnerCode); accessKey = clean(accessKey); secretKey = clean(secretKey);
         endpoint = clean(endpoint).isEmpty() ? "https://test-payment.momo.vn" : clean(endpoint);
-        returnUrl = clean(returnUrl).isEmpty() ? "http://127.0.0.1:5173/thanh-toan/momo" : clean(returnUrl);
+        returnUrl = clean(returnUrl).isEmpty() ? "http://localhost:5173/thanh-toan/momo" : clean(returnUrl);
         ipnUrl = clean(ipnUrl).isEmpty() ? "http://127.0.0.1:8080/api/payments/momo/ipn" : clean(ipnUrl);
     }
     public boolean configured() {

@@ -211,6 +211,16 @@ class MomoBillingApiTest {
             }
         }
     }
+    @Test void vnpayCancellationCannotCancelOrUnlockAnOutstandingMomoOrder() throws Exception {
+        create();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment/cancel").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("NO_PENDING_PAYMENT"));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE provider='MOMO' AND status='PENDING'",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.audit_log WHERE action='SERVICE_INVOICE_PAYMENT_CANCELLED' AND target_id=?",Integer.class,invoice));
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+        invoiceStillUnpaid();
+    }
     @Test void failedMomoHistoryDoesNotClaimConfirmationOfALaterVietQrPayment() throws Exception {
         String order=create();Map<String,String> f=callback(order);f.put("resultCode","1006");sign(f);
         mvc.perform(post("/api/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(f)))

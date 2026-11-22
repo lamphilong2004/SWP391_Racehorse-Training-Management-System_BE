@@ -42,7 +42,7 @@ app:
       access-key: ${MOMO_ACCESS_KEY:}
       secret-key: ${MOMO_SECRET_KEY:}
       endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn}
-      return-url: ${MOMO_RETURN_URL:http://127.0.0.1:5173/thanh-toan/momo}
+      return-url: ${MOMO_RETURN_URL:http://localhost:5173/thanh-toan/momo}
       ipn-url: ${MOMO_IPN_URL:http://127.0.0.1:8080/api/payments/momo/ipn}
     vnpay:
       tmn-code: ${VNPAY_TMN_CODE:}

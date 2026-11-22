@@ -39,6 +39,8 @@ class MomoGatewayConfigurationTest {
     }
 
     @Test void officialHttpsSandboxWorksInNormalAndTestProfiles() {
+        var defaults = new MomoProperties("fixture-partner", "fixture-access", "fixture-secret", null, null, null);
+        assertEquals("http://localhost:5173/thanh-toan/momo", defaults.returnUrl());
         for (String[] profiles : new String[][]{{}, {"dev"}, {"production"}, {"test"}}) {
             assertTrue(gateway("https://test-payment.momo.vn", profiles).configured());
             assertTrue(gateway("https://test-payment.momo.vn:443/", profiles).configured());
