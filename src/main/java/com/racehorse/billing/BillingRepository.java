@@ -47,9 +47,9 @@ public class BillingRepository {
 
     public record PaymentRow(long id, long invoiceId, String txnRef, long amount, String status,
                              String providerCreateDate, Instant expiresAt, String provider, String confirmedVia) {
-        /** The owner gave this link up; VNPay may still report it paid later, and that money must not be lost. */
+        /** The owner gave this link or order up; the gateway may still report it paid later, and that money must not be lost. */
         public boolean cancelledByOwner() {
-            return "VNPAY".equals(provider) && "FAILED".equals(status) && "OWNER".equals(confirmedVia);
+            return ("VNPAY".equals(provider) || "MOMO".equals(provider)) && "FAILED".equals(status) && "OWNER".equals(confirmedVia);
         }
     }
 
@@ -387,7 +387,7 @@ public class BillingRepository {
     public List<PaymentRow> ownerCancelledPayments(long invoiceId) {
         return jdbc.query("""
                 SELECT id, invoice_id, txn_ref, amount, status, provider_create_date, expires_at, provider, confirmed_via
-                FROM dbo.payment_transaction WHERE invoice_id = ? AND provider = 'VNPAY' AND status = 'FAILED' AND confirmed_via = 'OWNER'
+                FROM dbo.payment_transaction WHERE invoice_id = ? AND provider IN ('VNPAY', 'MOMO') AND status = 'FAILED' AND confirmed_via = 'OWNER'
                 ORDER BY created_at DESC, id DESC
                 """, PAYMENT_ROW, invoiceId);
     }

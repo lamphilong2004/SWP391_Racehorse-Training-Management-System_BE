@@ -172,7 +172,16 @@ public class BillingController {
             summary = "Cancel the open VNPay link of the invoice so it can be paid again at once",
             security = @SecurityRequirement(name = "bearerAuth"))
     public ApiResponse<PaymentResult> cancelVnpayPayment(@PathVariable long invoiceId) {
-        return ApiResponse.ok(service.cancelOpenPayment(invoiceId));
+        return ApiResponse.ok(service.cancelOpenPayment(invoiceId, "VNPAY"));
+    }
+
+    @PostMapping("/api/owner/invoices/{invoiceId}/momo-payment/cancel")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "cancelMomoPayment",
+            summary = "Cancel the open MoMo order of the invoice so it can be paid again at once",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<PaymentResult> cancelMomoPayment(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.cancelOpenPayment(invoiceId, "MOMO"));
     }
 
     @PostMapping("/api/owner/invoices/{invoiceId}/payment-check")

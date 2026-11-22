@@ -246,6 +246,91 @@ class MomoBillingApiTest {
         mvc.perform(post("/api/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(f)))
             .andExpect(status().isNoContent());invoiceStillUnpaid();create();
     }
+    String paymentField(String column, String order) {
+        return jdbc.queryForObject("SELECT " + column + " FROM dbo.payment_transaction WHERE txn_ref=?", String.class, order);
+    }
+    String onlyMomoOrder() {
+        return jdbc.queryForObject("SELECT txn_ref FROM dbo.payment_transaction WHERE provider='MOMO'", String.class);
+    }
+    void cancelMomo(String expectedStatus) throws Exception {
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment/cancel").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value(expectedStatus));
+    }
+    @Test void aRefusedCreateIsRecordedFailedAndLeavesTheInvoicePayableByAnyMethod() throws Exception {
+        for (String refusal : List.of("forbidden", "refused")) {
+            jdbc.update("DELETE FROM dbo.payment_transaction");
+            createMode = refusal;
+            mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment").header("Authorization","Bearer "+owner))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value("MOMO_CREATE_REJECTED"));
+            String order = onlyMomoOrder();
+            assertEquals("FAILED", paymentField("status", order), refusal);
+            assertEquals(refusal.equals("forbidden") ? "403" : "13", paymentField("response_code", order));
+            invoiceStillUnpaid();
+            // Nothing is open: VNPay can start at once (a definite refusal never locks the invoice).
+            mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment").header("Authorization","Bearer "+owner))
+                .andExpect(status().isCreated());
+        }
+    }
+    @Test void ownerCancelsAnUncertainMomoOrderAndCanPayAnotherWayAtOnce() throws Exception {
+        createMode = "broken";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+        String order = onlyMomoOrder();
+        assertEquals("PENDING", paymentField("status", order));
+        mode = "pending";
+        cancelMomo("CANCELLED");
+        assertEquals("FAILED/OWNER", paymentField("status || '/' || confirmed_via", order));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.audit_log WHERE action='SERVICE_INVOICE_PAYMENT_CANCELLED' AND target_id=?",
+            Integer.class, invoice));
+        invoiceStillUnpaid();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isCreated());
+        // The VNPay cancel action never touches MoMo orders, and the MoMo one never touches VNPay links.
+        cancelMomo("NO_PENDING_PAYMENT");
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE provider='VNPAY' AND status='PENDING'", Integer.class));
+    }
+    @Test void cancellingFindsTheMomoOrderAlreadyPaidAndRecordsIt() throws Exception {
+        String order = create();
+        mode = "success";
+        cancelMomo("SUCCESS");
+        assertEquals("SUCCESS/MOMO_QUERY", paymentField("status || '/' || confirmed_via", order));
+        assertEquals("PAID", jdbc.queryForObject("SELECT status FROM dbo.service_invoice WHERE id=?", String.class, invoice));
+    }
+    @Test void aCancelledMomoOrderThatMomoLaterReportsPaidIsFoundByPaymentCheck() throws Exception {
+        String order = create();
+        mode = "pending";
+        cancelMomo("CANCELLED");
+        mode = "success";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/payment-check").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
+            .andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        assertEquals("SUCCESS/MOMO_QUERY", paymentField("status || '/' || confirmed_via", order));
+    }
+    @Test void aCancelledMomoOrderPaidAfterTheOwnerSettledByVietQrIsFlaggedForRefund() throws Exception {
+        String order = create();
+        mode = "pending";
+        cancelMomo("CANCELLED");
+        setReceivingAccount();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/qr-transfer").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        mvc.perform(post("/api/payments/momo/ipn").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(callback(order))))
+            .andExpect(status().isNoContent());
+        assertEquals("REFUND_REQUIRED", paymentField("status", order));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.payment_transaction WHERE invoice_id=? AND status='SUCCESS'", Integer.class, invoice));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id=7801"
+            + " AND notification_type='SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
+    }
+    @Test void aCancelledMomoOrderThatMomoReportsFailedStaysCancelledOnReturn() throws Exception {
+        String order = create();
+        mode = "pending";
+        cancelMomo("CANCELLED");
+        Map<String,String> f = callback(order); f.put("resultCode","1006"); sign(f);
+        mvc.perform(post("/api/payments/momo/return").header("Authorization","Bearer "+owner)
+            .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("params",f))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("FAILED"));
+        assertEquals("FAILED/OWNER", paymentField("status || '/' || confirmed_via", order));
+        invoiceStillUnpaid();
+    }
     static HttpServer startFixture() {
         try {
             HttpServer s=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -258,6 +343,8 @@ class MomoBillingApiTest {
                     createCalls.incrementAndGet();
                     body.put("resultCode",0);body.put("payUrl","https://test-payment.momo.vn/v2/gateway/pay?t=fixture");
                     if(createMode.equals("broken")){e.sendResponseHeaders(500,-1);e.close();return;}
+                    if(createMode.equals("forbidden")){e.sendResponseHeaders(403,-1);e.close();return;}
+                    if(createMode.equals("refused")){body.put("resultCode",13);body.remove("payUrl");}
                 } else {
                     body.put("amount",50000);body.put("resultCode",mode.equals("pending")?1000:0);
                     body.put("transId",123456789);body.put("payType","napas");

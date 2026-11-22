@@ -26,7 +26,8 @@ class MomoGatewayConfigurationTest {
         for (String[] profiles : new String[][]{{}, {"dev"}, {"production"}, {"test", "production"}, {"dev", "test"}}) {
             var gateway = gateway("http://127.0.0.1:1", profiles);
             assertFalse(gateway.configured());
-            assertTrue(gateway.create("unreachable-fixture", 10000, "test").isEmpty());
+            // Not configured: a refusal (nothing created, nothing to pay), never a created checkout address.
+            assertInstanceOf(MomoGateway.Rejected.class, gateway.create("unreachable-fixture", 10000, "test"));
             assertTrue(gateway.query("unreachable-fixture", 10000).isEmpty());
             assertFalse(gateway.verify(signedCallback()));
         }
