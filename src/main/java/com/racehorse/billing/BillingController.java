@@ -172,7 +172,16 @@ public class BillingController {
             summary = "Cancel the open VNPay link of the invoice so it can be paid again at once",
             security = @SecurityRequirement(name = "bearerAuth"))
     public ApiResponse<PaymentResult> cancelVnpayPayment(@PathVariable long invoiceId) {
-        return ApiResponse.ok(service.cancelOpenPayment(invoiceId));
+        return ApiResponse.ok(service.cancelOpenPayment(invoiceId, "VNPAY"));
+    }
+
+    @PostMapping("/api/owner/invoices/{invoiceId}/momo-payment/cancel")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "cancelMomoPayment",
+            summary = "Cancel the open MoMo order of the invoice so it can be paid again at once",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<PaymentResult> cancelMomoPayment(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.cancelOpenPayment(invoiceId, "MOMO"));
     }
 
     @PostMapping("/api/owner/invoices/{invoiceId}/payment-check")
@@ -182,6 +191,23 @@ public class BillingController {
     public ApiResponse<PaymentResult> ownerCheck(@PathVariable long invoiceId) {
         return ApiResponse.ok(service.checkPayments(invoiceId));
     }
+
+    @PostMapping("/api/owner/invoices/{invoiceId}/momo-payment")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    public ApiResponse<BillingDtos.MomoPaymentLink> momoPay(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.createMomoPayment(invoiceId));
+    }
+
+    @PostMapping("/api/payments/momo/return")
+    @PreAuthorize("hasAnyRole('HORSE_OWNER','CLUB_MANAGER')")
+    public ApiResponse<PaymentResult> momoReturn(@RequestBody ReturnRequest request) {
+        return ApiResponse.ok(service.handleMomoReturn(request == null ? Map.of() : request.params()));
+    }
+
+    @PostMapping("/api/payments/momo/ipn")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void momoIpn(@RequestBody Map<String, String> params) { service.handleMomoIpn(params); }
 
     /* ---------- VNPay ---------- */
 

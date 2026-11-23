@@ -723,7 +723,10 @@ class BillingApiTest {
         jdbc.update("""
                 INSERT INTO dbo.horse_program_phase (id, horse_training_program_id, name, phase_order, start_date, end_date)
                 VALUES (7750, 7750, 'Phase', 1, ?, ?)""", start, start.plusMonths(2));
-        LocalDateTime doneAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(30);
+        // Keep completed sessions on today's Vietnam billing date, including runs just after midnight.
+        // Subtracting 30 minutes from the wall clock can otherwise put both sessions in yesterday's invoice.
+        LocalDateTime doneAt = LocalDate.now(VN).atStartOfDay(VN)
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
         for (int i = 1; i <= 3; i++) {
             jdbc.update("""
                     INSERT INTO dbo.training_session (id, session_code, horse_program_phase_id, created_by_user_id,
@@ -748,5 +751,22 @@ class BillingApiTest {
         var request = get("/api/payments/vnpay/ipn");
         params.forEach(request::param);
         return request;
+    }
+    @Test
+    void reviewQrMustNotSettleAnInvoiceWhileItsVnpayLinkIsStillPayable() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7781, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7782, RoleCode.HORSE_OWNER).token();
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"boardingCareDaily\":100000,\"trainingSession\":300000}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/billing/payment-account").header("Authorization", "Bearer " + cm)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bankBin\":\"970436\",\"bankName\":\"Vietcombank\",\"accountNo\":\"0123456789\",\"accountName\":\"TEST CLUB\"}"))
+                .andExpect(status().isOk());
+        long invoiceId = seedHorseAndGenerate(cm, YearMonth.now(VN).toString(), 7782);
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/vnpay-payment").header("Authorization", "Bearer " + owner)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated());
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/qr-transfer").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isConflict());
     }
 }

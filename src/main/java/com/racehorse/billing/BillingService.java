@@ -68,11 +68,13 @@ public class BillingService {
 
     private final BillingRepository repository;
     private final VnpayGateway gateway;
+    private final MomoGateway momo;
     private final CurrentActorProvider actors;
     private final NotificationPublisher notifications;
 
     public BillingService(BillingRepository repository, VnpayGateway gateway, CurrentActorProvider actors,
-                          NotificationPublisher notifications) {
+                          NotificationPublisher notifications, MomoGateway momo) {
+        this.momo = momo;
         this.repository = repository;
         this.gateway = gateway;
         this.actors = actors;
@@ -232,6 +234,7 @@ public class BillingService {
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
     public InvoiceDetail cancel(long invoiceId, CancelRequest request) {
+        repository.lockInvoice(invoiceId);
         ActorContext actor = actor();
         String reason = request == null || request.reason() == null ? "" : request.reason().trim();
         if (reason.isEmpty() || reason.length() > 500) {
@@ -290,13 +293,10 @@ public class BillingService {
                     "This invoice is above the online payment limit. Settle it with the club.");
         }
         // One payment at a time: a still-valid VNPay link could be paid after a second one, charging the owner twice.
-        for (PaymentRow open : repository.openPendingPayments(invoiceId)) {
-            if ("SUCCESS".equals(confirm(open))) {
-                throw conflict("status", "This invoice is not awaiting payment.");
-            }
-        }
+        // Confirmation is an explicit check operation. Do not confirm then throw a conflict in this transaction:
+        // throwing would roll back a genuine settlement discovered by that query.
         if (!repository.openPendingPayments(invoiceId).isEmpty()) {
-            throw conflict("status", "A VNPay payment for this invoice is still open. Finish it, or wait until it expires.");
+            throw conflict("status", "A payment for this invoice is still open. Check it before using another method.");
         }
         LocalDateTime createdVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
         LocalDateTime expiresVn = createdVn.plusMinutes(gateway.properties().expireMinutes());
@@ -309,6 +309,132 @@ public class BillingService {
         repository.audit(actor.userId(), RoleCode.HORSE_OWNER.name(), "SERVICE_INVOICE_PAYMENT_STARTED", invoiceId,
                 "VNPay payment " + txnRef + " started for " + amount + " VND.");
         return new PaymentLink(url, txnRef, amount, expiresVn.atZone(VN).toInstant());
+    }
+
+    /**
+     * Reserve before the remote call. An uncertain response retains PENDING so another click cannot double-charge; the
+     * owner can still give it up ("Hủy giao dịch MoMo"). A refusal from MoMo has no checkout address, so the reservation
+     * is recorded FAILED and the invoice stays payable by any method.
+     */
+    @Transactional(noRollbackFor = {MomoCreationUncertain.class, MomoCreationRejected.class})
+    public BillingDtos.MomoPaymentLink createMomoPayment(long invoiceId) {
+        repository.lockInvoice(invoiceId);
+        ActorContext actor = actor();
+        InvoiceRow invoice = ownInvoice(invoiceId, actor);
+        if (!"ISSUED".equals(invoice.summary().status())) throw conflict("status", "This invoice is not awaiting payment.");
+        if (!momo.configured()) throw new BusinessException(ErrorCode.BUSINESS_RULE_VIOLATION, "MOMO_NOT_CONFIGURED");
+        long amount = invoice.summary().totalAmount();
+        if (amount < 10_000 || amount > 50_000_000) throw validation("amount", "MOMO_ATM_AMOUNT_LIMIT");
+        if (repository.hasOpenPending(invoiceId)) throw conflict("status", "MOMO_PAYMENT_STILL_OPEN");
+        LocalDateTime now = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
+        String order = "MM" + java.util.UUID.randomUUID().toString().replace("-", "");
+        // Local timer is advisory: elapsed time is not proof that MoMo cancelled an order.
+        Instant expires = Instant.now().plusSeconds(900);
+        repository.insertMomoPayment(invoiceId, order, amount, actor.userId(), VNP_TIME.format(now),
+                LocalDateTime.ofInstant(expires, ZoneOffset.UTC));
+        MomoGateway.CreateResult created = momo.create(order, amount, "Thanh toan hoa don " + invoice.summary().invoiceCode());
+        if (created instanceof MomoGateway.Rejected rejected) {
+            PaymentRow reserved = repository.paymentByTxnRef(order).orElseThrow();
+            String code = rejected.code().length() > 5 ? rejected.code().substring(0, 5) : rejected.code();
+            repository.markPaymentFailed(reserved.id(), code, code);
+            throw new MomoCreationRejected();
+        }
+        if (!(created instanceof MomoGateway.Created opened)) throw new MomoCreationUncertain();
+        repository.audit(actor.userId(), RoleCode.HORSE_OWNER.name(), "SERVICE_INVOICE_PAYMENT_STARTED", invoiceId,
+                "MoMo ATM sandbox payment " + order + " started for " + amount + " VND.");
+        return new BillingDtos.MomoPaymentLink(opened.payUrl(), order, amount, expires);
+    }
+
+    public static final class MomoCreationUncertain extends BusinessException {
+        MomoCreationUncertain() { super(ErrorCode.BUSINESS_RULE_VIOLATION, "MOMO_CREATE_UNCONFIRMED"); }
+    }
+
+    public static final class MomoCreationRejected extends BusinessException {
+        MomoCreationRejected() { super(ErrorCode.BUSINESS_RULE_VIOLATION, "MOMO_CREATE_REJECTED"); }
+    }
+
+    /** A signed browser return still needs a direct gateway query before settlement. */
+    @Transactional
+    public PaymentResult handleMomoReturn(Map<String, String> params) {
+        PaymentRow payment = verifiedMomoNotification(params);
+        repository.lockInvoice(payment.invoiceId());
+        ActorContext actor = actor();
+        InvoiceRow invoice = repository.invoice(payment.invoiceId()).orElseThrow(BillingService::invoiceNotFound);
+        if (invoice.ownerUserId() != actor.userId() && !actor.roles().contains(RoleCode.CLUB_MANAGER)) throw invoiceNotFound();
+        PaymentRow current = repository.paymentByTxnRef(payment.txnRef()).orElseThrow();
+        String outcome = confirm(current);
+        if ("UNAVAILABLE".equals(outcome)) outcome = current.cancelledByOwner() ? "CANCELLED" : "PENDING";
+        return momoResult(payment.invoiceId(), outcome);
+    }
+
+    /** Signed server callback. Valid repeats are acknowledged without another payment/notification. */
+    @Transactional
+    public void handleMomoIpn(Map<String, String> params) {
+        PaymentRow payment = verifiedMomoNotification(params);
+        repository.lockInvoice(payment.invoiceId());
+        PaymentRow current = repository.paymentByTxnRef(payment.txnRef()).orElseThrow();
+        // An owner-cancelled order may still be paid in a MoMo tab: that success is recorded or flagged for a refund.
+        if (!"PENDING".equals(current.status()) && !current.cancelledByOwner()) return;
+        applyMomoOutcome(current, Integer.parseInt(params.get("resultCode")), params.get("transId"), params.get("payType"), "MOMO_IPN");
+    }
+
+    private PaymentRow verifiedMomoNotification(Map<String, String> params) {
+        if (params == null || !momo.verify(params)) throw validation("signature", "MOMO_INVALID_RESPONSE");
+        PaymentRow payment = repository.paymentByTxnRef(params.getOrDefault("orderId", "")).orElseThrow(BillingService::invoiceNotFound);
+        if (!"MOMO".equals(payment.provider()) || !momo.properties().partnerCode().equals(params.get("partnerCode"))
+                || !payment.txnRef().equals(params.get("requestId"))
+                || !String.valueOf(payment.amount()).equals(params.get("amount"))) throw validation("amount", "MOMO_INVALID_RESPONSE");
+        try {
+            int code = Integer.parseInt(params.getOrDefault("resultCode", ""));
+            if (code == 0 && !MomoGateway.positiveTransaction(params.get("transId"))) throw new NumberFormatException();
+        } catch (NumberFormatException e) { throw validation("resultCode", "MOMO_INVALID_RESPONSE"); }
+        return payment;
+    }
+
+    private String confirmMomo(PaymentRow payment) {
+        if (!"PENDING".equals(payment.status())) return payment.status();
+        var outcome = momo.query(payment.txnRef(), payment.amount());
+        if (outcome.isEmpty()) return "PENDING";
+        var r = outcome.get();
+        return applyMomoOutcome(payment, r.resultCode(), r.transactionNo(), r.payType(), "MOMO_QUERY");
+    }
+
+    /** An owner-cancelled MoMo order: only resultCode 0 changes it (recorded, or flagged for a refund). */
+    private String queryCancelledMomo(PaymentRow payment) {
+        var outcome = momo.query(payment.txnRef(), payment.amount());
+        if (outcome.isEmpty()) return "UNAVAILABLE";
+        if (outcome.get().resultCode() != 0) return "FAILED";
+        applySuccess(payment, "MOMO_QUERY", outcome.get().transactionNo(), null, outcome.get().payType(), "0", "0", null);
+        return persistedStatus(payment);
+    }
+
+    /** Status actually written by applySuccess: SUCCESS, or REFUND_REQUIRED for an invoice settled another way. */
+    private String persistedStatus(PaymentRow payment) {
+        return repository.paymentByTxnRef(payment.txnRef()).map(PaymentRow::status).orElse("PENDING");
+    }
+
+    private String applyMomoOutcome(PaymentRow payment, int code, String transId, String payType, String via) {
+        if (code == 0) {
+            applySuccess(payment, via, transId, null, payType, "0", "0", null);
+        } else if (List.of(42, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1017).contains(code)) {
+            // 42: MoMo has no such order (official result-code table), so nothing can be paid on it.
+            repository.markPaymentFailed(payment.id(), String.valueOf(code), String.valueOf(code));
+        }
+        // 1000/7000/7002/9000 and unknown errors stay pending. Only resultCode=0 settles this one-step ATM flow.
+        return repository.paymentByTxnRef(payment.txnRef()).map(PaymentRow::status).orElse("PENDING");
+    }
+
+    private PaymentResult momoResult(long invoiceId, String status) {
+        InvoiceRow invoice = repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound);
+        String text = switch (status) {
+            case "SUCCESS" -> "MoMo đã xác nhận thanh toán. Hóa đơn đã thanh toán.";
+            case "FAILED" -> "Giao dịch MoMo không thành công. Hóa đơn chưa thanh toán.";
+            case "REFUND_REQUIRED" -> "MoMo đã thu tiền trùng. Liên hệ Club Manager để hoàn tiền.";
+            case "CANCELLED" -> "Đã hủy giao dịch MoMo đang mở. Bạn có thể thanh toán lại bằng VNPay, MoMo hoặc mã QR.";
+            case "NO_PENDING_PAYMENT" -> "Không có giao dịch nào đang chờ xác nhận.";
+            default -> "Đang chờ MoMo xác nhận. Nếu chưa thanh toán, hãy hủy giao dịch MoMo rồi thanh toán lại; không thanh toán thêm khi chưa hủy.";
+        };
+        return new PaymentResult(invoiceId, invoice.summary().invoiceCode(), invoice.summary().status(), status, null, text);
     }
 
     /** What the owner's VietQR code encodes: the club's receiving account, the invoice total, the invoice code. */
@@ -336,8 +462,8 @@ public class BillingService {
         if (!"ISSUED".equals(invoice.summary().status()) || repository.invoiceHasSuccess(invoiceId)) {
             throw conflict("status", "This invoice is not awaiting payment.");
         }
-        if (!repository.openPendingPayments(invoiceId).isEmpty()) {
-            throw conflict("status", "A VNPay payment for this invoice is still open. Finish it, or wait until it expires.");
+        if (repository.hasOpenPending(invoiceId)) {
+            throw conflict("status", "A payment for this invoice is still open. Check it before using another method.");
         }
         BillingDtos.PaymentAccount account = requireAccount();
         LocalDateTime nowVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
@@ -386,6 +512,7 @@ public class BillingService {
         }
         PaymentRow payment = repository.paymentByTxnRef(fields.getOrDefault("vnp_TxnRef", ""))
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Payment not found."));
+        if (!"VNPAY".equals(payment.provider())) throw invoiceNotFound();
         InvoiceRow invoice = repository.invoice(payment.invoiceId()).orElseThrow(BillingService::invoiceNotFound);
         if (invoice.ownerUserId() != actor.userId() && !actor.roles().contains(RoleCode.CLUB_MANAGER)) {
             throw invoiceNotFound();
@@ -425,32 +552,35 @@ public class BillingService {
     }
 
     /**
-     * The owner gives up the open VNPay link(s) of the invoice, so it can be paid again at once (VNPay or VietQR) instead
-     * of waiting for the link to expire. VNPay is asked first: a link already paid is recorded, not cancelled. A link
-     * that VNPay still reports paid after the cancel is recorded then, or flagged for a refund if the invoice was paid
-     * another way meanwhile (see {@link #applySuccess}).
+     * The owner gives up the open VNPay link(s) or MoMo order(s) of the invoice, so it can be paid again at once instead
+     * of waiting. The gateway is asked first: a payment already made is recorded, not cancelled. One that the gateway
+     * still reports paid after the cancel is recorded then, or flagged for a refund if the invoice was paid another way
+     * meanwhile (see {@link #applySuccess}).
      */
     @Transactional
-    public PaymentResult cancelOpenPayment(long invoiceId) {
+    public PaymentResult cancelOpenPayment(long invoiceId, String provider) {
         ActorContext actor = actor();
         repository.lockInvoice(invoiceId);
         ownInvoice(invoiceId, actor);
-        List<PaymentRow> pending = repository.pendingPayments(invoiceId);
+        boolean momoProvider = "MOMO".equals(provider);
+        String label = momoProvider ? "MoMo" : "VNPay";
+        List<PaymentRow> pending = repository.pendingPayments(invoiceId).stream().filter(p -> provider.equals(p.provider())).toList();
         if (pending.isEmpty()) {
-            return result(invoiceId, null, "NO_PENDING_PAYMENT");
+            return momoProvider ? momoResult(invoiceId, "NO_PENDING_PAYMENT") : result(invoiceId, null, "NO_PENDING_PAYMENT");
         }
         for (PaymentRow payment : pending) {
-            if ("SUCCESS".equals(confirm(payment))) {
-                return result(invoiceId, null, "SUCCESS");
+            String found = confirm(payment);
+            if (moneyFound(found)) {
+                return momoProvider ? momoResult(invoiceId, found) : result(invoiceId, null, found);
             }
         }
-        for (PaymentRow payment : repository.pendingPayments(invoiceId)) {
+        for (PaymentRow payment : repository.pendingPayments(invoiceId).stream().filter(p -> provider.equals(p.provider())).toList()) {
             if (repository.markPaymentCancelledByOwner(payment.id()) == 1) {
                 repository.audit(actor.userId(), RoleCode.HORSE_OWNER.name(), "SERVICE_INVOICE_PAYMENT_CANCELLED",
-                        invoiceId, "Owner cancelled VNPay payment " + payment.txnRef() + " before it was paid.");
+                        invoiceId, "Owner cancelled " + label + " payment " + payment.txnRef() + " before it was paid.");
             }
         }
-        return result(invoiceId, "24", "CANCELLED");
+        return momoProvider ? momoResult(invoiceId, "CANCELLED") : result(invoiceId, "24", "CANCELLED");
     }
 
     /** "Kiểm tra lại": re-queries every PENDING payment of the invoice (owner of the invoice or Club Manager). */
@@ -462,32 +592,49 @@ public class BillingService {
                 ? repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound)
                 : ownInvoice(invoiceId, actor);
         String outcome = "NO_PENDING_PAYMENT";
+        String checkedProvider = null;
         boolean unreachable = false;
         for (PaymentRow payment : repository.pendingPayments(invoice.summary().id())) {
+            checkedProvider = payment.provider();
             outcome = confirm(payment);
             if (outcome.equals("UNAVAILABLE")) {
                 // querydr gave no verifiable answer (the sandbox answers 99 to every query): asking again will not help.
                 unreachable = true;
                 outcome = "PENDING";
             }
-            if (outcome.equals("SUCCESS")) {
+            if (moneyFound(outcome)) {
                 break;
             }
         }
-        if (!outcome.equals("SUCCESS")) {
-            // A cancelled link may still have been paid in a VNPay tab. A local machine gets no IPN and the return tab
-            // may be closed, so this check is how that money is found (recorded, or flagged for a refund).
-            for (PaymentRow payment : repository.ownerCancelledPayments(invoice.summary().id())) {
-                if ("SUCCESS".equals(confirm(payment))) {
-                    outcome = "SUCCESS";
+        if (!moneyFound(outcome)) {
+            for (PaymentRow payment : repository.ownerCancelledPayments(invoiceId)) {
+                // The persisted result is reported: SUCCESS, or REFUND_REQUIRED when the invoice was settled another way.
+                String late = confirm(payment);
+                if (moneyFound(late)) {
+                    checkedProvider = payment.provider();
+                    outcome = late;
                     break;
                 }
             }
+        }
+        // A failed historical MoMo attempt must not make a later VietQR/VNPay payment look confirmed by MoMo.
+        if ("NO_PENDING_PAYMENT".equals(outcome) && "PAID".equals(invoice.summary().status())) {
+            boolean momoSettled = repository.payments(invoiceId).stream()
+                    .anyMatch(p -> "MOMO".equals(p.provider()) && "SUCCESS".equals(p.status()));
+            if (momoSettled) { checkedProvider = "MOMO"; outcome = "SUCCESS"; }
+        }
+        if ("MOMO".equals(checkedProvider)) {
+            return momoResult(invoiceId, outcome);
         }
         if (outcome.equals("PENDING") && unreachable) {
             return result(invoiceId, null, outcome, QUERY_UNAVAILABLE_MESSAGE);
         }
         return result(invoiceId, null, outcome);
+    }
+
+    /** The gateway took the money: recorded as the payment (SUCCESS) or flagged for a refund (REFUND_REQUIRED). */
+    private static boolean moneyFound(String outcome) {
+        return "SUCCESS".equals(outcome) || "REFUND_REQUIRED".equals(outcome);
     }
 
     /** VNPay IPN (server to server, public URL with SSL). Returns VNPay's RspCode / Message. */
@@ -506,6 +653,7 @@ public class BillingService {
         }
         // Settle one payment of an invoice at a time, in the same lock order as create / cancel / VietQR, and only
         // then read the payment and invoice state the decision depends on.
+        if (!"VNPAY".equals(found.get().provider())) return rsp("01", "Order not Found");
         repository.lockInvoice(found.get().invoiceId());
         PaymentRow payment = repository.paymentByTxnRef(found.get().txnRef()).orElseThrow();
         long amount;
@@ -539,12 +687,13 @@ public class BillingService {
     private String confirm(PaymentRow payment) {
         if (payment.cancelledByOwner()) {
             // Only a late success changes a cancelled link: the money is then recorded (or flagged for a refund).
-            String outcome = query(payment);
-            return "SUCCESS".equals(outcome) || "UNAVAILABLE".equals(outcome) ? outcome : "FAILED";
+            String outcome = "MOMO".equals(payment.provider()) ? queryCancelledMomo(payment) : query(payment);
+            return moneyFound(outcome) || "UNAVAILABLE".equals(outcome) ? outcome : "FAILED";
         }
         if (!"PENDING".equals(payment.status())) {
             return payment.status();
         }
+        if ("MOMO".equals(payment.provider())) return confirmMomo(payment);
         return query(payment);
     }
 
@@ -562,7 +711,7 @@ public class BillingService {
                 }
                 applySuccess(payment, "QUERYDR", result.transactionNo(), result.bankCode(), null,
                         result.responseCode(), result.transactionStatus(), result.payDate());
-                return "SUCCESS";
+                return persistedStatus(payment);
             }
             if ("01".equals(result.transactionStatus()) && !expired) {
                 return "PENDING";
@@ -579,6 +728,7 @@ public class BillingService {
 
     private void applySuccess(PaymentRow payment, String via, String transactionNo, String bankCode, String cardType,
                               String responseCode, String transactionStatus, String payDate) {
+        String providerLabel = "MOMO".equals(payment.provider()) ? "MoMo" : "VNPay";
         // provider_transaction_no holds at most 20 characters; VNPay's own number is used, never our longer reference.
         String providerNo = transactionNo == null || transactionNo.isBlank() ? "UNKNOWN" : transactionNo;
         repository.lockInvoice(payment.invoiceId());
@@ -589,12 +739,12 @@ public class BillingService {
             if (repository.markPaymentRefundRequired(payment.id(), via, providerNo, bankCode, cardType, responseCode,
                     transactionStatus, payDate) == 1) {
                 notifications.persistAndPublish(invoice.issuedBy().id(), NotificationApi.Category.ALERTS,
-                        "SERVICE_PAYMENT_REFUND_REQUIRED", "Cần hoàn tiền VNPay",
-                        "VNPay xác nhận thêm " + vnd(payment.amount()) + " cho hóa đơn " + invoice.summary().invoiceCode()
-                                + " đã thanh toán hoặc đã hủy. Hãy hoàn tiền giao dịch " + providerNo + " trên cổng VNPay.",
+                        "SERVICE_PAYMENT_REFUND_REQUIRED", "Cần hoàn tiền " + providerLabel,
+                        providerLabel + " xác nhận thêm " + vnd(payment.amount()) + " cho hóa đơn " + invoice.summary().invoiceCode()
+                                + " đã thanh toán hoặc đã hủy. Hãy hoàn tiền giao dịch " + providerNo + " trên cổng " + providerLabel + ".",
                         "SERVICE_INVOICE", payment.invoiceId(), false);
                 repository.auditSystem("SERVICE_PAYMENT_REFUND_REQUIRED", payment.invoiceId(),
-                        "VNPay " + via + " confirmed " + payment.txnRef() + " for an invoice that is not awaiting payment.");
+                        providerLabel + " " + via + " confirmed " + payment.txnRef() + " for an invoice that is not awaiting payment.");
             }
             return;
         }
@@ -606,7 +756,7 @@ public class BillingService {
             String code = invoice.summary().invoiceCode();
             notifications.persistAndPublish(invoice.ownerUserId(), NotificationApi.Category.ALERTS,
                     "SERVICE_INVOICE_PAID", "Đã thanh toán hóa đơn",
-                    "VNPay đã xác nhận thanh toán " + vnd(payment.amount()) + " cho hóa đơn " + code + ".",
+                    providerLabel + " đã xác nhận thanh toán " + vnd(payment.amount()) + " cho hóa đơn " + code + ".",
                     "SERVICE_INVOICE", payment.invoiceId(), false);
             notifications.persistAndPublish(invoice.issuedBy().id(), NotificationApi.Category.ALERTS,
                     "SERVICE_INVOICE_PAID", "Chủ ngựa đã thanh toán",
@@ -614,7 +764,7 @@ public class BillingService {
                             + vnd(payment.amount()) + ").", "SERVICE_INVOICE", payment.invoiceId(), false);
         }
         repository.auditSystem("SERVICE_INVOICE_PAID", payment.invoiceId(),
-                "VNPay " + via + " confirmed " + payment.txnRef() + " (" + payment.amount() + " VND).");
+                providerLabel + " " + via + " confirmed " + payment.txnRef() + " (" + payment.amount() + " VND).");
     }
 
     /**
@@ -648,7 +798,7 @@ public class BillingService {
     private InvoiceDetail detail(InvoiceRow row) {
         long id = row.summary().id();
         return new InvoiceDetail(row.summary(), repository.lines(id), repository.payments(id), row.issuedBy(),
-                row.cancelledAt(), row.cancellationReason(), gateway.properties().configured());
+                row.cancelledAt(), row.cancellationReason(), gateway.properties().configured(), momo.configured());
     }
 
     private InvoiceRow ownInvoice(long invoiceId, ActorContext actor) {
