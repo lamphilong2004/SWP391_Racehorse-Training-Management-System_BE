@@ -598,6 +598,32 @@ class BillingApiTest {
     }
 
     @Test
+    void paymentCheckThatCannotReachVnpaySaysHowThePaymentIsRecordedInsteadOfAskingToRetry() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7784, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7785, RoleCode.HORSE_OWNER).token();
+        long invoiceId = invoiceWithPricesAndAccount(cm, 7785);
+        String txnRef = startVnpay(owner, invoiceId).path("txnRef").stringValue();
+
+        // The sandbox querydr answers 99 with an unverifiable signature: the gateway returns no result.
+        org.mockito.Mockito.doReturn(java.util.Optional.empty())
+                .when(gatewaySpy).query(org.mockito.ArgumentMatchers.eq(txnRef), org.mockito.ArgumentMatchers.any());
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/payment-check").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.invoiceStatus").value("ISSUED"))
+                .andExpect(jsonPath("$.data.message").value(BillingService.QUERY_UNAVAILABLE_MESSAGE));
+        assertEquals("PENDING", jdbc.queryForObject("SELECT status FROM dbo.payment_transaction WHERE txn_ref = ?",
+                String.class, txnRef));
+
+        // VNPay answers but the payment is still in progress: the usual "check again later" message stays.
+        org.mockito.Mockito.doReturn(java.util.Optional.of(new VnpayGateway.QueryResult("00", "01", 0, "", "", "", "Pending")))
+                .when(gatewaySpy).query(org.mockito.ArgumentMatchers.eq(txnRef), org.mockito.ArgumentMatchers.any());
+        mvc.perform(post("/api/owner/invoices/" + invoiceId + "/payment-check").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.paymentStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.startsWith("Chưa nhận được xác nhận từ VNPay.")));
+    }
+
+    @Test
     void aCancelledLinkAndItsReplacementConfirmedAtOnceCountOnePaymentAndFlagTheOther() throws Exception {
         String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7774, RoleCode.CLUB_MANAGER).token();
         String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7775, RoleCode.HORSE_OWNER).token();

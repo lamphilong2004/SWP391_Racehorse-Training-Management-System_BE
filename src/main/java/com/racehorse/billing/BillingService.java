@@ -462,9 +462,12 @@ public class BillingService {
                 ? repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound)
                 : ownInvoice(invoiceId, actor);
         String outcome = "NO_PENDING_PAYMENT";
+        boolean unreachable = false;
         for (PaymentRow payment : repository.pendingPayments(invoice.summary().id())) {
             outcome = confirm(payment);
             if (outcome.equals("UNAVAILABLE")) {
+                // querydr gave no verifiable answer (the sandbox answers 99 to every query): asking again will not help.
+                unreachable = true;
                 outcome = "PENDING";
             }
             if (outcome.equals("SUCCESS")) {
@@ -480,6 +483,9 @@ public class BillingService {
                     break;
                 }
             }
+        }
+        if (outcome.equals("PENDING") && unreachable) {
+            return result(invoiceId, null, outcome, QUERY_UNAVAILABLE_MESSAGE);
         }
         return result(invoiceId, null, outcome);
     }
@@ -609,6 +615,20 @@ public class BillingService {
         }
         repository.auditSystem("SERVICE_INVOICE_PAID", payment.invoiceId(),
                 "VNPay " + via + " confirmed " + payment.txnRef() + " (" + payment.amount() + " VND).");
+    }
+
+    /**
+     * "Kiểm tra lại" could not ask VNPay. The payment stays PENDING (never assumed paid); the owner is told what records
+     * it instead of being asked to retry: the signed return page after paying, or cancelling the link if not paid.
+     */
+    static final String QUERY_UNAVAILABLE_MESSAGE = "Chưa tra cứu được giao dịch với VNPay. Nếu bạn đã thanh toán xong,"
+            + " hóa đơn được ghi nhận khi VNPay chuyển về trang kết quả. Nếu chưa thanh toán, hãy hủy giao dịch VNPay"
+            + " đang mở rồi thanh toán lại.";
+
+    private PaymentResult result(long invoiceId, String responseCode, String outcome, String message) {
+        InvoiceRow invoice = repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound);
+        return new PaymentResult(invoiceId, invoice.summary().invoiceCode(), invoice.summary().status(), outcome,
+                responseCode, message);
     }
 
     private PaymentResult result(long invoiceId, String responseCode, String outcome) {
