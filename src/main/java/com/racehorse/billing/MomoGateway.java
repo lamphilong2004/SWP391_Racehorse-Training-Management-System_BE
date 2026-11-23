@@ -62,8 +62,11 @@ public class MomoGateway {
         if (parsed.isEmpty()) return new Uncertain();
         JsonNode node = parsed.get();
         String resultCode = text(node, "resultCode");
-        // Any answer other than 0 carries no checkout address, so the owner cannot pay this order: it is a refusal.
-        if (resultCode.matches("[0-9]{1,5}") && !"0".equals(resultCode)) return new Rejected(resultCode);
+        // An answer other than 0 carries no checkout address. It releases the reservation only when it is tied to this
+        // order (partner, orderId, requestId); an answer about another order proves nothing and stays uncertain.
+        if (resultCode.matches("[0-9]{1,5}") && !"0".equals(resultCode)) {
+            return identifies(node, orderId, orderId) ? new Rejected(resultCode) : new Uncertain();
+        }
         if (!"0".equals(resultCode) || !matches(node, orderId, orderId, amount)) return new Uncertain();
         String url = text(node, "payUrl");
         try {
@@ -80,18 +83,24 @@ public class MomoGateway {
         f.put("partnerCode", properties.partnerCode()); f.put("orderId", orderId); f.put("requestId", requestId); f.put("lang", "vi");
         f.put("signature", MomoSigner.query(properties.accessKey(), properties.secretKey(), f));
         Optional<JsonNode> response = post("query", f);
-        if (response.isEmpty() || !matches(response.get(), orderId, requestId, amount)) return Optional.empty();
+        if (response.isEmpty() || !identifies(response.get(), orderId, requestId)) return Optional.empty();
         JsonNode node = response.get();
         try {
             int code = Integer.parseInt(text(node, "resultCode"));
             String transId = text(node, "transId");
-            if (code == 0 && !positiveTransaction(transId)) return Optional.empty();
+            // A success must carry this order's exact amount and a transaction number. A refusal such as 42 (no such
+            // order) may omit the amount; partner, orderId and requestId still tie it to this order.
+            if (code == 0 && (!positiveTransaction(transId) || !matches(node, orderId, requestId, amount))) return Optional.empty();
             // Official query response has no signature field. Trust comes from direct HTTPS to the configured sandbox,
             // plus exact response correlation; never call this with data supplied by the browser.
             return Optional.of(new Outcome(code, transId, text(node, "payType")));
         } catch (NumberFormatException e) { return Optional.empty(); }
     }
     static boolean positiveTransaction(String value) { return value != null && value.matches("[1-9][0-9]{0,18}"); }
+    private boolean identifies(JsonNode n, String order, String request) {
+        return properties.partnerCode().equals(text(n, "partnerCode")) && order.equals(text(n, "orderId"))
+            && request.equals(text(n, "requestId"));
+    }
     private boolean matches(JsonNode n, String order, String request, long amount) {
         return properties.partnerCode().equals(text(n, "partnerCode")) && order.equals(text(n, "orderId"))
             && request.equals(text(n, "requestId")) && String.valueOf(amount).equals(text(n, "amount"));

@@ -405,13 +405,19 @@ public class BillingService {
         if (outcome.isEmpty()) return "UNAVAILABLE";
         if (outcome.get().resultCode() != 0) return "FAILED";
         applySuccess(payment, "MOMO_QUERY", outcome.get().transactionNo(), null, outcome.get().payType(), "0", "0", null);
-        return "SUCCESS";
+        return persistedStatus(payment);
+    }
+
+    /** Status actually written by applySuccess: SUCCESS, or REFUND_REQUIRED for an invoice settled another way. */
+    private String persistedStatus(PaymentRow payment) {
+        return repository.paymentByTxnRef(payment.txnRef()).map(PaymentRow::status).orElse("PENDING");
     }
 
     private String applyMomoOutcome(PaymentRow payment, int code, String transId, String payType, String via) {
         if (code == 0) {
             applySuccess(payment, via, transId, null, payType, "0", "0", null);
-        } else if (List.of(1001, 1002, 1003, 1004, 1005, 1006, 1007, 1017).contains(code)) {
+        } else if (List.of(42, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1017).contains(code)) {
+            // 42: MoMo has no such order (official result-code table), so nothing can be paid on it.
             repository.markPaymentFailed(payment.id(), String.valueOf(code), String.valueOf(code));
         }
         // 1000/7000/7002/9000 and unknown errors stay pending. Only resultCode=0 settles this one-step ATM flow.
@@ -563,8 +569,9 @@ public class BillingService {
             return momoProvider ? momoResult(invoiceId, "NO_PENDING_PAYMENT") : result(invoiceId, null, "NO_PENDING_PAYMENT");
         }
         for (PaymentRow payment : pending) {
-            if ("SUCCESS".equals(confirm(payment))) {
-                return momoProvider ? momoResult(invoiceId, "SUCCESS") : result(invoiceId, null, "SUCCESS");
+            String found = confirm(payment);
+            if (moneyFound(found)) {
+                return momoProvider ? momoResult(invoiceId, found) : result(invoiceId, null, found);
             }
         }
         for (PaymentRow payment : repository.pendingPayments(invoiceId).stream().filter(p -> provider.equals(p.provider())).toList()) {
@@ -586,21 +593,26 @@ public class BillingService {
                 : ownInvoice(invoiceId, actor);
         String outcome = "NO_PENDING_PAYMENT";
         String checkedProvider = null;
+        boolean unreachable = false;
         for (PaymentRow payment : repository.pendingPayments(invoice.summary().id())) {
             checkedProvider = payment.provider();
             outcome = confirm(payment);
             if (outcome.equals("UNAVAILABLE")) {
+                // querydr gave no verifiable answer (the sandbox answers 99 to every query): asking again will not help.
+                unreachable = true;
                 outcome = "PENDING";
             }
-            if (outcome.equals("SUCCESS")) {
+            if (moneyFound(outcome)) {
                 break;
             }
         }
-        if (!outcome.equals("SUCCESS")) {
+        if (!moneyFound(outcome)) {
             for (PaymentRow payment : repository.ownerCancelledPayments(invoiceId)) {
-                if ("SUCCESS".equals(confirm(payment))) {
+                // The persisted result is reported: SUCCESS, or REFUND_REQUIRED when the invoice was settled another way.
+                String late = confirm(payment);
+                if (moneyFound(late)) {
                     checkedProvider = payment.provider();
-                    outcome = "SUCCESS";
+                    outcome = late;
                     break;
                 }
             }
@@ -611,7 +623,18 @@ public class BillingService {
                     .anyMatch(p -> "MOMO".equals(p.provider()) && "SUCCESS".equals(p.status()));
             if (momoSettled) { checkedProvider = "MOMO"; outcome = "SUCCESS"; }
         }
-        return "MOMO".equals(checkedProvider) ? momoResult(invoiceId, outcome) : result(invoiceId, null, outcome);
+        if ("MOMO".equals(checkedProvider)) {
+            return momoResult(invoiceId, outcome);
+        }
+        if (outcome.equals("PENDING") && unreachable) {
+            return result(invoiceId, null, outcome, QUERY_UNAVAILABLE_MESSAGE);
+        }
+        return result(invoiceId, null, outcome);
+    }
+
+    /** The gateway took the money: recorded as the payment (SUCCESS) or flagged for a refund (REFUND_REQUIRED). */
+    private static boolean moneyFound(String outcome) {
+        return "SUCCESS".equals(outcome) || "REFUND_REQUIRED".equals(outcome);
     }
 
     /** VNPay IPN (server to server, public URL with SSL). Returns VNPay's RspCode / Message. */
@@ -665,7 +688,7 @@ public class BillingService {
         if (payment.cancelledByOwner()) {
             // Only a late success changes a cancelled link: the money is then recorded (or flagged for a refund).
             String outcome = "MOMO".equals(payment.provider()) ? queryCancelledMomo(payment) : query(payment);
-            return "SUCCESS".equals(outcome) || "UNAVAILABLE".equals(outcome) ? outcome : "FAILED";
+            return moneyFound(outcome) || "UNAVAILABLE".equals(outcome) ? outcome : "FAILED";
         }
         if (!"PENDING".equals(payment.status())) {
             return payment.status();
@@ -688,7 +711,7 @@ public class BillingService {
                 }
                 applySuccess(payment, "QUERYDR", result.transactionNo(), result.bankCode(), null,
                         result.responseCode(), result.transactionStatus(), result.payDate());
-                return "SUCCESS";
+                return persistedStatus(payment);
             }
             if ("01".equals(result.transactionStatus()) && !expired) {
                 return "PENDING";
@@ -742,6 +765,20 @@ public class BillingService {
         }
         repository.auditSystem("SERVICE_INVOICE_PAID", payment.invoiceId(),
                 providerLabel + " " + via + " confirmed " + payment.txnRef() + " (" + payment.amount() + " VND).");
+    }
+
+    /**
+     * "Kiểm tra lại" could not ask VNPay. The payment stays PENDING (never assumed paid); the owner is told what records
+     * it instead of being asked to retry: the signed return page after paying, or cancelling the link if not paid.
+     */
+    static final String QUERY_UNAVAILABLE_MESSAGE = "Chưa tra cứu được giao dịch với VNPay. Nếu bạn đã thanh toán xong,"
+            + " hóa đơn được ghi nhận khi VNPay chuyển về trang kết quả. Nếu chưa thanh toán, hãy hủy giao dịch VNPay"
+            + " đang mở rồi thanh toán lại.";
+
+    private PaymentResult result(long invoiceId, String responseCode, String outcome, String message) {
+        InvoiceRow invoice = repository.invoice(invoiceId).orElseThrow(BillingService::invoiceNotFound);
+        return new PaymentResult(invoiceId, invoice.summary().invoiceCode(), invoice.summary().status(), outcome,
+                responseCode, message);
     }
 
     private PaymentResult result(long invoiceId, String responseCode, String outcome) {

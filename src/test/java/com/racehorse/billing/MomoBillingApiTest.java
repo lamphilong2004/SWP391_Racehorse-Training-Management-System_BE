@@ -331,6 +331,48 @@ class MomoBillingApiTest {
         assertEquals("FAILED/OWNER", paymentField("status || '/' || confirmed_via", order));
         invoiceStillUnpaid();
     }
+    @Test void aRefusalAboutAnotherOrderKeepsTheReservationPending() throws Exception {
+        createMode = "refused-unrelated";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value("MOMO_CREATE_UNCONFIRMED"));
+        assertEquals("PENDING", paymentField("status", onlyMomoOrder()));
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+    }
+    @Test void anUncertainOrderThatMomoDoesNotKnowIsFailedByPaymentCheck() throws Exception {
+        createMode = "broken";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+        String order = onlyMomoOrder();
+        // A 42 about another order proves nothing: still pending.
+        mode = "notfound-unrelated";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/payment-check").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("PENDING"));
+        assertEquals("PENDING", paymentField("status", order));
+        // A correlated 42 (no such order at MoMo, amount omitted): the order can never be paid, so it fails and unlocks.
+        mode = "notfound";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/payment-check").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("FAILED"));
+        assertEquals("FAILED/42", paymentField("status || '/' || response_code", order));
+        invoiceStillUnpaid();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/vnpay-payment").header("Authorization","Bearer "+owner))
+            .andExpect(status().isCreated());
+    }
+    @Test void aLateQueryAfterAVietQrSettlementReportsTheRefundNotAnOrdinarySuccess() throws Exception {
+        String order = create();
+        mode = "pending";
+        cancelMomo("CANCELLED");
+        setReceivingAccount();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/qr-transfer").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+        mode = "success";
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/payment-check").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("REFUND_REQUIRED"))
+            .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("hoàn tiền")));
+        assertEquals("REFUND_REQUIRED/MOMO_QUERY", paymentField("status || '/' || confirmed_via", order));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id=7801"
+            + " AND notification_type='SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
+    }
     static HttpServer startFixture() {
         try {
             HttpServer s=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -345,12 +387,15 @@ class MomoBillingApiTest {
                     if(createMode.equals("broken")){e.sendResponseHeaders(500,-1);e.close();return;}
                     if(createMode.equals("forbidden")){e.sendResponseHeaders(403,-1);e.close();return;}
                     if(createMode.equals("refused")){body.put("resultCode",13);body.remove("payUrl");}
+                    if(createMode.equals("refused-unrelated")){body.put("resultCode",13);body.remove("payUrl");body.put("orderId","UNRELATED-ORDER");}
                 } else {
                     body.put("amount",50000);body.put("resultCode",mode.equals("pending")?1000:0);
                     body.put("transId",123456789);body.put("payType","napas");
                     switch(mode){case "amount"->body.put("amount",1);case "order"->body.put("orderId","WRONG");
                         case "request"->body.put("requestId","WRONG");case "partner"->body.put("partnerCode","WRONG");
-                        case "missing-code"->body.remove("resultCode");case "missing-trans"->body.remove("transId");default->{}}
+                        case "missing-code"->body.remove("resultCode");case "missing-trans"->body.remove("transId");
+                        case "notfound"->{body.put("resultCode",42);body.remove("amount");body.remove("transId");}
+                        case "notfound-unrelated"->{body.put("resultCode",42);body.put("orderId","UNRELATED-ORDER");}default->{}}
                 }
                 byte[] data=j.writeValueAsBytes(body);e.getResponseHeaders().add("Content-Type","application/json");
                 e.sendResponseHeaders(200,data.length);e.getResponseBody().write(data);e.close();
