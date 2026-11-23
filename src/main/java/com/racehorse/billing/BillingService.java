@@ -456,6 +456,19 @@ public class BillingService {
      */
     @Transactional
     public PaymentResult confirmQrTransfer(long invoiceId) {
+        return confirmOwnerTransfer(invoiceId, false);
+    }
+
+    /**
+     * "Thanh toán" in the MoMo tab: the owner scanned the club's VietQR code with the MoMo app ("Quét mọi QR") and paid
+     * from the MoMo wallet. Recorded exactly like VietQR: paid as declared by the owner (MOMO / OWNER), no gateway check.
+     */
+    @Transactional
+    public PaymentResult confirmMomoTransfer(long invoiceId) {
+        return confirmOwnerTransfer(invoiceId, true);
+    }
+
+    private PaymentResult confirmOwnerTransfer(long invoiceId, boolean momoWallet) {
         ActorContext actor = actor();
         repository.lockInvoice(invoiceId);
         InvoiceRow invoice = ownInvoice(invoiceId, actor);
@@ -467,26 +480,29 @@ public class BillingService {
         }
         BillingDtos.PaymentAccount account = requireAccount();
         LocalDateTime nowVn = LocalDateTime.now(VN).truncatedTo(ChronoUnit.SECONDS);
-        String txnRef = "QR" + invoiceId + "T" + VNP_TIME.format(nowVn).substring(2) + gateway.randomId(2);
+        String txnRef = (momoWallet ? "MW" : "QR") + invoiceId + "T" + VNP_TIME.format(nowVn).substring(2) + gateway.randomId(2);
         long amount = invoice.summary().totalAmount();
-        repository.insertOwnerConfirmedTransfer(invoiceId, txnRef, amount, actor.userId(), account.bankBin(),
-                VNP_TIME.format(nowVn));
+        repository.insertOwnerConfirmedTransfer(momoWallet ? "MOMO" : "VIETQR", invoiceId, txnRef, amount, actor.userId(),
+                account.bankBin(), VNP_TIME.format(nowVn));
+        String channel = momoWallet ? "qua ví MoMo (quét mã QR)" : "chuyển khoản QR";
         if (repository.markInvoicePaid(invoiceId) != 1) {
             throw conflict("status", "This invoice is not awaiting payment.");
         }
         String code = invoice.summary().invoiceCode();
         notifications.persistAndPublish(invoice.ownerUserId(), NotificationApi.Category.ALERTS, "SERVICE_INVOICE_PAID",
-                "Đã thanh toán hóa đơn", "Đã ghi nhận chuyển khoản QR " + vnd(amount) + " cho hóa đơn " + code + ".",
+                "Đã thanh toán hóa đơn", "Đã ghi nhận thanh toán " + channel + " " + vnd(amount) + " cho hóa đơn " + code + ".",
                 "SERVICE_INVOICE", invoiceId, false);
         notifications.persistAndPublish(invoice.issuedBy().id(), NotificationApi.Category.ALERTS, "SERVICE_INVOICE_PAID",
-                "Chủ ngựa đã thanh toán", invoice.summary().owner().fullName() + " xác nhận chuyển khoản QR "
+                "Chủ ngựa đã thanh toán", invoice.summary().owner().fullName() + " xác nhận thanh toán " + channel + " "
                         + vnd(amount) + " cho hóa đơn " + code + " vào tài khoản " + account.bankName() + " "
                         + account.accountNo() + ".", "SERVICE_INVOICE", invoiceId, false);
         repository.audit(actor.userId(), RoleCode.HORSE_OWNER.name(), "SERVICE_INVOICE_PAID", invoiceId,
-                "Owner declared a VietQR transfer " + txnRef + " of " + amount + " VND to " + account.bankName() + " "
+                "Owner declared a " + (momoWallet ? "MoMo wallet (VietQR scanned in MoMo)" : "VietQR") + " transfer " + txnRef
+                        + " of " + amount + " VND to " + account.bankName() + " "
                         + account.accountNo() + " (content " + transferContent(code) + ").");
-        return new PaymentResult(invoiceId, code, "PAID", "SUCCESS", null,
-                "Đã ghi nhận thanh toán chuyển khoản QR. Hóa đơn đã được thanh toán.");
+        return new PaymentResult(invoiceId, code, "PAID", "SUCCESS", null, momoWallet
+                ? "Đã ghi nhận thanh toán qua ví MoMo. Hóa đơn đã được thanh toán."
+                : "Đã ghi nhận thanh toán chuyển khoản QR. Hóa đơn đã được thanh toán.");
     }
 
     private BillingDtos.PaymentAccount requireAccount() {

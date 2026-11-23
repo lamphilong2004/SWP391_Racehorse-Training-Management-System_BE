@@ -373,6 +373,35 @@ class MomoBillingApiTest {
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id=7801"
             + " AND notification_type='SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
     }
+    @Test void momoWalletTransferIsRecordedLikeVietQrAsDeclaredByTheOwner() throws Exception {
+        setReceivingAccount();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-transfer").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"))
+            .andExpect(jsonPath("$.data.paymentStatus").value("SUCCESS"))
+            .andExpect(jsonPath("$.data.message").value("Đã ghi nhận thanh toán qua ví MoMo. Hóa đơn đã được thanh toán."));
+        assertEquals("MOMO/SUCCESS/OWNER/QR", jdbc.queryForObject("SELECT provider || '/' || status || '/' || confirmed_via || '/' || card_type"
+            + " FROM dbo.payment_transaction WHERE invoice_id=?", String.class, invoice));
+        assertEquals(0, createCalls.get());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE recipient_user_id=7801"
+            + " AND notification_type='SERVICE_INVOICE_PAID'", Integer.class));
+        // Paid once: no second payment by any method, and a recheck reports nothing pending.
+        for (String method : List.of("momo-transfer", "qr-transfer", "momo-payment", "vnpay-payment"))
+            mvc.perform(post("/api/owner/invoices/"+invoice+"/"+method).header("Authorization","Bearer "+owner))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/payment-check").header("Authorization","Bearer "+owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.invoiceStatus").value("PAID"));
+    }
+    @Test void momoWalletTransferIsRefusedWhileAGatewayPaymentIsOpenAndForOtherOwners() throws Exception {
+        setReceivingAccount();
+        create();
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-transfer").header("Authorization","Bearer "+owner))
+            .andExpect(status().isConflict());
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-transfer").header("Authorization","Bearer "+stranger))
+            .andExpect(status().isNotFound());
+        mvc.perform(post("/api/owner/invoices/"+invoice+"/momo-transfer").header("Authorization","Bearer "+cm))
+            .andExpect(status().isForbidden());
+        invoiceStillUnpaid();
+    }
     static HttpServer startFixture() {
         try {
             HttpServer s=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);

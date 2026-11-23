@@ -124,6 +124,12 @@ public class BillingRepository {
     /** A bank transfer the owner declared after scanning the VietQR code: recorded at once as SUCCESS via OWNER. */
     public long insertOwnerConfirmedTransfer(long invoiceId, String txnRef, long amount, long userId, String bankBin,
                                              String createDate) {
+        return insertOwnerConfirmedTransfer("VIETQR", invoiceId, txnRef, amount, userId, bankBin, createDate);
+    }
+
+    /** A transfer the owner declares done (VIETQR: bank app; MOMO: MoMo app scanning the same VietQR code). */
+    public long insertOwnerConfirmedTransfer(String provider, long invoiceId, String txnRef, long amount, long userId,
+                                             String bankBin, String createDate) {
         KeyHolder keys = new GeneratedKeyHolder();
         LocalDateTime now = now();
         jdbc.update(connection -> {
@@ -131,18 +137,19 @@ public class BillingRepository {
                     INSERT INTO dbo.payment_transaction (invoice_id, provider, txn_ref, amount, status, requested_by_user_id,
                         provider_create_date, expires_at, provider_transaction_no, bank_code, card_type, confirmed_via,
                         confirmed_at, created_at)
-                    VALUES (?, 'VIETQR', ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, 'QR', 'OWNER', ?, ?)
+                    VALUES (?, ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, 'QR', 'OWNER', ?, ?)
                     """, Statement.RETURN_GENERATED_KEYS);
             s.setLong(1, invoiceId);
-            s.setString(2, txnRef);
-            s.setBigDecimal(3, BigDecimal.valueOf(amount));
-            s.setLong(4, userId);
-            s.setString(5, createDate);
-            s.setObject(6, now);
-            s.setString(7, txnRef.length() > 20 ? txnRef.substring(txnRef.length() - 20) : txnRef);
-            s.setString(8, bankBin);
-            s.setObject(9, now);
+            s.setString(2, provider);
+            s.setString(3, txnRef);
+            s.setBigDecimal(4, BigDecimal.valueOf(amount));
+            s.setLong(5, userId);
+            s.setString(6, createDate);
+            s.setObject(7, now);
+            s.setString(8, txnRef.length() > 20 ? txnRef.substring(txnRef.length() - 20) : txnRef);
+            s.setString(9, bankBin);
             s.setObject(10, now);
+            s.setObject(11, now);
             return s;
         }, keys);
         return GeneratedIdentity.requireId(keys);

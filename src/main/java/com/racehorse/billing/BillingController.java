@@ -156,6 +156,15 @@ public class BillingController {
         return ApiResponse.ok(service.confirmQrTransfer(invoiceId));
     }
 
+    @PostMapping("/api/owner/invoices/{invoiceId}/momo-transfer")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "confirmMomoTransfer",
+            summary = "Owner pressed Thanh toán after paying the club's VietQR code from the MoMo app: recorded as paid, declared by the owner",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<PaymentResult> confirmMomoTransfer(@PathVariable long invoiceId) {
+        return ApiResponse.ok(service.confirmMomoTransfer(invoiceId));
+    }
+
     @PostMapping("/api/owner/invoices/{invoiceId}/vnpay-payment")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('HORSE_OWNER')")
