@@ -132,7 +132,7 @@ class StableLayoutApiTest {
                 .andExpect(status().isCreated());
         long box1 = jdbc.queryForObject("SELECT id FROM dbo.stable_box WHERE box_code = 'X-01'", Long.class);
         long box2 = jdbc.queryForObject("SELECT id FROM dbo.stable_box WHERE box_code = 'X-02'", Long.class);
-        jdbc.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (7650, 'RH-7650', 'Map Horse', 'DRAFT')");
+        jdbc.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle, health_status) VALUES (7650, 'RH-7650', 'Map Horse', 'DRAFT', 'INJURED')");
 
         mvc.perform(patch("/api/stable-boxes/" + box1 + "/status").header("Authorization", "Bearer " + cm)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"MAINTENANCE\"}"))
@@ -161,7 +161,8 @@ class StableLayoutApiTest {
         mvc.perform(get("/api/stable-map").header("Authorization", "Bearer " + cm))
                 .andExpect(jsonPath("$.data.occupied").value(1))
                 .andExpect(jsonPath("$.data.free").value(0))
-                .andExpect(jsonPath("$.data.yards[0].boxes[1].horse.horseCode").value("RH-7650"));
+                .andExpect(jsonPath("$.data.yards[0].boxes[1].horse.horseCode").value("RH-7650"))
+                .andExpect(jsonPath("$.data.yards[0].boxes[1].horse.healthStatus").value("INJURED"));
     }
 
     @Test

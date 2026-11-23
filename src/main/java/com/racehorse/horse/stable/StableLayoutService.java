@@ -196,7 +196,7 @@ public class StableLayoutService {
 
     private static Occupant occupant(BoxRow box) {
         return box.horseId() == null ? null
-                : new Occupant(box.horseId(), box.horseCode(), box.horseName(), box.lifecycle());
+                : new Occupant(box.horseId(), box.horseCode(), box.horseName(), box.lifecycle(), box.healthStatus());
     }
 
     private ActorContext actor() {

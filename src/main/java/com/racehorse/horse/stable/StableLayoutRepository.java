@@ -20,7 +20,7 @@ public class StableLayoutRepository {
     }
 
     public record BoxRow(long id, String boxCode, Long yardId, Integer rowNo, Integer columnNo, String boxStatus,
-                         Long horseId, String horseCode, String horseName, String lifecycle) {
+                         Long horseId, String horseCode, String horseName, String lifecycle, String healthStatus) {
     }
 
     public record BoxState(long id, String boxCode, Long yardId, String boxStatus, boolean occupied) {
@@ -43,7 +43,7 @@ public class StableLayoutRepository {
     public List<BoxRow> mapBoxes() {
         return jdbc.query("""
                 SELECT b.id, b.box_code, b.stable_yard_id, b.row_no, b.column_no, b.box_status,
-                       h.id AS horse_id, h.horse_code, h.name AS horse_name, h.lifecycle
+                       h.id AS horse_id, h.horse_code, h.name AS horse_name, h.lifecycle, h.health_status
                 FROM dbo.stable_box b
                 LEFT JOIN dbo.horse_stable_assignment a ON a.stable_box_id = b.id AND a.effective_to IS NULL
                 LEFT JOIN dbo.horse h ON h.id = a.horse_id
@@ -53,7 +53,7 @@ public class StableLayoutRepository {
                 r.getObject("stable_yard_id", Long.class), r.getObject("row_no", Integer.class),
                 r.getObject("column_no", Integer.class), r.getString("box_status"),
                 r.getObject("horse_id", Long.class), r.getString("horse_code"), r.getString("horse_name"),
-                r.getString("lifecycle")));
+                r.getString("lifecycle"), r.getString("health_status")));
     }
 
     public int yardCount() {
