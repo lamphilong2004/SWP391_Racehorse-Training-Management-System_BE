@@ -48,8 +48,9 @@ public final class StableLayoutDtos {
     public record Cell(long id, String boxCode, int rowNo, int columnNo, String boxStatus, Occupant horse) {
     }
 
-    @Schema(name = "StableMapHorse")
-    public record Occupant(long id, String horseCode, String name, String lifecycle) {
+    @Schema(name = "StableMapHorse", description = "Horse in a box. healthStatus is the horse summary status "
+            + "(FIT / MONITORING / INJURED / QUARANTINED, null when not assessed yet) shown on the stable map.")
+    public record Occupant(long id, String horseCode, String name, String lifecycle, String healthStatus) {
     }
 
     @Schema(name = "StableBoxOutsideLayout",
