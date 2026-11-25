@@ -150,7 +150,8 @@ public class HorsePhotoService {
         });
     }
 
-    private static ImageType detectImageType(byte[] bytes) {
+    /** Shared with incident photos: the same JPEG / PNG / WebP content check, never the file name or the client type. */
+    public static ImageType detectImageType(byte[] bytes) {
         if (startsWith(bytes, new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A})
                 && imageIoRecognizes(bytes, "png")) {
             return new ImageType("png", "image/png");
@@ -283,6 +284,6 @@ public class HorsePhotoService {
                 "Upload a valid JPEG, PNG, or WebP image no larger than 5 MiB.");
     }
 
-    private record ImageType(String extension, String mediaType) {
+    public record ImageType(String extension, String mediaType) {
     }
 }

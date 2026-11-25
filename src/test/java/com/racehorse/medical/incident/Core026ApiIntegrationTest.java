@@ -50,7 +50,7 @@ class Core026ApiIntegrationTest {
         IDS.set(260_000);
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(SecurityMockMvcConfigurers.springSecurity()).build();
         createTables();
-        jdbc.update("DELETE FROM dbo.incident");jdbc.update("DELETE FROM dbo.pre_session_check");jdbc.update("DELETE FROM dbo.notification");
+        jdbc.update("DELETE FROM dbo.incident_photo");jdbc.update("DELETE FROM dbo.incident");jdbc.update("DELETE FROM dbo.pre_session_check");jdbc.update("DELETE FROM dbo.notification");
         jdbc.update("DELETE FROM dbo.training_session_groom_assignment");
         jdbc.update("DELETE FROM dbo.training_session");jdbc.update("DELETE FROM dbo.horse_program_phase");jdbc.update("DELETE FROM dbo.trainer_assignment");
         jdbc.update("DELETE FROM dbo.horse_training_program");jdbc.update("DELETE FROM dbo.medical_case");jdbc.update("DELETE FROM dbo.horse");
@@ -123,6 +123,67 @@ class Core026ApiIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.notification WHERE notification_type='INCIDENT_REPORTED' AND recipient_user_id=? AND target_id=?",Integer.class,vetId,incidentId));
         jdbc.update("DELETE FROM dbo.horse_stable_assignment WHERE horse_id=2");
         jdbc.update("DELETE FROM dbo.stable_box WHERE id=9601");
+    }
+
+    // Flow 3 step 3.1: the reporter attaches up to 5 scene photos; the incident's read scope decides who may see them.
+    @Test void reporterAttachesScenePhotosThatFollowTheIncidentReadScope() throws Exception {
+        long trainerId=addUser(RoleCode.TRAINER);String trainer=login(trainerId,RoleCode.TRAINER);
+        String otherTrainer=login(addUser(RoleCode.TRAINER),RoleCode.TRAINER);
+        String vet=login(addUser(RoleCode.VETERINARIAN),RoleCode.VETERINARIAN);
+        String owner=login(addUser(RoleCode.HORSE_OWNER),RoleCode.HORSE_OWNER);
+        jdbc.update("INSERT INTO dbo.trainer_assignment(id,horse_training_program_id,trainer_user_id,assigned_by_user_id,effective_from) VALUES (2,1,?,?,?)",trainerId,trainerId,java.sql.Date.valueOf(LocalDate.now().minusDays(1)));
+        String report=String.format("{\"horseId\":1,\"incidentType\":\"INJURY\",\"observedSeverity\":\"MEDIUM\",\"description\":\"Vết xước chân trước\",\"observedAt\":\"%s\"}",Instant.now());
+        long incidentId=json.readTree(mvc.perform(post("/api/incidents").header("Authorization","Bearer "+trainer).contentType("application/json").content(report))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).path("data").path("id").longValue();
+        byte[] png=png();
+
+        String uploaded=mvc.perform(multipart("/api/incidents/{id}/photos",incidentId).file(new org.springframework.mock.web.MockMultipartFile("file","scene.png","image/png",png))
+                        .header("Authorization","Bearer "+trainer))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.id").isNumber()).andExpect(jsonPath("$.data.uploadedAt").isString())
+                .andReturn().getResponse().getContentAsString();
+        long photoId=json.readTree(uploaded).path("data").path("id").longValue();
+        mvc.perform(get("/api/incidents/{id}/photos",incidentId).header("Authorization","Bearer "+trainer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(1)).andExpect(jsonPath("$.data[0].id").value(photoId));
+        // The Veterinarian sees the photo bytes; nothing is cached and the type is not sniffed.
+        mvc.perform(get("/api/incidents/{id}/photos/{photoId}",incidentId,photoId).header("Authorization","Bearer "+vet))
+                .andExpect(status().isOk())
+                .andExpect(r->org.junit.jupiter.api.Assertions.assertEquals("image/png",r.getResponse().getContentType()))
+                .andExpect(r->org.junit.jupiter.api.Assertions.assertEquals("nosniff",r.getResponse().getHeader("X-Content-Type-Options")))
+                .andExpect(r->org.junit.jupiter.api.Assertions.assertArrayEquals(png,r.getResponse().getContentAsByteArray()));
+        // Outside the incident's read scope: another Trainer, the Horse Owner, no token.
+        mvc.perform(get("/api/incidents/{id}/photos",incidentId).header("Authorization","Bearer "+otherTrainer)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/incidents/{id}/photos/{photoId}",incidentId,photoId).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/incidents/{id}/photos",incidentId)).andExpect(status().isUnauthorized());
+        // Only the reporter adds photos, and only real JPEG / PNG / WebP content of the declared type.
+        mvc.perform(multipart("/api/incidents/{id}/photos",incidentId).file(new org.springframework.mock.web.MockMultipartFile("file","scene.png","image/png",png))
+                .header("Authorization","Bearer "+vet)).andExpect(status().isForbidden());
+        mvc.perform(multipart("/api/incidents/{id}/photos",incidentId).file(new org.springframework.mock.web.MockMultipartFile("file","fake.png","image/png","not an image".getBytes()))
+                .header("Authorization","Bearer "+trainer)).andExpect(status().isBadRequest());
+        mvc.perform(multipart("/api/incidents/{id}/photos",incidentId).file(new org.springframework.mock.web.MockMultipartFile("file","scene.jpg","image/jpeg",png))
+                .header("Authorization","Bearer "+trainer)).andExpect(status().isBadRequest());
+        // At most 5 photos per incident.
+        for(int i=0;i<4;i++)mvc.perform(multipart("/api/incidents/{id}/photos",incidentId).file(new org.springframework.mock.web.MockMultipartFile("file","scene.png","image/png",png))
+                .header("Authorization","Bearer "+trainer)).andExpect(status().isCreated());
+        mvc.perform(multipart("/api/incidents/{id}/photos",incidentId).file(new org.springframework.mock.web.MockMultipartFile("file","scene.png","image/png",png))
+                .header("Authorization","Bearer "+trainer)).andExpect(status().isConflict());
+        org.junit.jupiter.api.Assertions.assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.incident_photo WHERE incident_id=?",Integer.class,incidentId));
+
+        // A resolved incident takes no more photos; a photo id is only valid under its own incident.
+        long second=json.readTree(mvc.perform(post("/api/incidents").header("Authorization","Bearer "+trainer).contentType("application/json").content(report))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).path("data").path("id").longValue();
+        mvc.perform(get("/api/incidents/{id}/photos/{photoId}",second,photoId).header("Authorization","Bearer "+trainer)).andExpect(status().isNotFound());
+        mvc.perform(post("/api/incidents/{id}/review",second).header("Authorization","Bearer "+vet).contentType("application/json").content("{\"action\":\"RESOLVE\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(multipart("/api/incidents/{id}/photos",second).file(new org.springframework.mock.web.MockMultipartFile("file","scene.png","image/png",png))
+                .header("Authorization","Bearer "+trainer)).andExpect(status().isConflict());
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dbo.incident_photo WHERE incident_id=?",Integer.class,second));
+    }
+
+    private static byte[] png() throws java.io.IOException {
+        java.awt.image.BufferedImage image=new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+        org.junit.jupiter.api.Assertions.assertTrue(javax.imageio.ImageIO.write(image,"png",bytes));
+        return bytes.toByteArray();
     }
 
     @Test void incidentsEnforceReporterScopeAndVetReviewTransitionsAtomically() throws Exception {

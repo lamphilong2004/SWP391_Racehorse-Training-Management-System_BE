@@ -25,3 +25,5 @@ app:
     local:
       directory: ${java.io.tmpdir}/racehorse-test-horse-photos
       public-base-url: /local-media/horse-photos
+    incident-photos:
+      directory: ${java.io.tmpdir}/racehorse-test-incident-photos
