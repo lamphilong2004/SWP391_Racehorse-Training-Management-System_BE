@@ -672,6 +672,61 @@ class BillingApiTest {
                 + " AND notification_type = 'SERVICE_PAYMENT_REFUND_REQUIRED'", Integer.class));
     }
 
+    @Test
+    void ownerSeesThePriceListAndTheRunningCostBeforeAnyInvoiceExactlyAsItWillBeBilled() throws Exception {
+        String cm = TestAccounts.create(mvc, jdbc, encoder, json, 7701, RoleCode.CLUB_MANAGER).token();
+        String owner = TestAccounts.create(mvc, jdbc, encoder, json, 7702, RoleCode.HORSE_OWNER).token();
+        String stranger = TestAccounts.create(mvc, jdbc, encoder, json, 7703, RoleCode.HORSE_OWNER).token();
+        String month = YearMonth.now(VN).toString();
+        seedHorse(month, 7702);
+
+        // No price yet: the list says so and the estimate has usage but no amount.
+        mvc.perform(get("/api/owner/service-prices").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].unitPrice").doesNotExist());
+        mvc.perform(get("/api/owner/service-estimate").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.horses[0].completedSessions").value(2))
+                .andExpect(jsonPath("$.data.horses[0].total").doesNotExist())
+                .andExpect(jsonPath("$.data.total").doesNotExist());
+
+        mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardingCareDaily\":250000,\"trainingSession\":400000}"))
+                .andExpect(status().isOk());
+        int days = LocalDate.now(VN).getDayOfMonth();
+        long expected = days * 250_000L + 2 * 400_000L;
+        mvc.perform(get("/api/owner/service-prices").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data[0].serviceCode").value("BOARDING_CARE_DAILY"))
+                .andExpect(jsonPath("$.data[0].unitPrice").value(250000))
+                .andExpect(jsonPath("$.data[1].unitPrice").value(400000))
+                .andExpect(jsonPath("$.data[0].updatedBy").doesNotExist());
+        mvc.perform(get("/api/owner/service-estimate").header("Authorization", "Bearer " + owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.billingMonth").value(month))
+                .andExpect(jsonPath("$.data.horses.length()").value(1))
+                .andExpect(jsonPath("$.data.horses[0].horseId").value(7750))
+                .andExpect(jsonPath("$.data.horses[0].boardingDays").value(days))
+                .andExpect(jsonPath("$.data.horses[0].completedSessions").value(2))
+                .andExpect(jsonPath("$.data.horses[0].total").value(expected))
+                .andExpect(jsonPath("$.data.total").value(expected));
+        // Another owner sees nothing of this horse; staff use their own pages.
+        mvc.perform(get("/api/owner/service-estimate").header("Authorization", "Bearer " + stranger))
+                .andExpect(jsonPath("$.data.horses.length()").value(0))
+                .andExpect(jsonPath("$.data.total").value(0));
+        mvc.perform(get("/api/owner/service-estimate").header("Authorization", "Bearer " + cm))
+                .andExpect(status().isForbidden());
+
+        // The invoice is exactly the estimate, and once issued nothing of it is counted again.
+        long invoiceId = generateFor7750(cm, month);
+        mvc.perform(get("/api/owner/invoices/" + invoiceId).header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.invoice.totalAmount").value(expected));
+        mvc.perform(get("/api/owner/service-estimate").header("Authorization", "Bearer " + owner))
+                .andExpect(jsonPath("$.data.horses[0].invoicedUntil").value(LocalDate.now(VN).toString()))
+                .andExpect(jsonPath("$.data.horses[0].boardingDays").value(0))
+                .andExpect(jsonPath("$.data.horses[0].completedSessions").value(0))
+                .andExpect(jsonPath("$.data.total").value(0));
+    }
+
     private long invoiceWithPricesAndAccount(String cm, long ownerId) throws Exception {
         mvc.perform(put("/api/billing/prices").header("Authorization", "Bearer " + cm)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -706,6 +761,11 @@ class BillingApiTest {
 
     /** Horse 7750 stabled since the 1st of the month with 2 COMPLETED sessions (+1 SCHEDULED, not billed). */
     private long seedHorseAndGenerate(String cm, String month, long ownerId) throws Exception {
+        seedHorse(month, ownerId);
+        return generateFor7750(cm, month);
+    }
+
+    private void seedHorse(String month, long ownerId) {
         LocalDate start = YearMonth.parse(month).atDay(1);
         jdbc.update("INSERT INTO dbo.horse (id, horse_code, name, lifecycle) VALUES (7750, 'RH-7750', 'Bill Horse', 'ACTIVE')");
         jdbc.update("INSERT INTO dbo.stable_box (box_code, yard) VALUES ('BILL-01', 'Test')");
@@ -735,6 +795,9 @@ class BillingApiTest {
                     doneAt.minusHours(1), i < 3 ? doneAt.minusMinutes(40) : null, i < 3 ? doneAt : null,
                     i < 3 ? "COMPLETED" : "SCHEDULED");
         }
+    }
+
+    private long generateFor7750(String cm, String month) throws Exception {
         String body = mvc.perform(post("/api/billing/invoices/generate").header("Authorization", "Bearer " + cm)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"billingMonth\":\"" + month + "\"}"))
                 .andExpect(status().isCreated())

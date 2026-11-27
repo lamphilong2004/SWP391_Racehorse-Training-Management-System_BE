@@ -57,6 +57,10 @@ class HorseBaselineApiTest extends HorseActivationTestSupport {
         assertEquals("FIT", jdbc.queryForObject(
                 "SELECT health_status FROM dbo.horse WHERE id = ?", String.class, horseId));
         assertNotNull(result.getResponse().getContentAsString());
+        // Price transparency: the owner is told the horse is in a box and from which day fees run.
+        assertEquals(1L, count("SELECT COUNT(*) FROM dbo.notification n JOIN dbo.horse_ownership o"
+                + " ON o.owner_user_id = n.recipient_user_id AND o.horse_id = n.target_id"
+                + " WHERE n.notification_type = 'HORSE_STABLED' AND n.target_type = 'HORSE' AND n.target_id = ?", horseId));
 
         mvc.perform(get("/api/horses/{id}", horseId)
                         .with(authenticatedAs(RoleCode.VETERINARIAN, veterinarianId)))

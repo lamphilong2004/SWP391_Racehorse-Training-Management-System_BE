@@ -7,8 +7,10 @@ import com.racehorse.billing.BillingDtos.CancelRequest;
 import com.racehorse.billing.BillingDtos.CreatePaymentRequest;
 import com.racehorse.billing.BillingDtos.GenerateRequest;
 import com.racehorse.billing.BillingDtos.GenerateResult;
+import com.racehorse.billing.BillingDtos.HorseEstimate;
 import com.racehorse.billing.BillingDtos.InvoiceDetail;
 import com.racehorse.billing.BillingDtos.InvoiceSummary;
+import com.racehorse.billing.BillingDtos.OwnerEstimate;
 import com.racehorse.billing.BillingDtos.PaymentLink;
 import com.racehorse.billing.BillingDtos.PaymentResult;
 import com.racehorse.billing.BillingDtos.Price;
@@ -107,6 +109,57 @@ public class BillingService {
             repository.insertPrice(TRAINING, request.trainingSession(), actor.userId());
         }
         return prices();
+    }
+
+    /* ======================= Horse Owner: price list and running estimate ======================= */
+
+    /** The current price list as the owner sees it (who changed it is internal and left out). */
+    @Transactional(readOnly = true)
+    public List<Price> ownerPrices() {
+        return prices().stream()
+                .map(p -> new Price(p.serviceCode(), p.label(), p.unit(), p.unitPrice(), p.updatedAt(), null))
+                .toList();
+    }
+
+    /**
+     * Running cost of the signed-in owner's horses for the current month, computed exactly like {@link #generate}
+     * (days in a box x day price, COMPLETED sessions x session price, starting after any live invoice of the month)
+     * but nothing is stored. Only horses the owner would be billed for (managing owner, or the sole owner) appear.
+     */
+    @Transactional(readOnly = true)
+    public OwnerEstimate myEstimate() {
+        ActorContext actor = actor();
+        LocalDate today = LocalDate.now(VN);
+        LocalDate start = today.withDayOfMonth(1);
+        Long boardingPrice = repository.currentPrice(BOARDING).map(p -> p.unitPrice().longValueExact()).orElse(null);
+        Long trainingPrice = repository.currentPrice(TRAINING).map(p -> p.unitPrice().longValueExact()).orElse(null);
+        boolean priced = boardingPrice != null && trainingPrice != null;
+        LocalDateTime toUtc = today.plusDays(1).atStartOfDay(VN).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        List<HorseEstimate> horses = new ArrayList<>();
+        long total = 0;
+        for (HorseRow horse : repository.horsesStabledBetween(start, today)) {
+            if (billedOwner(repository.ownersOn(horse.id(), today)).filter(id -> id == actor.userId()).isEmpty()) {
+                continue;
+            }
+            Optional<LocalDate> invoiced = repository.billedUntil(horse.id(), start);
+            LocalDate from = invoiced.map(day -> day.plusDays(1)).orElse(start);
+            int days = 0;
+            int sessions = 0;
+            if (!from.isAfter(today)) {
+                days = boardingDays(repository.stays(horse.id(), from, today), from, today);
+                sessions = repository.completedSessions(horse.id(),
+                        from.atStartOfDay(VN).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime(), toUtc);
+            }
+            Long boarding = priced ? Math.multiplyExact((long) days, boardingPrice) : null;
+            Long training = priced ? Math.multiplyExact((long) sessions, trainingPrice) : null;
+            Long horseTotal = priced ? Math.addExact(boarding, training) : null;
+            if (priced) {
+                total = Math.addExact(total, horseTotal);
+            }
+            horses.add(new HorseEstimate(horse.id(), horse.horseCode(), horse.name(), from, today,
+                    invoiced.orElse(null), days, sessions, boarding, training, horseTotal));
+        }
+        return new OwnerEstimate(YearMonth.from(today).toString(), today, ownerPrices(), horses, priced ? total : null);
     }
 
     /* ======================= Club Manager: receiving bank account (VietQR) ======================= */
@@ -880,7 +933,7 @@ public class BillingService {
         return clientIp;
     }
 
-    private static String vnd(long amount) {
+    static String vnd(long amount) {
         return NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " ₫";
     }
 

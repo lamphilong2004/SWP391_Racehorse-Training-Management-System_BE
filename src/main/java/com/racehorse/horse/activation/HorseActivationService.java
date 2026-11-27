@@ -5,6 +5,7 @@ import com.racehorse.auth.CurrentActorProvider;
 import com.racehorse.common.audit.AuditRepository;
 import com.racehorse.common.error.BusinessException;
 import com.racehorse.common.error.ErrorCode;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,14 +21,17 @@ public class HorseActivationService {
     private final HorseActivationRepository repository;
     private final AuditRepository auditRepository;
     private final CurrentActorProvider actors;
+    private final ApplicationEventPublisher events;
 
     public HorseActivationService(
             HorseActivationRepository repository,
             AuditRepository auditRepository,
-            CurrentActorProvider actors) {
+            CurrentActorProvider actors,
+            ApplicationEventPublisher events) {
         this.repository = repository;
         this.auditRepository = auditRepository;
         this.actors = actors;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -55,7 +59,11 @@ public class HorseActivationService {
         }
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        return repository.activateDraft(horseId, now) == 1;
+        if (repository.activateDraft(horseId, now) != 1) {
+            return false;
+        }
+        events.publishEvent(new HorseActivatedEvent(horseId));
+        return true;
     }
 
     @Transactional
