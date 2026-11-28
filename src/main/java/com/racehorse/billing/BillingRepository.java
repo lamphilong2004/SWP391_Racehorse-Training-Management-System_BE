@@ -179,6 +179,22 @@ public class BillingRepository {
         return count == null ? 0 : count;
     }
 
+    public record Arrival(String horseCode, String horseName, String boxCode, LocalDate from) {
+    }
+
+    /** The horse's open stable assignment (box and start day), if it has one. */
+    public Optional<Arrival> arrival(long horseId) {
+        return jdbc.query("""
+                SELECT TOP 1 h.horse_code, h.name, b.box_code, a.effective_from
+                FROM dbo.horse h
+                JOIN dbo.horse_stable_assignment a ON a.horse_id = h.id AND a.effective_to IS NULL
+                JOIN dbo.stable_box b ON b.id = a.stable_box_id
+                WHERE h.id = ?
+                ORDER BY a.effective_from DESC
+                """, (r, n) -> new Arrival(r.getString("horse_code"), r.getString("name"), r.getString("box_code"),
+                r.getObject("effective_from", LocalDate.class)), horseId).stream().findFirst();
+    }
+
     public List<OwnerRow> ownersOn(long horseId, LocalDate day) {
         return jdbc.query("""
                 SELECT owner_user_id, is_managing_owner FROM dbo.horse_ownership

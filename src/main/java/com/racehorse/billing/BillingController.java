@@ -123,6 +123,23 @@ public class BillingController {
 
     /* ---------- Horse Owner ---------- */
 
+    @GetMapping("/api/owner/service-prices")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "listOwnerServicePrices", summary = "Current service price list shown to Horse Owners",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<List<Price>> ownerPrices() {
+        return ApiResponse.ok(service.ownerPrices());
+    }
+
+    @GetMapping("/api/owner/service-estimate")
+    @PreAuthorize("hasRole('HORSE_OWNER')")
+    @Operation(operationId = "getOwnerServiceEstimate",
+            summary = "Running cost of the owner's horses this month (not yet invoiced), same rules as invoicing",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<BillingDtos.OwnerEstimate> ownerEstimate() {
+        return ApiResponse.ok(service.myEstimate());
+    }
+
     @GetMapping("/api/owner/invoices")
     @PreAuthorize("hasRole('HORSE_OWNER')")
     @Operation(operationId = "listMyServiceInvoices", summary = "Invoices addressed to the signed-in Horse Owner",

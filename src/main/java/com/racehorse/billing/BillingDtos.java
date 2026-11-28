@@ -103,4 +103,17 @@ public final class BillingDtos {
     public record PaymentResult(long invoiceId, String invoiceCode, String invoiceStatus, String paymentStatus,
                                 String responseCode, String message) {
     }
+
+    /** Running cost of one own horse this month, not yet invoiced (owner price transparency, DEC-016 update). */
+    @Schema(name = "OwnerHorseServiceEstimate")
+    public record HorseEstimate(long horseId, String horseCode, String horseName, LocalDate from, LocalDate to,
+                                LocalDate invoicedUntil, int boardingDays, int completedSessions,
+                                Long boardingAmount, Long trainingAmount, Long total) {
+    }
+
+    /** Price list plus the running (not yet invoiced) cost of the owner's horses for the current month. */
+    @Schema(name = "OwnerServiceEstimate")
+    public record OwnerEstimate(String billingMonth, LocalDate asOf, List<Price> prices, List<HorseEstimate> horses,
+                                Long total) {
+    }
 }
